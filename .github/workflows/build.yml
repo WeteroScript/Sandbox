@@ -26,7 +26,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/root/src" \
             -w /root/src \
             notfl3/cargo-apk \
-            sh -lc 'yes | /opt/android-sdk-linux/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk-linux "platforms;android-34" && cargo quad-apk build'
+            sh -lc 'SDKMANAGER="$(find /opt/android-sdk-linux -name sdkmanager -print -quit)"; test -n "$SDKMANAGER" || { echo "sdkmanager not found in Android SDK image"; exit 1; }; yes | "$SDKMANAGER" --sdk_root=/opt/android-sdk-linux "platforms;android-34"; cargo quad-apk build'
 
       - name: Collect APK
         run: |
