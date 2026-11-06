@@ -1,7 +1,5 @@
 use super::physics::{CharacterKind, MapKind, PhysicsWorld};
 
-pub use super::physics::{CharacterKind as SelectedCharacter, MapKind as SelectedMap};
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameMode {
     MainMenu,

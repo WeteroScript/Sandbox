@@ -62,6 +62,34 @@ impl MapKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeaponKind {
+    Pistol,
+    Rifle,
+    Bat,
+    Katana,
+}
+
+impl WeaponKind {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Pistol => Self::Rifle,
+            Self::Rifle => Self::Bat,
+            Self::Bat => Self::Katana,
+            Self::Katana => Self::Pistol,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pistol => "PISTOL",
+            Self::Rifle => "RIFLE",
+            Self::Bat => "BAT",
+            Self::Katana => "KATANA",
+        }
+    }
+}
+
 pub struct Ragdoll {
     pub head: RigidBodyHandle,
     pub torso: RigidBodyHandle,
@@ -88,6 +116,24 @@ pub struct Prop {
     pub half_width: f32,
     pub half_height: f32,
     pub color: [u8; 4],
+    pub kind: PropKind,
+    pub active: bool,
+    pub timer: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PropKind {
+    Static,
+    Box,
+    Grenade,
+    Barrel,
+    Projectile,
+}
+
+pub struct Explosion {
+    pub position: Vec2,
+    pub radius: f32,
+    pub life: f32,
 }
 
 pub struct PhysicsWorld {
@@ -105,8 +151,10 @@ pub struct PhysicsWorld {
     pub query_pipeline: QueryPipeline,
     pub ragdoll: Ragdoll,
     pub props: Vec<Prop>,
+    pub explosions: Vec<Explosion>,
     pub character: CharacterKind,
     pub map: MapKind,
+    pub weapon: WeaponKind,
     joints: Vec<JointHealth>,
     detached_parts: Vec<RigidBodyHandle>,
     spawn_index: u32,
@@ -132,8 +180,10 @@ impl PhysicsWorld {
             query_pipeline: QueryPipeline::new(),
             ragdoll: Self::empty_ragdoll(),
             props: Vec::new(),
+            explosions: Vec::new(),
             character,
             map,
+            weapon: WeaponKind::Pistol,
             joints: Vec::new(),
             detached_parts: Vec::new(),
             spawn_index: 0,
@@ -143,12 +193,12 @@ impl PhysicsWorld {
         world.create_map_geometry();
         world.create_ragdoll(vector![640.0, 230.0]);
         world.spawn_box(vector![360.0, 470.0], vector![70.0, 70.0]);
-
         world
     }
 
     pub fn step(&mut self, delta_time: f32) {
-        self.integration_parameters.dt = delta_time.clamp(1.0 / 120.0, 1.0 / 30.0);
+        let dt = delta_time.clamp(1.0 / 120.0, 1.0 / 30.0);
+        self.integration_parameters.dt = dt;
 
         self.pipeline.step(
             &self.gravity,
@@ -166,7 +216,12 @@ impl PhysicsWorld {
             &(),
         );
 
-        self.update_joint_damage(delta_time);
+        self.update_joint_damage(dt);
+        self.update_props(dt);
+        self.explosions.retain(|explosion| explosion.life > 0.0);
+        for explosion in &mut self.explosions {
+            explosion.life -= dt;
+        }
     }
 
     pub fn body_position(&self, handle: RigidBodyHandle) -> Option<Isometry<Real>> {
@@ -174,9 +229,8 @@ impl PhysicsWorld {
     }
 
     pub fn move_ragdoll(&mut self, direction: Vec2) {
-        let direction = vector![direction.x, direction.y];
-
-        if direction.norm_squared() > 0.01 {
+        if direction.length_squared() > 0.01 {
+            let direction = vector![direction.x, direction.y];
             let force = match self.character {
                 CharacterKind::Melon => 900.0,
                 CharacterKind::Robot => 1250.0,
@@ -188,11 +242,48 @@ impl PhysicsWorld {
         }
     }
 
+    pub fn cycle_weapon(&mut self) {
+        self.weapon = self.weapon.next();
+    }
+
+    pub fn fire_weapon(&mut self) {
+        let origin = self
+            .body_position(self.ragdoll.torso)
+            .map(|position| vector![position.translation.x + 55.0, position.translation.y])
+            .unwrap_or(vector![640.0, 300.0]);
+
+        match self.weapon {
+            WeaponKind::Pistol => self.spawn_projectile(origin, 1200.0, 8.0),
+            WeaponKind::Rifle => self.spawn_projectile(origin, 1800.0, 12.0),
+            WeaponKind::Bat => self.apply_melee_impulse(origin, 100.0, 700.0),
+            WeaponKind::Katana => self.apply_melee_impulse(origin, 130.0, 1100.0),
+        }
+    }
+
+    pub fn spawn_grenade(&mut self) {
+        self.spawn_special(
+            vector![720.0, 180.0],
+            vector![14.0, 14.0],
+            PropKind::Grenade,
+            [65, 175, 85, 255],
+            3.0,
+        );
+    }
+
+    pub fn spawn_barrel(&mut self) {
+        self.spawn_special(
+            vector![790.0, 180.0],
+            vector![28.0, 38.0],
+            PropKind::Barrel,
+            [170, 74, 48, 255],
+            -1.0,
+        );
+    }
+
     pub fn apply_test_damage(&mut self) {
         for joint in &mut self.joints {
             joint.health -= joint.max_health * 0.45;
         }
-
         self.remove_broken_joints();
     }
 
@@ -203,12 +294,7 @@ impl PhysicsWorld {
 
         let current: f32 = self.joints.iter().map(|joint| joint.health.max(0.0)).sum();
         let maximum: f32 = self.joints.iter().map(|joint| joint.max_health).sum();
-
-        if maximum <= 0.0 {
-            0.0
-        } else {
-            (current / maximum).clamp(0.0, 1.0)
-        }
+        (current / maximum).clamp(0.0, 1.0)
     }
 
     pub fn is_detached(&self, handle: RigidBodyHandle) -> bool {
@@ -216,6 +302,23 @@ impl PhysicsWorld {
     }
 
     pub fn spawn_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
+        self.spawn_special(
+            position,
+            half_size,
+            PropKind::Box,
+            [156, 101, 58, 255],
+            -1.0,
+        );
+    }
+
+    fn spawn_special(
+        &mut self,
+        position: Vector<Real>,
+        half_size: Vector<Real>,
+        kind: PropKind,
+        color: [u8; 4],
+        timer: f32,
+    ) {
         let body = RigidBodyBuilder::dynamic()
             .translation(position)
             .rotation((self.spawn_index as f32 * 0.17) % 0.4)
@@ -225,9 +328,8 @@ impl PhysicsWorld {
             .build();
 
         let body_handle = self.bodies.insert(body);
-
         let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
-            .density(0.8)
+            .density(if kind == PropKind::Barrel { 1.3 } else { 0.8 })
             .friction(0.7)
             .restitution(0.15)
             .build();
@@ -239,10 +341,122 @@ impl PhysicsWorld {
             body: body_handle,
             half_width: half_size.x,
             half_height: half_size.y,
-            color: [156, 101, 58, 255],
+            color,
+            kind,
+            active: true,
+            timer,
         });
 
         self.spawn_index = self.spawn_index.wrapping_add(1);
+    }
+
+    fn spawn_projectile(&mut self, position: Vector<Real>, speed: f32, damage: f32) {
+        let body = RigidBodyBuilder::dynamic()
+            .translation(position)
+            .linvel(vector![speed, 0.0])
+            .gravity_scale(0.0)
+            .ccd_enabled(true)
+            .build();
+
+        let handle = self.bodies.insert(body);
+        let collider = ColliderBuilder::ball(5.0)
+            .density(0.2)
+            .sensor(true)
+            .build();
+
+        self.colliders
+            .insert_with_parent(collider, handle, &mut self.bodies);
+
+        self.props.push(Prop {
+            body: handle,
+            half_width: damage * 0.35,
+            half_height: 5.0,
+            color: [230, 210, 80, 255],
+            kind: PropKind::Projectile,
+            active: true,
+            timer: 1.2,
+        });
+    }
+
+    fn apply_melee_impulse(&mut self, origin: Vector<Real>, radius: f32, impulse: f32) {
+        let origin = vector![origin.x, origin.y];
+
+        for (_, body) in self.bodies.iter_mut() {
+            if body.is_dynamic() {
+                let offset = body.translation() - origin;
+                let distance = offset.norm();
+
+                if distance < radius {
+                    let direction = if distance > 0.1 {
+                        offset / distance
+                    } else {
+                        vector![1.0, 0.0]
+                    };
+                    body.apply_impulse(direction * impulse, true);
+                }
+            }
+        }
+
+        self.apply_test_damage();
+    }
+
+    fn update_props(&mut self, delta_time: f32) {
+        let mut detonations = Vec::new();
+
+        for prop in &mut self.props {
+            if !prop.active {
+                continue;
+            }
+
+            if prop.timer > 0.0 {
+                prop.timer -= delta_time;
+
+                if prop.timer <= 0.0 && prop.kind == PropKind::Grenade {
+                    if let Some(position) = self.body_position(prop.body) {
+                        detonations.push(vector![position.translation.x, position.translation.y]);
+                    }
+                    prop.active = false;
+                }
+            }
+
+            if prop.kind == PropKind::Projectile && prop.timer <= 0.0 {
+                prop.active = false;
+            }
+        }
+
+        for position in detonations {
+            self.explode(position, 240.0, 1150.0);
+        }
+    }
+
+    fn explode(&mut self, position: Vector<Real>, radius: f32, impulse: f32) {
+        let center = vector![position.x, position.y];
+
+        for (_, body) in self.bodies.iter_mut() {
+            if !body.is_dynamic() {
+                continue;
+            }
+
+            let offset = body.translation() - center;
+            let distance = offset.norm();
+
+            if distance < radius {
+                let falloff = 1.0 - distance / radius;
+                let direction = if distance > 0.1 {
+                    offset / distance
+                } else {
+                    vector![0.0, -1.0]
+                };
+                body.apply_impulse(direction * impulse * falloff, true);
+            }
+        }
+
+        self.apply_test_damage();
+        self.explosions.push(Explosion {
+            position,
+            radius,
+            life: 0.35,
+        });
     }
 
     fn update_joint_damage(&mut self, delta_time: f32) {
@@ -254,18 +468,15 @@ impl PhysicsWorld {
                 .get(joint.parent)
                 .map(|body| body.linvel().norm())
                 .unwrap_or(0.0);
-
             let child_speed = self
                 .bodies
                 .get(joint.child)
                 .map(|body| body.linvel().norm())
                 .unwrap_or(0.0);
-
             let relative_speed = (parent_speed - child_speed).abs();
 
             if relative_speed > 18.0 {
-                let damage = (relative_speed - 18.0) * delta_time * 1.8;
-                joint.health -= damage;
+                joint.health -= (relative_speed - 18.0) * delta_time * 1.8;
             }
 
             if joint.health <= 0.0 {
@@ -321,15 +532,14 @@ impl PhysicsWorld {
         let body = RigidBodyBuilder::fixed()
             .translation(vector![640.0, 650.0])
             .build();
-        let body_handle = self.bodies.insert(body);
-
+        let handle = self.bodies.insert(body);
         let collider = ColliderBuilder::cuboid(640.0, 25.0)
             .friction(0.8)
             .restitution(0.05)
             .build();
 
         self.colliders
-            .insert_with_parent(collider, body_handle, &mut self.bodies);
+            .insert_with_parent(collider, handle, &mut self.bodies);
     }
 
     fn create_map_geometry(&mut self) {
@@ -353,18 +563,17 @@ impl PhysicsWorld {
 
     fn create_static_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
         let body = RigidBodyBuilder::fixed().translation(position).build();
-        let body_handle = self.bodies.insert(body);
-
+        let handle = self.bodies.insert(body);
         let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
             .friction(0.8)
             .restitution(0.05)
             .build();
 
         self.colliders
-            .insert_with_parent(collider, body_handle, &mut self.bodies);
+            .insert_with_parent(collider, handle, &mut self.bodies);
 
         self.props.push(Prop {
-            body: body_handle,
+            body: handle,
             half_width: half_size.x,
             half_height: half_size.y,
             color: match self.map {
@@ -372,6 +581,9 @@ impl PhysicsWorld {
                 MapKind::City => [92, 103, 114, 255],
                 MapKind::Laboratory => [75, 124, 118, 255],
             },
+            kind: PropKind::Static,
+            active: true,
+            timer: -1.0,
         });
     }
 
@@ -424,11 +636,10 @@ impl PhysicsWorld {
             .ccd_enabled(true)
             .build();
 
-        let body_handle = self.bodies.insert(body);
-
+        let handle = self.bodies.insert(body);
         let collider = match shape {
             PartShape::Circle(radius) => ColliderBuilder::ball(radius),
-            PartShape::Box(half_width, half_height) => ColliderBuilder::cuboid(half_width, half_height),
+            PartShape::Box(width, height) => ColliderBuilder::cuboid(width, height),
         }
         .density(density)
         .friction(0.55)
@@ -436,9 +647,9 @@ impl PhysicsWorld {
         .build();
 
         self.colliders
-            .insert_with_parent(collider, body_handle, &mut self.bodies);
+            .insert_with_parent(collider, handle, &mut self.bodies);
 
-        body_handle
+        handle
     }
 
     fn connect(

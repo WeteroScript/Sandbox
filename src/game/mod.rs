@@ -5,7 +5,7 @@ mod state;
 
 use macroquad::prelude::*;
 
-use input::InputState;
+use input::{Action, InputState};
 use render::Renderer;
 use state::{GameMode, GameState};
 
@@ -44,8 +44,18 @@ impl Game {
             GameMode::Playing => {
                 let delta_time = get_frame_time();
                 self.state.elapsed += delta_time;
-
                 self.state.physics.move_ragdoll(self.input.movement());
+
+                if self.input.next_weapon_pressed() {
+                    self.state.physics.cycle_weapon();
+                }
+
+                match self.input.action() {
+                    Action::Fire => self.state.physics.fire_weapon(),
+                    Action::SpawnGrenade => self.state.physics.spawn_grenade(),
+                    Action::SpawnBarrel => self.state.physics.spawn_barrel(),
+                    Action::None => {}
+                }
 
                 if self.input.spawn_pressed() {
                     self.state
