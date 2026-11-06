@@ -60,9 +60,10 @@ impl InputState {
             Action::SpawnGrenade
         } else if is_key_pressed(KeyCode::B) {
             Action::SpawnBarrel
-        } else if is_key_pressed(KeyCode::F) || is_mouse_button_pressed(MouseButton::Left) {
-            Action::Fire
-        } else if self.touch_action_pressed() {
+        } else if is_key_pressed(KeyCode::F)
+            || is_mouse_button_pressed(MouseButton::Left)
+            || self.touch_action_pressed()
+        {
             Action::Fire
         } else {
             Action::None
@@ -73,12 +74,15 @@ impl InputState {
         if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
             movement.x -= 1.0;
         }
+
         if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
             movement.x += 1.0;
         }
+
         if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
             movement.y -= 1.0;
         }
+
         if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
             movement.y += 1.0;
         }
@@ -143,11 +147,69 @@ impl InputState {
         self.movement
     }
 
+    pub fn pause_resume_pressed(&self) -> bool {
+        self.play || self.touch_in_rect(self.pause_resume_rect())
+    }
+
+    pub fn pause_spawn_box_pressed(&self) -> bool {
+        is_key_pressed(KeyCode::Q) || self.touch_in_rect(self.pause_box_rect())
+    }
+
+    pub fn pause_spawn_grenade_pressed(&self) -> bool {
+        is_key_pressed(KeyCode::G) || self.touch_in_rect(self.pause_grenade_rect())
+    }
+
+    pub fn pause_spawn_barrel_pressed(&self) -> bool {
+        is_key_pressed(KeyCode::B) || self.touch_in_rect(self.pause_barrel_rect())
+    }
+
     fn touch_action_pressed(&self) -> bool {
         let center = vec2(screen_width() - 100.0, screen_height() - 118.0);
 
         touches()
             .into_iter()
             .any(|touch| touch.position.distance(center) <= 48.0)
+    }
+
+    fn touch_in_rect(&self, rect: Rect) -> bool {
+        touches()
+            .into_iter()
+            .any(|touch| rect.contains(touch.position))
+    }
+
+    fn pause_resume_rect(&self) -> Rect {
+        Rect::new(
+            screen_width() * 0.5 - 150.0,
+            screen_height() * 0.5 - 125.0,
+            300.0,
+            56.0,
+        )
+    }
+
+    fn pause_box_rect(&self) -> Rect {
+        Rect::new(
+            screen_width() * 0.5 - 150.0,
+            screen_height() * 0.5 - 50.0,
+            300.0,
+            48.0,
+        )
+    }
+
+    fn pause_grenade_rect(&self) -> Rect {
+        Rect::new(
+            screen_width() * 0.5 - 150.0,
+            screen_height() * 0.5 + 8.0,
+            300.0,
+            48.0,
+        )
+    }
+
+    fn pause_barrel_rect(&self) -> Rect {
+        Rect::new(
+            screen_width() * 0.5 - 150.0,
+            screen_height() * 0.5 + 66.0,
+            300.0,
+            48.0,
+        )
     }
 }

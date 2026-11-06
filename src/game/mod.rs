@@ -79,7 +79,15 @@ impl Game {
                 }
             }
             GameMode::Paused => {
-                if self.input.play_pressed() {
+                if self.input.pause_spawn_box_pressed() {
+                    self.state
+                        .physics
+                        .spawn_box(vector![780.0, 180.0], vector![34.0, 34.0]);
+                } else if self.input.pause_spawn_grenade_pressed() {
+                    self.state.physics.spawn_grenade();
+                } else if self.input.pause_spawn_barrel_pressed() {
+                    self.state.physics.spawn_barrel();
+                } else if self.input.pause_resume_pressed() {
                     self.state.mode = GameMode::Playing;
                 } else if self.input.back_pressed() {
                     self.state.mode = GameMode::MainMenu;
