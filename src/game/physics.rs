@@ -286,6 +286,17 @@ impl PhysicsWorld {
         );
     }
 
+    pub fn spawn_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
+        self.spawn_special(
+            position,
+            half_size,
+            PropKind::Box,
+            [156, 101, 58, 255],
+            -1.0,
+            3.0,
+        );
+    }
+
     pub fn apply_test_damage(&mut self) {
         for joint in &mut self.joints {
             joint.health -= joint.max_health * 0.45;
@@ -308,17 +319,6 @@ impl PhysicsWorld {
         self.detached_parts.contains(&handle)
     }
 
-    pub fn spawn_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
-        self.spawn_special(
-            position,
-            half_size,
-            PropKind::Box,
-            [156, 101, 58, 255],
-            -1.0,
-            3.0,
-        );
-    }
-
     fn spawn_special(
         &mut self,
         position: Vector<Real>,
@@ -337,7 +337,6 @@ impl PhysicsWorld {
             .build();
 
         let body_handle = self.bodies.insert(body);
-
         let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
             .density(if kind == PropKind::Barrel { 1.3 } else { 0.8 })
             .friction(0.7)
@@ -407,7 +406,6 @@ impl PhysicsWorld {
                 } else {
                     vector![1.0, 0.0]
                 };
-
                 body.apply_impulse(direction * impulse, true);
             }
         }
@@ -490,6 +488,12 @@ impl PhysicsWorld {
         }
 
         for (projectile_index, target_index) in projectile_hits {
+            let damage = self
+                .props
+                .get(projectile_index)
+                .map(|projectile| projectile.durability)
+                .unwrap_or(8.0);
+
             if let Some(projectile) = self.props.get_mut(projectile_index) {
                 projectile.active = false;
             }
@@ -497,11 +501,7 @@ impl PhysicsWorld {
             let mut detonation = None;
 
             if let Some(target) = self.props.get_mut(target_index) {
-                target.durability -= self
-                    .props
-                    .get(projectile_index)
-                    .map(|projectile| projectile.durability)
-                    .unwrap_or(8.0);
+                target.durability -= damage;
 
                 if target.durability <= 0.0 {
                     target.active = false;
@@ -544,43 +544,45 @@ impl PhysicsWorld {
                 } else {
                     vector![0.0, -1.0]
                 };
-
                 body.apply_impulse(direction * impulse * falloff, true);
             }
         }
 
-        for prop in &mut self.props {
-            if !prop.active || !matches!(prop.kind, PropKind::Box | PropKind::Barrel) {
-                continue;
-            }
+        let affected_props: Vec<(usize, Vec2)> = self
+            .props
+            .iter()
+            .enumerate()
+            .filter_map(|(index, prop)| {
+                if !prop.active || !matches!(prop.kind, PropKind::Box | PropKind::Barrel) {
+                    return None;
+                }
 
-            let Some(prop_position) = self.body_position(prop.body) else {
-                continue;
-            };
+                let position = self.body_position(prop.body)?;
+                let point = vec2(position.translation.x, position.translation.y);
 
-            let offset = vector![
-                prop_position.translation.x - position.x,
-                prop_position.translation.y - position.y
-            ];
+                if point.distance(position) < radius {
+                    Some((index, point))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            if offset.norm() < radius {
+        for (index, point) in affected_props {
+            if let Some(prop) = self.props.get_mut(index) {
                 prop.durability -= 5.0;
 
                 if prop.durability <= 0.0 {
                     prop.active = false;
 
                     if prop.kind == PropKind::Barrel {
-                        chain_detonations.push(vector![
-                            prop_position.translation.x,
-                            prop_position.translation.y
-                        ]);
+                        chain_detonations.push(point);
                     }
                 }
             }
         }
 
         self.apply_test_damage();
-
         self.explosions.push(Explosion {
             position,
             radius,
@@ -601,13 +603,11 @@ impl PhysicsWorld {
                 .get(joint.parent)
                 .map(|body| body.linvel().norm())
                 .unwrap_or(0.0);
-
             let child_speed = self
                 .bodies
                 .get(joint.child)
                 .map(|body| body.linvel().norm())
                 .unwrap_or(0.0);
-
             let relative_speed = (parent_speed - child_speed).abs();
 
             if relative_speed > 18.0 {
@@ -664,17 +664,18 @@ impl PhysicsWorld {
     }
 
     fn create_floor(&mut self) {
-        let body = RigidBodyBuilder::fixed()
-            .translation(vector![640.0, 650.0])
-            .build();
-        let handle = self.bodies.insert(body);
+        let body = self.bodies.insert(
+            RigidBodyBuilder::fixed()
+                .translation(vector![640.0, 650.0])
+                .build(),
+        );
         let collider = ColliderBuilder::cuboid(640.0, 25.0)
             .friction(0.8)
             .restitution(0.05)
             .build();
 
         self.colliders
-            .insert_with_parent(collider, handle, &mut self.bodies);
+            .insert_with_parent(collider, body, &mut self.bodies);
     }
 
     fn create_map_geometry(&mut self) {
@@ -697,18 +698,17 @@ impl PhysicsWorld {
     }
 
     fn create_static_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
-        let body = RigidBodyBuilder::fixed().translation(position).build();
-        let handle = self.bodies.insert(body);
+        let body = self.bodies.insert(RigidBodyBuilder::fixed().translation(position).build());
         let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
             .friction(0.8)
             .restitution(0.05)
             .build();
 
         self.colliders
-            .insert_with_parent(collider, handle, &mut self.bodies);
+            .insert_with_parent(collider, body, &mut self.bodies);
 
         self.props.push(Prop {
-            body: handle,
+            body,
             half_width: half_size.x,
             half_height: half_size.y,
             color: match self.map {
@@ -729,56 +729,16 @@ impl PhysicsWorld {
             CharacterKind::Robot => 1.8,
         };
 
-        let torso = self.create_part(
-            vector![origin.x, origin.y + 70.0],
-            PartShape::Box(24.0, 44.0),
-            density,
-        );
-        let head = self.create_part(
-            vector![origin.x, origin.y],
-            PartShape::Circle(27.0),
-            density * 0.8,
-        );
-        let left_upper_arm = self.create_part(
-            vector![origin.x - 43.0, origin.y + 66.0],
-            PartShape::Box(10.0, 32.0),
-            density * 0.5,
-        );
-        let right_upper_arm = self.create_part(
-            vector![origin.x + 43.0, origin.y + 66.0],
-            PartShape::Box(10.0, 32.0),
-            density * 0.5,
-        );
-        let left_lower_arm = self.create_part(
-            vector![origin.x - 70.0, origin.y + 112.0],
-            PartShape::Box(9.0, 28.0),
-            density * 0.4,
-        );
-        let right_lower_arm = self.create_part(
-            vector![origin.x + 70.0, origin.y + 112.0],
-            PartShape::Box(9.0, 28.0),
-            density * 0.4,
-        );
-        let left_upper_leg = self.create_part(
-            vector![origin.x - 15.0, origin.y + 142.0],
-            PartShape::Box(12.0, 38.0),
-            density * 0.7,
-        );
-        let right_upper_leg = self.create_part(
-            vector![origin.x + 15.0, origin.y + 142.0],
-            PartShape::Box(12.0, 38.0),
-            density * 0.7,
-        );
-        let left_lower_leg = self.create_part(
-            vector![origin.x - 18.0, origin.y + 198.0],
-            PartShape::Box(10.0, 34.0),
-            density * 0.6,
-        );
-        let right_lower_leg = self.create_part(
-            vector![origin.x + 18.0, origin.y + 198.0],
-            PartShape::Box(10.0, 34.0),
-            density * 0.6,
-        );
+        let torso = self.create_part(vector![origin.x, origin.y + 70.0], PartShape::Box(24.0, 44.0), density);
+        let head = self.create_part(vector![origin.x, origin.y], PartShape::Circle(27.0), density * 0.8);
+        let left_upper_arm = self.create_part(vector![origin.x - 43.0, origin.y + 66.0], PartShape::Box(10.0, 32.0), density * 0.5);
+        let right_upper_arm = self.create_part(vector![origin.x + 43.0, origin.y + 66.0], PartShape::Box(10.0, 32.0), density * 0.5);
+        let left_lower_arm = self.create_part(vector![origin.x - 70.0, origin.y + 112.0], PartShape::Box(9.0, 28.0), density * 0.4);
+        let right_lower_arm = self.create_part(vector![origin.x + 70.0, origin.y + 112.0], PartShape::Box(9.0, 28.0), density * 0.4);
+        let left_upper_leg = self.create_part(vector![origin.x - 15.0, origin.y + 142.0], PartShape::Box(12.0, 38.0), density * 0.7);
+        let right_upper_leg = self.create_part(vector![origin.x + 15.0, origin.y + 142.0], PartShape::Box(12.0, 38.0), density * 0.7);
+        let left_lower_leg = self.create_part(vector![origin.x - 18.0, origin.y + 198.0], PartShape::Box(10.0, 34.0), density * 0.6);
+        let right_lower_leg = self.create_part(vector![origin.x + 18.0, origin.y + 198.0], PartShape::Box(10.0, 34.0), density * 0.6);
 
         self.connect(head, torso, point![0.0, 27.0], point![0.0, -44.0]);
         self.connect(torso, left_upper_arm, point![-24.0, -28.0], point![0.0, -32.0]);
@@ -810,14 +770,15 @@ impl PhysicsWorld {
         shape: PartShape,
         density: Real,
     ) -> RigidBodyHandle {
-        let body = RigidBodyBuilder::dynamic()
-            .translation(position)
-            .linear_damping(0.08)
-            .angular_damping(0.12)
-            .ccd_enabled(true)
-            .build();
+        let body = self.bodies.insert(
+            RigidBodyBuilder::dynamic()
+                .translation(position)
+                .linear_damping(0.08)
+                .angular_damping(0.12)
+                .ccd_enabled(true)
+                .build(),
+        );
 
-        let handle = self.bodies.insert(body);
         let collider = match shape {
             PartShape::Circle(radius) => ColliderBuilder::ball(radius),
             PartShape::Box(width, height) => ColliderBuilder::cuboid(width, height),
@@ -828,9 +789,9 @@ impl PhysicsWorld {
         .build();
 
         self.colliders
-            .insert_with_parent(collider, handle, &mut self.bodies);
+            .insert_with_parent(collider, body, &mut self.bodies);
 
-        handle
+        body
     }
 
     fn connect(
@@ -844,7 +805,6 @@ impl PhysicsWorld {
             .local_anchor1(parent_anchor)
             .local_anchor2(child_anchor)
             .build();
-
         let handle = self.impulse_joints.insert(parent, child, joint, true);
         let max_health = self.character.joint_strength();
 
