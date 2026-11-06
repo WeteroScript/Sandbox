@@ -297,9 +297,9 @@ impl Renderer {
         draw_circle(barrel.x, barrel.y, 36.0, Color::from_rgba(170, 74, 48, 235));
         draw_text("B", barrel.x - 6.0, barrel.y + 7.0, 22.0, WHITE);
 
-        let box = vec2(width - 192.0, height - 90.0);
-        draw_circle(box.x, box.y, 27.0, Color::from_rgba(126, 91, 55, 235));
-        draw_text("+", box.x - 8.0, box.y + 8.0, 25.0, WHITE);
+        let box_control = vec2(width - 192.0, height - 90.0);
+        draw_circle(box_control.x, box_control.y, 27.0, Color::from_rgba(126, 91, 55, 235));
+        draw_text("+", box_control.x - 8.0, box_control.y + 8.0, 25.0, WHITE);
     }
 
     fn draw_button(&self, x: f32, y: f32, width: f32, height: f32, label: &str, color: Color) {
