@@ -4,7 +4,6 @@ mod render;
 mod state;
 
 use macroquad::prelude::*;
-use rapier2d::prelude::vector;
 
 use input::{Action, InputState};
 use render::Renderer;
@@ -61,7 +60,7 @@ impl Game {
                 if self.input.spawn_pressed() {
                     self.state
                         .physics
-                        .spawn_box(vector![780.0, 180.0], vector![34.0, 34.0]);
+                        .spawn_box(rapier2d::prelude::Vector::new(780.0, 180.0), rapier2d::prelude::Vector::new(34.0, 34.0));
                 }
 
                 if self.input.damage_pressed() {
@@ -83,7 +82,7 @@ impl Game {
                 if self.input.pause_spawn_box_pressed() {
                     self.state
                         .physics
-                        .spawn_box(vector![780.0, 180.0], vector![34.0, 34.0]);
+                        .spawn_box(rapier2d::prelude::Vector::new(780.0, 180.0), rapier2d::prelude::Vector::new(34.0, 34.0));
                 } else if self.input.pause_spawn_grenade_pressed() {
                     self.state.physics.spawn_grenade();
                 } else if self.input.pause_spawn_barrel_pressed() {
