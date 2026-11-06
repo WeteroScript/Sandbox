@@ -11,12 +11,17 @@ macroquad = "0.4.13"
 rapier2d = "0.22.0"
 
 [package.metadata.android]
+android_version = 36
 package_name = "com.weteroscript.sandbox"
 label = "Sandbox"
 min_sdk_version = 23
 target_sdk_version = 34
+build_targets = ["aarch64-linux-android"]
 fullscreen = true
-orientation = "landscape"
+
+[package.metadata.android.activity_attributes]
+"android:screenOrientation" = "landscape"
+"android:exported" = "true"
 
 [profile.dev]
 opt-level = 1
