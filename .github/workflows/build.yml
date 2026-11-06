@@ -26,7 +26,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/root/src" \
             -w /root/src \
             notfl3/cargo-apk \
-            cargo quad-apk build
+            sh -lc 'yes | /opt/android-sdk-linux/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk-linux "platforms;android-34" && cargo quad-apk build'
 
       - name: Collect APK
         run: |

@@ -11,7 +11,7 @@ macroquad = "0.4.13"
 rapier2d = "0.22.0"
 
 [package.metadata.android]
-android_version = 36
+android_version = 34
 package_name = "com.weteroscript.sandbox"
 label = "Sandbox"
 min_sdk_version = 23
