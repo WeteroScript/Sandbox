@@ -242,7 +242,7 @@ impl PhysicsWorld {
         };
 
         if let Some(torso) = self.bodies.get_mut(self.ragdoll.torso) {
-            torso.apply_force(direction * vector![force, force * 0.2], true);
+            torso.add_force(vector![direction.x * force, direction.y * force * 0.2], true);
         }
     }
 
@@ -521,7 +521,7 @@ impl PhysicsWorld {
         }
 
         for position in detonations {
-            self.explode(position, 240.0, 1150.0);
+            self.explode(macroquad::prelude::vec2(position.x, position.y), 240.0, 1150.0);
         }
     }
 
@@ -557,8 +557,8 @@ impl PhysicsWorld {
                     return None;
                 }
 
-                let position = self.body_position(prop.body)?;
-                let point = vec2(position.translation.x, position.translation.y);
+                let body_position = self.body_position(prop.body)?;
+                let point = macroquad::prelude::vec2(body_position.translation.x, body_position.translation.y);
 
                 if point.distance(position) < radius {
                     Some((index, point))
