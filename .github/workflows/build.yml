@@ -37,7 +37,7 @@ jobs:
 
       - name: Install Android platform and NDK
         run: |
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264"
+          sdkmanager "platform-tools" "platforms;android-30" "platforms;android-34" "build-tools;34.0.0" "ndk;26.3.11579264"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> "$GITHUB_ENV"
 
       - name: Install cargo-apk
