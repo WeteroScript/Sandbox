@@ -1,5 +1,6 @@
 use macroquad::prelude::*;
 
+use super::physics::Ragdoll;
 use super::state::GameState;
 
 pub struct Renderer;
@@ -45,76 +46,32 @@ impl Renderer {
     pub fn draw_playing(&self, state: &GameState) {
         let width = screen_width();
         let height = screen_height();
+        let floor_y = 650.0;
 
         draw_rectangle(
             0.0,
-            height * 0.72,
-            width,
-            height * 0.28,
+            floor_y,
+            width.max(1280.0),
+            height.max(720.0) - floor_y,
             Color::from_rgba(67, 75, 81, 255),
         );
 
         draw_rectangle(
             0.0,
-            height * 0.72 - 6.0,
-            width,
-            6.0,
+            floor_y - 5.0,
+            width.max(1280.0),
+            5.0,
             Color::from_rgba(118, 128, 121, 255),
         );
 
-        let x = width * 0.5;
-        let y = height * 0.52;
-
-        draw_circle(x, y, 34.0, Color::from_rgba(106, 175, 92, 255));
-        draw_rectangle(
-            x - 22.0,
-            y + 30.0,
-            44.0,
-            90.0,
-            Color::from_rgba(82, 142, 76, 255),
-        );
-
-        draw_line(
-            x - 22.0,
-            y + 48.0,
-            x - 72.0,
-            y + 92.0,
-            12.0,
-            Color::from_rgba(82, 142, 76, 255),
-        );
-        draw_line(
-            x + 22.0,
-            y + 48.0,
-            x + 72.0,
-            y + 92.0,
-            12.0,
-            Color::from_rgba(82, 142, 76, 255),
-        );
-        draw_line(
-            x - 12.0,
-            y + 120.0,
-            x - 45.0,
-            height * 0.72,
-            14.0,
-            Color::from_rgba(82, 142, 76, 255),
-        );
-        draw_line(
-            x + 12.0,
-            y + 120.0,
-            x + 45.0,
-            height * 0.72,
-            14.0,
-            Color::from_rgba(82, 142, 76, 255),
-        );
-
-        draw_circle(x - 11.0, y - 5.0, 4.0, DARKGRAY);
-        draw_circle(x + 11.0, y - 5.0, 4.0, DARKGRAY);
+        self.draw_box(state, 360.0, 470.0, 70.0, 70.0);
+        self.draw_ragdoll(state, &state.physics.ragdoll);
 
         self.draw_top_bar();
         self.draw_touch_controls();
 
         draw_text(
-            &format!("Prototype time: {:.1}", state.elapsed),
+            &format!("Physics time: {:.1}", state.elapsed),
             24.0,
             height - 28.0,
             18.0,
@@ -148,13 +105,15 @@ impl Renderer {
         );
     }
 
-    pub fn draw_paused(&self) {
+    pub fn draw_paused(&self, state: &GameState) {
+        self.draw_playing(state);
+
         draw_rectangle(
             0.0,
             0.0,
             screen_width(),
             screen_height(),
-            Color::from_rgba(5, 8, 12, 230),
+            Color::from_rgba(5, 8, 12, 210),
         );
 
         let center_x = screen_width() * 0.5;
@@ -169,6 +128,156 @@ impl Renderer {
             58.0,
             "RESUME",
             Color::from_rgba(52, 168, 99, 255),
+        );
+    }
+
+    fn draw_ragdoll(&self, state: &GameState, ragdoll: &Ragdoll) {
+        let green = Color::from_rgba(106, 175, 92, 255);
+        let dark_green = Color::from_rgba(72, 128, 70, 255);
+        let outline = Color::from_rgba(32, 55, 37, 255);
+
+        self.draw_circle_body(state, ragdoll.head, 27.0, green);
+        self.draw_box_body(state, ragdoll.torso, 24.0, 44.0, dark_green);
+
+        self.draw_box_body(state, ragdoll.left_upper_arm, 10.0, 32.0, green);
+        self.draw_box_body(state, ragdoll.right_upper_arm, 10.0, 32.0, green);
+        self.draw_box_body(state, ragdoll.left_lower_arm, 9.0, 28.0, green);
+        self.draw_box_body(state, ragdoll.right_lower_arm, 9.0, 28.0, green);
+        self.draw_box_body(state, ragdoll.left_upper_leg, 12.0, 38.0, dark_green);
+        self.draw_box_body(state, ragdoll.right_upper_leg, 12.0, 38.0, dark_green);
+        self.draw_box_body(state, ragdoll.left_lower_leg, 10.0, 34.0, dark_green);
+        self.draw_box_body(state, ragdoll.right_lower_leg, 10.0, 34.0, dark_green);
+
+        if let Some(head) = state.physics.body_position(ragdoll.head) {
+            let x = head.translation.x;
+            let y = head.translation.y;
+            draw_circle(x - 9.0, y - 5.0, 4.0, outline);
+            draw_circle(x + 9.0, y - 5.0, 4.0, outline);
+        }
+    }
+
+    fn draw_circle_body(
+        &self,
+        state: &GameState,
+        handle: rapier2d::prelude::RigidBodyHandle,
+        radius: f32,
+        color: Color,
+    ) {
+        if let Some(position) = state.physics.body_position(handle) {
+            draw_circle(
+                position.translation.x,
+                position.translation.y,
+                radius,
+                color,
+            );
+        }
+    }
+
+    fn draw_box_body(
+        &self,
+        state: &GameState,
+        handle: rapier2d::prelude::RigidBodyHandle,
+        half_width: f32,
+        half_height: f32,
+        color: Color,
+    ) {
+        if let Some(position) = state.physics.body_position(handle) {
+            let center = vec2(position.translation.x, position.translation.y);
+            let rotation = position.rotation.angle();
+            self.draw_rotated_rectangle(center, half_width, half_height, rotation, color);
+        }
+    }
+
+    fn draw_box(
+        &self,
+        state: &GameState,
+        x: f32,
+        y: f32,
+        half_width: f32,
+        half_height: f32,
+    ) {
+        if let Some(body) = state
+            .physics
+            .bodies
+            .iter()
+            .find(|(_, body)| {
+                let position = body.position().translation.vector;
+                (position.x - x).abs() < 1.0 && (position.y - y).abs() < 1.0
+            })
+            .map(|(_, body)| body)
+        {
+            let position = body.position();
+            self.draw_rotated_rectangle(
+                vec2(position.translation.x, position.translation.y),
+                half_width,
+                half_height,
+                position.rotation.angle(),
+                Color::from_rgba(156, 101, 58, 255),
+            );
+        }
+    }
+
+    fn draw_rotated_rectangle(
+        &self,
+        center: Vec2,
+        half_width: f32,
+        half_height: f32,
+        angle: f32,
+        color: Color,
+    ) {
+        let corners = [
+            vec2(-half_width, -half_height),
+            vec2(half_width, -half_height),
+            vec2(half_width, half_height),
+            vec2(-half_width, half_height),
+        ];
+
+        let sin = angle.sin();
+        let cos = angle.cos();
+
+        let points: Vec<Vec2> = corners
+            .iter()
+            .map(|point| {
+                vec2(
+                    center.x + point.x * cos - point.y * sin,
+                    center.y + point.x * sin + point.y * cos,
+                )
+            })
+            .collect();
+
+        draw_triangle(points[0], points[1], points[2], color);
+        draw_triangle(points[0], points[2], points[3], color);
+        draw_line(
+            points[0].x,
+            points[0].y,
+            points[1].x,
+            points[1].y,
+            2.0,
+            BLACK,
+        );
+        draw_line(
+            points[1].x,
+            points[1].y,
+            points[2].x,
+            points[2].y,
+            2.0,
+            BLACK,
+        );
+        draw_line(
+            points[2].x,
+            points[2].y,
+            points[3].x,
+            points[3].y,
+            2.0,
+            BLACK,
+        );
+        draw_line(
+            points[3].x,
+            points[3].y,
+            points[0].x,
+            points[0].y,
+            2.0,
+            BLACK,
         );
     }
 

@@ -1,4 +1,5 @@
 mod input;
+mod physics;
 mod render;
 mod state;
 
@@ -35,7 +36,9 @@ impl Game {
                 }
             }
             GameMode::Playing => {
-                self.state.elapsed += get_frame_time();
+                let delta_time = get_frame_time();
+                self.state.elapsed += delta_time;
+                self.state.physics.step(delta_time);
 
                 if self.input.pause_pressed() {
                     self.state.mode = GameMode::Paused;
@@ -63,7 +66,7 @@ impl Game {
             GameMode::MainMenu => self.renderer.draw_main_menu(),
             GameMode::Playing => self.renderer.draw_playing(&self.state),
             GameMode::Settings => self.renderer.draw_settings(),
-            GameMode::Paused => self.renderer.draw_paused(),
+            GameMode::Paused => self.renderer.draw_paused(&self.state),
         }
     }
 }
