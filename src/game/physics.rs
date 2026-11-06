@@ -13,6 +13,13 @@ pub struct Ragdoll {
     pub right_lower_leg: RigidBodyHandle,
 }
 
+pub struct Prop {
+    pub body: RigidBodyHandle,
+    pub half_width: f32,
+    pub half_height: f32,
+    pub color: [u8; 4],
+}
+
 pub struct PhysicsWorld {
     pub pipeline: PhysicsPipeline,
     pub gravity: Vector<Real>,
@@ -27,6 +34,8 @@ pub struct PhysicsWorld {
     pub ccd_solver: CCDSolver,
     pub query_pipeline: QueryPipeline,
     pub ragdoll: Ragdoll,
+    pub props: Vec<Prop>,
+    spawn_index: u32,
 }
 
 impl PhysicsWorld {
@@ -59,11 +68,13 @@ impl PhysicsWorld {
                 left_lower_leg: RigidBodyHandle::invalid(),
                 right_lower_leg: RigidBodyHandle::invalid(),
             },
+            props: Vec::new(),
+            spawn_index: 0,
         };
 
         world.create_floor();
         world.create_ragdoll(vector![640.0, 230.0]);
-        world.create_box(vector![360.0, 470.0], vector![70.0, 70.0]);
+        world.spawn_box(vector![360.0, 470.0], vector![70.0, 70.0]);
 
         world
     }
@@ -92,6 +103,46 @@ impl PhysicsWorld {
         self.bodies.get(handle).map(|body| *body.position())
     }
 
+    pub fn move_ragdoll(&mut self, direction: Vec2) {
+        let direction = vector![direction.x, direction.y];
+
+        if direction.norm_squared() > 0.01 {
+            if let Some(torso) = self.bodies.get_mut(self.ragdoll.torso) {
+                torso.apply_force(direction * vector![900.0, 180.0], true);
+            }
+        }
+    }
+
+    pub fn spawn_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
+        let body = RigidBodyBuilder::dynamic()
+            .translation(position)
+            .rotation((self.spawn_index as f32 * 0.17) % 0.4)
+            .linear_damping(0.15)
+            .angular_damping(0.2)
+            .ccd_enabled(true)
+            .build();
+
+        let body_handle = self.bodies.insert(body);
+
+        let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
+            .density(0.8)
+            .friction(0.7)
+            .restitution(0.15)
+            .build();
+
+        self.colliders
+            .insert_with_parent(collider, body_handle, &mut self.bodies);
+
+        self.props.push(Prop {
+            body: body_handle,
+            half_width: half_size.x,
+            half_height: half_size.y,
+            color: [156, 101, 58, 255],
+        });
+
+        self.spawn_index = self.spawn_index.wrapping_add(1);
+    }
+
     fn create_floor(&mut self) {
         let body = RigidBodyBuilder::fixed()
             .translation(vector![640.0, 650.0])
@@ -101,25 +152,6 @@ impl PhysicsWorld {
         let collider = ColliderBuilder::cuboid(640.0, 25.0)
             .friction(0.8)
             .restitution(0.05)
-            .build();
-
-        self.colliders
-            .insert_with_parent(collider, body_handle, &mut self.bodies);
-    }
-
-    fn create_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
-        let body = RigidBodyBuilder::dynamic()
-            .translation(position)
-            .rotation(0.1)
-            .linear_damping(0.15)
-            .angular_damping(0.2)
-            .build();
-        let body_handle = self.bodies.insert(body);
-
-        let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
-            .density(0.8)
-            .friction(0.7)
-            .restitution(0.15)
             .build();
 
         self.colliders
@@ -188,54 +220,14 @@ impl PhysicsWorld {
         );
 
         self.connect(head, torso, point![0.0, 27.0], point![0.0, -44.0]);
-        self.connect(
-            torso,
-            left_upper_arm,
-            point![-24.0, -28.0],
-            point![0.0, -32.0],
-        );
-        self.connect(
-            torso,
-            right_upper_arm,
-            point![24.0, -28.0],
-            point![0.0, -32.0],
-        );
-        self.connect(
-            left_upper_arm,
-            left_lower_arm,
-            point![0.0, 32.0],
-            point![0.0, -28.0],
-        );
-        self.connect(
-            right_upper_arm,
-            right_lower_arm,
-            point![0.0, 32.0],
-            point![0.0, -28.0],
-        );
-        self.connect(
-            torso,
-            left_upper_leg,
-            point![-13.0, 44.0],
-            point![0.0, -38.0],
-        );
-        self.connect(
-            torso,
-            right_upper_leg,
-            point![13.0, 44.0],
-            point![0.0, -38.0],
-        );
-        self.connect(
-            left_upper_leg,
-            left_lower_leg,
-            point![0.0, 38.0],
-            point![0.0, -34.0],
-        );
-        self.connect(
-            right_upper_leg,
-            right_lower_leg,
-            point![0.0, 38.0],
-            point![0.0, -34.0],
-        );
+        self.connect(torso, left_upper_arm, point![-24.0, -28.0], point![0.0, -32.0]);
+        self.connect(torso, right_upper_arm, point![24.0, -28.0], point![0.0, -32.0]);
+        self.connect(left_upper_arm, left_lower_arm, point![0.0, 32.0], point![0.0, -28.0]);
+        self.connect(right_upper_arm, right_lower_arm, point![0.0, 32.0], point![0.0, -28.0]);
+        self.connect(torso, left_upper_leg, point![-13.0, 44.0], point![0.0, -38.0]);
+        self.connect(torso, right_upper_leg, point![13.0, 44.0], point![0.0, -38.0]);
+        self.connect(left_upper_leg, left_lower_leg, point![0.0, 38.0], point![0.0, -34.0]);
+        self.connect(right_upper_leg, right_lower_leg, point![0.0, 38.0], point![0.0, -34.0]);
 
         self.ragdoll = Ragdoll {
             head,
@@ -251,7 +243,12 @@ impl PhysicsWorld {
         };
     }
 
-    fn create_part(&mut self, position: Vector<Real>, shape: PartShape, density: Real) -> RigidBodyHandle {
+    fn create_part(
+        &mut self,
+        position: Vector<Real>,
+        shape: PartShape,
+        density: Real,
+    ) -> RigidBodyHandle {
         let body = RigidBodyBuilder::dynamic()
             .translation(position)
             .linear_damping(0.08)
@@ -290,8 +287,7 @@ impl PhysicsWorld {
             .local_anchor2(child_anchor)
             .build();
 
-        self.impulse_joints
-            .insert(parent, child, joint, true);
+        self.impulse_joints.insert(parent, child, joint, true);
     }
 }
 

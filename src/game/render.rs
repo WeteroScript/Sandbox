@@ -64,9 +64,8 @@ impl Renderer {
             Color::from_rgba(118, 128, 121, 255),
         );
 
-        self.draw_box(state, 360.0, 470.0, 70.0, 70.0);
+        self.draw_props(state);
         self.draw_ragdoll(state, &state.physics.ragdoll);
-
         self.draw_top_bar();
         self.draw_touch_controls();
 
@@ -131,6 +130,27 @@ impl Renderer {
         );
     }
 
+    fn draw_props(&self, state: &GameState) {
+        for prop in &state.physics.props {
+            if let Some(position) = state.physics.body_position(prop.body) {
+                let color = Color::from_rgba(
+                    prop.color[0],
+                    prop.color[1],
+                    prop.color[2],
+                    prop.color[3],
+                );
+
+                self.draw_rotated_rectangle(
+                    vec2(position.translation.x, position.translation.y),
+                    prop.half_width,
+                    prop.half_height,
+                    position.rotation.angle(),
+                    color,
+                );
+            }
+        }
+    }
+
     fn draw_ragdoll(&self, state: &GameState, ragdoll: &Ragdoll) {
         let green = Color::from_rgba(106, 175, 92, 255);
         let dark_green = Color::from_rgba(72, 128, 70, 255);
@@ -182,37 +202,12 @@ impl Renderer {
         color: Color,
     ) {
         if let Some(position) = state.physics.body_position(handle) {
-            let center = vec2(position.translation.x, position.translation.y);
-            let rotation = position.rotation.angle();
-            self.draw_rotated_rectangle(center, half_width, half_height, rotation, color);
-        }
-    }
-
-    fn draw_box(
-        &self,
-        state: &GameState,
-        x: f32,
-        y: f32,
-        half_width: f32,
-        half_height: f32,
-    ) {
-        if let Some(body) = state
-            .physics
-            .bodies
-            .iter()
-            .find(|(_, body)| {
-                let position = body.position().translation.vector;
-                (position.x - x).abs() < 1.0 && (position.y - y).abs() < 1.0
-            })
-            .map(|(_, body)| body)
-        {
-            let position = body.position();
             self.draw_rotated_rectangle(
                 vec2(position.translation.x, position.translation.y),
                 half_width,
                 half_height,
                 position.rotation.angle(),
-                Color::from_rgba(156, 101, 58, 255),
+                color,
             );
         }
     }
@@ -247,38 +242,18 @@ impl Renderer {
 
         draw_triangle(points[0], points[1], points[2], color);
         draw_triangle(points[0], points[2], points[3], color);
-        draw_line(
-            points[0].x,
-            points[0].y,
-            points[1].x,
-            points[1].y,
-            2.0,
-            BLACK,
-        );
-        draw_line(
-            points[1].x,
-            points[1].y,
-            points[2].x,
-            points[2].y,
-            2.0,
-            BLACK,
-        );
-        draw_line(
-            points[2].x,
-            points[2].y,
-            points[3].x,
-            points[3].y,
-            2.0,
-            BLACK,
-        );
-        draw_line(
-            points[3].x,
-            points[3].y,
-            points[0].x,
-            points[0].y,
-            2.0,
-            BLACK,
-        );
+
+        for index in 0..4 {
+            let next = (index + 1) % 4;
+            draw_line(
+                points[index].x,
+                points[index].y,
+                points[next].x,
+                points[next].y,
+                2.0,
+                BLACK,
+            );
+        }
     }
 
     fn draw_header(&self, title: &str) {
@@ -304,8 +279,8 @@ impl Renderer {
 
         draw_text("TEST RANGE", 24.0, 39.0, 22.0, WHITE);
         draw_text(
-            "P / ESC: pause",
-            screen_width() - 150.0,
+            "Q: spawn box    P / ESC: pause",
+            screen_width() - 245.0,
             39.0,
             16.0,
             LIGHTGRAY,
@@ -346,7 +321,13 @@ impl Renderer {
             30.0,
             Color::from_rgba(65, 91, 120, 220),
         );
-        draw_text("+", action_x - 101.0, action_y + 37.0, 26.0, WHITE);
+        draw_text(
+            "+",
+            action_x - 101.0,
+            action_y + 37.0,
+            26.0,
+            WHITE,
+        );
     }
 
     fn draw_button(

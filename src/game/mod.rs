@@ -38,6 +38,16 @@ impl Game {
             GameMode::Playing => {
                 let delta_time = get_frame_time();
                 self.state.elapsed += delta_time;
+
+                self.state.physics.move_ragdoll(self.input.movement());
+
+                if self.input.spawn_pressed() {
+                    self.state.physics.spawn_box(
+                        vector![780.0, 180.0],
+                        vector![34.0, 34.0],
+                    );
+                }
+
                 self.state.physics.step(delta_time);
 
                 if self.input.pause_pressed() {

@@ -5,6 +5,8 @@ pub struct InputState {
     settings: bool,
     pause: bool,
     back: bool,
+    spawn: bool,
+    movement: Vec2,
 }
 
 impl InputState {
@@ -14,6 +16,8 @@ impl InputState {
             settings: false,
             pause: false,
             back: false,
+            spawn: false,
+            movement: Vec2::ZERO,
         }
     }
 
@@ -28,6 +32,41 @@ impl InputState {
 
         self.pause = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::P);
         self.back = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Backspace);
+
+        self.spawn = is_key_pressed(KeyCode::Q) || self.touch_spawn_pressed();
+
+        let mut movement = Vec2::ZERO;
+
+        if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
+            movement.x -= 1.0;
+        }
+
+        if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
+            movement.x += 1.0;
+        }
+
+        if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
+            movement.y -= 1.0;
+        }
+
+        if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
+            movement.y += 1.0;
+        }
+
+        if movement.length_squared() > 0.0 {
+            movement = movement.normalize();
+        }
+
+        if let Some(touch) = touches().into_iter().next() {
+            let joystick_center = vec2(100.0, screen_height() - 115.0);
+            let offset = touch.position - joystick_center;
+
+            if offset.length() <= 90.0 && offset.length_squared() > 36.0 {
+                movement = (offset / 66.0).clamp_length_max(1.0);
+            }
+        }
+
+        self.movement = movement;
     }
 
     pub fn play_pressed(&self) -> bool {
@@ -44,5 +83,23 @@ impl InputState {
 
     pub fn back_pressed(&self) -> bool {
         self.back
+    }
+
+    pub fn spawn_pressed(&self) -> bool {
+        self.spawn
+    }
+
+    pub fn movement(&self) -> Vec2 {
+        self.movement
+    }
+
+    fn touch_spawn_pressed(&self) -> bool {
+        let action_center = vec2(screen_width() - 100.0, screen_height() - 118.0);
+        let item_center = vec2(screen_width() - 192.0, screen_height() - 90.0);
+
+        touches().into_iter().any(|touch| {
+            touch.position.distance(action_center) <= 48.0
+                || touch.position.distance(item_center) <= 38.0
+        })
     }
 }
