@@ -53,6 +53,10 @@ impl Game {
                         .spawn_box(vector![780.0, 180.0], vector![34.0, 34.0]);
                 }
 
+                if self.input.damage_pressed() {
+                    self.state.physics.apply_test_damage();
+                }
+
                 self.state.physics.step(delta_time);
 
                 if self.input.pause_pressed() {

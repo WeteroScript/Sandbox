@@ -6,6 +6,7 @@ pub struct InputState {
     pause: bool,
     back: bool,
     spawn: bool,
+    damage: bool,
     select_character: bool,
     select_map: bool,
     movement: Vec2,
@@ -19,6 +20,7 @@ impl InputState {
             pause: false,
             back: false,
             spawn: false,
+            damage: false,
             select_character: false,
             select_map: false,
             movement: Vec2::ZERO,
@@ -37,6 +39,7 @@ impl InputState {
         self.pause = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::P);
         self.back = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Backspace);
         self.spawn = is_key_pressed(KeyCode::Q) || self.touch_spawn_pressed();
+        self.damage = is_key_pressed(KeyCode::X);
         self.select_character = is_key_pressed(KeyCode::C);
         self.select_map = is_key_pressed(KeyCode::M);
 
@@ -89,6 +92,10 @@ impl InputState {
 
     pub fn spawn_pressed(&self) -> bool {
         self.spawn
+    }
+
+    pub fn damage_pressed(&self) -> bool {
+        self.damage
     }
 
     pub fn select_character_pressed(&self) -> bool {

@@ -28,6 +28,13 @@ impl CharacterKind {
             Self::Robot => ([156, 166, 176, 255], [92, 104, 118, 255]),
         }
     }
+
+    fn joint_strength(self) -> f32 {
+        match self {
+            Self::Melon => 34.0,
+            Self::Robot => 72.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,6 +75,14 @@ pub struct Ragdoll {
     pub right_lower_leg: RigidBodyHandle,
 }
 
+struct JointHealth {
+    handle: ImpulseJointHandle,
+    parent: RigidBodyHandle,
+    child: RigidBodyHandle,
+    health: f32,
+    max_health: f32,
+}
+
 pub struct Prop {
     pub body: RigidBodyHandle,
     pub half_width: f32,
@@ -92,6 +107,8 @@ pub struct PhysicsWorld {
     pub props: Vec<Prop>,
     pub character: CharacterKind,
     pub map: MapKind,
+    joints: Vec<JointHealth>,
+    detached_parts: Vec<RigidBodyHandle>,
     spawn_index: u32,
 }
 
@@ -113,21 +130,12 @@ impl PhysicsWorld {
             multibody_joints: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
             query_pipeline: QueryPipeline::new(),
-            ragdoll: Ragdoll {
-                head: RigidBodyHandle::invalid(),
-                torso: RigidBodyHandle::invalid(),
-                left_upper_arm: RigidBodyHandle::invalid(),
-                right_upper_arm: RigidBodyHandle::invalid(),
-                left_lower_arm: RigidBodyHandle::invalid(),
-                right_lower_arm: RigidBodyHandle::invalid(),
-                left_upper_leg: RigidBodyHandle::invalid(),
-                right_upper_leg: RigidBodyHandle::invalid(),
-                left_lower_leg: RigidBodyHandle::invalid(),
-                right_lower_leg: RigidBodyHandle::invalid(),
-            },
+            ragdoll: Self::empty_ragdoll(),
             props: Vec::new(),
             character,
             map,
+            joints: Vec::new(),
+            detached_parts: Vec::new(),
             spawn_index: 0,
         };
 
@@ -157,6 +165,8 @@ impl PhysicsWorld {
             &(),
             &(),
         );
+
+        self.update_joint_damage(delta_time);
     }
 
     pub fn body_position(&self, handle: RigidBodyHandle) -> Option<Isometry<Real>> {
@@ -176,6 +186,33 @@ impl PhysicsWorld {
                 torso.apply_force(direction * vector![force, force * 0.2], true);
             }
         }
+    }
+
+    pub fn apply_test_damage(&mut self) {
+        for joint in &mut self.joints {
+            joint.health -= joint.max_health * 0.45;
+        }
+
+        self.remove_broken_joints();
+    }
+
+    pub fn joint_health_ratio(&self) -> f32 {
+        if self.joints.is_empty() {
+            return 0.0;
+        }
+
+        let current: f32 = self.joints.iter().map(|joint| joint.health.max(0.0)).sum();
+        let maximum: f32 = self.joints.iter().map(|joint| joint.max_health).sum();
+
+        if maximum <= 0.0 {
+            0.0
+        } else {
+            (current / maximum).clamp(0.0, 1.0)
+        }
+    }
+
+    pub fn is_detached(&self, handle: RigidBodyHandle) -> bool {
+        self.detached_parts.contains(&handle)
     }
 
     pub fn spawn_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
@@ -206,6 +243,78 @@ impl PhysicsWorld {
         });
 
         self.spawn_index = self.spawn_index.wrapping_add(1);
+    }
+
+    fn update_joint_damage(&mut self, delta_time: f32) {
+        let mut broken = false;
+
+        for joint in &mut self.joints {
+            let parent_speed = self
+                .bodies
+                .get(joint.parent)
+                .map(|body| body.linvel().norm())
+                .unwrap_or(0.0);
+
+            let child_speed = self
+                .bodies
+                .get(joint.child)
+                .map(|body| body.linvel().norm())
+                .unwrap_or(0.0);
+
+            let relative_speed = (parent_speed - child_speed).abs();
+
+            if relative_speed > 18.0 {
+                let damage = (relative_speed - 18.0) * delta_time * 1.8;
+                joint.health -= damage;
+            }
+
+            if joint.health <= 0.0 {
+                broken = true;
+            }
+        }
+
+        if broken {
+            self.remove_broken_joints();
+        }
+    }
+
+    fn remove_broken_joints(&mut self) {
+        let mut broken_handles = Vec::new();
+        let mut detached = Vec::new();
+
+        for joint in &self.joints {
+            if joint.health <= 0.0 {
+                broken_handles.push(joint.handle);
+                detached.push(joint.child);
+            }
+        }
+
+        for handle in broken_handles {
+            self.impulse_joints.remove(handle, true);
+        }
+
+        for part in detached {
+            if !self.detached_parts.contains(&part) {
+                self.detached_parts.push(part);
+            }
+        }
+
+        self.joints.retain(|joint| joint.health > 0.0);
+    }
+
+    fn empty_ragdoll() -> Ragdoll {
+        Ragdoll {
+            head: RigidBodyHandle::invalid(),
+            torso: RigidBodyHandle::invalid(),
+            left_upper_arm: RigidBodyHandle::invalid(),
+            right_upper_arm: RigidBodyHandle::invalid(),
+            left_lower_arm: RigidBodyHandle::invalid(),
+            right_lower_arm: RigidBodyHandle::invalid(),
+            left_upper_leg: RigidBodyHandle::invalid(),
+            right_upper_leg: RigidBodyHandle::invalid(),
+            left_lower_leg: RigidBodyHandle::invalid(),
+            right_lower_leg: RigidBodyHandle::invalid(),
+        }
     }
 
     fn create_floor(&mut self) {
@@ -272,58 +381,16 @@ impl PhysicsWorld {
             CharacterKind::Robot => 1.8,
         };
 
-        let torso = self.create_part(
-            vector![origin.x, origin.y + 70.0],
-            PartShape::Box(24.0, 44.0),
-            density,
-        );
-
-        let head = self.create_part(
-            vector![origin.x, origin.y],
-            PartShape::Circle(27.0),
-            density * 0.8,
-        );
-
-        let left_upper_arm = self.create_part(
-            vector![origin.x - 43.0, origin.y + 66.0],
-            PartShape::Box(10.0, 32.0),
-            density * 0.5,
-        );
-        let right_upper_arm = self.create_part(
-            vector![origin.x + 43.0, origin.y + 66.0],
-            PartShape::Box(10.0, 32.0),
-            density * 0.5,
-        );
-        let left_lower_arm = self.create_part(
-            vector![origin.x - 70.0, origin.y + 112.0],
-            PartShape::Box(9.0, 28.0),
-            density * 0.4,
-        );
-        let right_lower_arm = self.create_part(
-            vector![origin.x + 70.0, origin.y + 112.0],
-            PartShape::Box(9.0, 28.0),
-            density * 0.4,
-        );
-        let left_upper_leg = self.create_part(
-            vector![origin.x - 15.0, origin.y + 142.0],
-            PartShape::Box(12.0, 38.0),
-            density * 0.7,
-        );
-        let right_upper_leg = self.create_part(
-            vector![origin.x + 15.0, origin.y + 142.0],
-            PartShape::Box(12.0, 38.0),
-            density * 0.7,
-        );
-        let left_lower_leg = self.create_part(
-            vector![origin.x - 18.0, origin.y + 198.0],
-            PartShape::Box(10.0, 34.0),
-            density * 0.6,
-        );
-        let right_lower_leg = self.create_part(
-            vector![origin.x + 18.0, origin.y + 198.0],
-            PartShape::Box(10.0, 34.0),
-            density * 0.6,
-        );
+        let torso = self.create_part(vector![origin.x, origin.y + 70.0], PartShape::Box(24.0, 44.0), density);
+        let head = self.create_part(vector![origin.x, origin.y], PartShape::Circle(27.0), density * 0.8);
+        let left_upper_arm = self.create_part(vector![origin.x - 43.0, origin.y + 66.0], PartShape::Box(10.0, 32.0), density * 0.5);
+        let right_upper_arm = self.create_part(vector![origin.x + 43.0, origin.y + 66.0], PartShape::Box(10.0, 32.0), density * 0.5);
+        let left_lower_arm = self.create_part(vector![origin.x - 70.0, origin.y + 112.0], PartShape::Box(9.0, 28.0), density * 0.4);
+        let right_lower_arm = self.create_part(vector![origin.x + 70.0, origin.y + 112.0], PartShape::Box(9.0, 28.0), density * 0.4);
+        let left_upper_leg = self.create_part(vector![origin.x - 15.0, origin.y + 142.0], PartShape::Box(12.0, 38.0), density * 0.7);
+        let right_upper_leg = self.create_part(vector![origin.x + 15.0, origin.y + 142.0], PartShape::Box(12.0, 38.0), density * 0.7);
+        let left_lower_leg = self.create_part(vector![origin.x - 18.0, origin.y + 198.0], PartShape::Box(10.0, 34.0), density * 0.6);
+        let right_lower_leg = self.create_part(vector![origin.x + 18.0, origin.y + 198.0], PartShape::Box(10.0, 34.0), density * 0.6);
 
         self.connect(head, torso, point![0.0, 27.0], point![0.0, -44.0]);
         self.connect(torso, left_upper_arm, point![-24.0, -28.0], point![0.0, -32.0]);
@@ -349,12 +416,7 @@ impl PhysicsWorld {
         };
     }
 
-    fn create_part(
-        &mut self,
-        position: Vector<Real>,
-        shape: PartShape,
-        density: Real,
-    ) -> RigidBodyHandle {
+    fn create_part(&mut self, position: Vector<Real>, shape: PartShape, density: Real) -> RigidBodyHandle {
         let body = RigidBodyBuilder::dynamic()
             .translation(position)
             .linear_damping(0.08)
@@ -366,9 +428,7 @@ impl PhysicsWorld {
 
         let collider = match shape {
             PartShape::Circle(radius) => ColliderBuilder::ball(radius),
-            PartShape::Box(half_width, half_height) => {
-                ColliderBuilder::cuboid(half_width, half_height)
-            }
+            PartShape::Box(half_width, half_height) => ColliderBuilder::cuboid(half_width, half_height),
         }
         .density(density)
         .friction(0.55)
@@ -393,7 +453,16 @@ impl PhysicsWorld {
             .local_anchor2(child_anchor)
             .build();
 
-        self.impulse_joints.insert(parent, child, joint, true);
+        let handle = self.impulse_joints.insert(parent, child, joint, true);
+        let max_health = self.character.joint_strength();
+
+        self.joints.push(JointHealth {
+            handle,
+            parent,
+            child,
+            health: max_health,
+            max_health,
+        });
     }
 }
 
