@@ -15,8 +15,6 @@ package_name = "com.weteroscript.sandbox"
 label = "Sandbox"
 min_sdk_version = 23
 target_sdk_version = 34
-version_code = 1
-version_name = "0.1.0"
 fullscreen = true
 orientation = "landscape"
 
