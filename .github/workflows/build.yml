@@ -20,19 +20,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build debug APK with cargo-quad-apk
+      - name: Install Rust 1.95.0 and Android target
         run: |
-          docker run --rm \
-            -v "${GITHUB_WORKSPACE}:/root/src" \
-            -w /root/src \
-            notfl3/cargo-apk \
-            sh -lc 'SDKMANAGER="$(find /opt/android-sdk-linux -name sdkmanager -print -quit)"; test -n "$SDKMANAGER" || { echo "sdkmanager not found in Android SDK image"; exit 1; }; yes | "$SDKMANAGER" --sdk_root=/opt/android-sdk-linux "platforms;android-34"; cargo quad-apk build'
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup default 1.95.0
+          rustup target add aarch64-linux-android
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
+            ndk;28.2.13676358
+
+      - name: Export Android SDK and NDK paths
+        run: |
+          echo "ANDROID_HOME=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
+          echo "NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      - name: Install Rust-1.95-compatible cargo-quad-apk
+        run: cargo install --git https://github.com/hoklims/cargo-quad-apk --locked --force
+
+      - name: Build debug APK
+        run: cargo quad-apk build
 
       - name: Collect APK
         run: |
+          set -euo pipefail
+          APK="$(find target/android-artifacts -path '*/apk/*.apk' ! -name '*_unaligned.apk' -print -quit)"
+          if [ -z "$APK" ]; then
+            echo "::error::No APK was produced"
+            find target/android-artifacts -maxdepth 5 -type f || true
+            exit 1
+          fi
           mkdir -p artifacts
-          test -f target/android-artifacts/debug/apk/sandbox.apk
-          cp target/android-artifacts/debug/apk/sandbox.apk artifacts/sandbox-debug.apk
+          cp "$APK" artifacts/sandbox-debug.apk
+          ls -lh artifacts/sandbox-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
