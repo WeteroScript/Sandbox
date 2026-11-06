@@ -498,6 +498,20 @@ impl PhysicsWorld {
                 projectile.active = false;
             }
 
+            let target_info = self
+                .props
+                .get(target_index)
+                .map(|target| (target.active, target.kind, target.body));
+
+            let barrel_position = target_info.and_then(|(active, kind, body)| {
+                if active && kind == PropKind::Barrel {
+                    self.body_position(body)
+                        .map(|position| vector![position.translation.x, position.translation.y])
+                } else {
+                    None
+                }
+            });
+
             let mut detonation = None;
 
             if let Some(target) = self.props.get_mut(target_index) {
@@ -507,10 +521,7 @@ impl PhysicsWorld {
                     target.active = false;
 
                     if target.kind == PropKind::Barrel {
-                        if let Some(position) = self.body_position(target.body) {
-                            detonation =
-                                Some(vector![position.translation.x, position.translation.y]);
-                        }
+                        detonation = barrel_position;
                     }
                 }
             }
