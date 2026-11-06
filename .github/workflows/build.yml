@@ -37,7 +37,7 @@ jobs:
           echo "NDK_HOME=${ANDROID_SDK_ROOT}/ndk/28.2.13676358" >> "$GITHUB_ENV"
 
       - name: Install Rust-1.95-compatible cargo-quad-apk
-        run: cargo install --git https://github.com/hoklims/cargo-quad-apk --locked --force
+        run: cargo install --git https://github.com/hoklims/cargo-quad-apk --package cargo-quad-apk --locked --force
 
       - name: Build debug APK
         run: cargo quad-apk build
