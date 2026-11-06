@@ -4,6 +4,7 @@ mod render;
 mod state;
 
 use macroquad::prelude::*;
+use rapier2d::prelude::vector;
 
 use input::{Action, InputState};
 use render::Renderer;
