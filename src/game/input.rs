@@ -6,6 +6,8 @@ pub struct InputState {
     pause: bool,
     back: bool,
     spawn: bool,
+    select_character: bool,
+    select_map: bool,
     movement: Vec2,
 }
 
@@ -17,6 +19,8 @@ impl InputState {
             pause: false,
             back: false,
             spawn: false,
+            select_character: false,
+            select_map: false,
             movement: Vec2::ZERO,
         }
     }
@@ -32,23 +36,21 @@ impl InputState {
 
         self.pause = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::P);
         self.back = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Backspace);
-
         self.spawn = is_key_pressed(KeyCode::Q) || self.touch_spawn_pressed();
+        self.select_character = is_key_pressed(KeyCode::C);
+        self.select_map = is_key_pressed(KeyCode::M);
 
         let mut movement = Vec2::ZERO;
 
         if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
             movement.x -= 1.0;
         }
-
         if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
             movement.x += 1.0;
         }
-
         if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
             movement.y -= 1.0;
         }
-
         if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
             movement.y += 1.0;
         }
@@ -87,6 +89,14 @@ impl InputState {
 
     pub fn spawn_pressed(&self) -> bool {
         self.spawn
+    }
+
+    pub fn select_character_pressed(&self) -> bool {
+        self.select_character
+    }
+
+    pub fn select_map_pressed(&self) -> bool {
+        self.select_map
     }
 
     pub fn movement(&self) -> Vec2 {

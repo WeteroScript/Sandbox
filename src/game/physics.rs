@@ -1,4 +1,59 @@
+use macroquad::prelude::Vec2;
 use rapier2d::prelude::*;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CharacterKind {
+    Melon,
+    Robot,
+}
+
+impl CharacterKind {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Melon => Self::Robot,
+            Self::Robot => Self::Melon,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Melon => "MELON",
+            Self::Robot => "ROBOT",
+        }
+    }
+
+    pub fn colors(self) -> ([u8; 4], [u8; 4]) {
+        match self {
+            Self::Melon => ([106, 175, 92, 255], [72, 128, 70, 255]),
+            Self::Robot => ([156, 166, 176, 255], [92, 104, 118, 255]),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MapKind {
+    TestRange,
+    City,
+    Laboratory,
+}
+
+impl MapKind {
+    pub fn next(self) -> Self {
+        match self {
+            Self::TestRange => Self::City,
+            Self::City => Self::Laboratory,
+            Self::Laboratory => Self::TestRange,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::TestRange => "TEST RANGE",
+            Self::City => "CITY",
+            Self::Laboratory => "LABORATORY",
+        }
+    }
+}
 
 pub struct Ragdoll {
     pub head: RigidBodyHandle,
@@ -35,11 +90,13 @@ pub struct PhysicsWorld {
     pub query_pipeline: QueryPipeline,
     pub ragdoll: Ragdoll,
     pub props: Vec<Prop>,
+    pub character: CharacterKind,
+    pub map: MapKind,
     spawn_index: u32,
 }
 
 impl PhysicsWorld {
-    pub fn new() -> Self {
+    pub fn new(character: CharacterKind, map: MapKind) -> Self {
         let mut world = Self {
             pipeline: PhysicsPipeline::new(),
             gravity: vector![0.0, 980.0],
@@ -69,10 +126,13 @@ impl PhysicsWorld {
                 right_lower_leg: RigidBodyHandle::invalid(),
             },
             props: Vec::new(),
+            character,
+            map,
             spawn_index: 0,
         };
 
         world.create_floor();
+        world.create_map_geometry();
         world.create_ragdoll(vector![640.0, 230.0]);
         world.spawn_box(vector![360.0, 470.0], vector![70.0, 70.0]);
 
@@ -107,8 +167,13 @@ impl PhysicsWorld {
         let direction = vector![direction.x, direction.y];
 
         if direction.norm_squared() > 0.01 {
+            let force = match self.character {
+                CharacterKind::Melon => 900.0,
+                CharacterKind::Robot => 1250.0,
+            };
+
             if let Some(torso) = self.bodies.get_mut(self.ragdoll.torso) {
-                torso.apply_force(direction * vector![900.0, 180.0], true);
+                torso.apply_force(direction * vector![force, force * 0.2], true);
             }
         }
     }
@@ -158,65 +223,106 @@ impl PhysicsWorld {
             .insert_with_parent(collider, body_handle, &mut self.bodies);
     }
 
+    fn create_map_geometry(&mut self) {
+        match self.map {
+            MapKind::TestRange => {
+                self.create_static_box(vector![1030.0, 550.0], vector![80.0, 100.0]);
+                self.create_static_box(vector![180.0, 570.0], vector![100.0, 80.0]);
+            }
+            MapKind::City => {
+                self.create_static_box(vector![180.0, 555.0], vector![120.0, 95.0]);
+                self.create_static_box(vector![980.0, 570.0], vector![150.0, 80.0]);
+                self.create_static_box(vector![680.0, 590.0], vector![90.0, 60.0]);
+            }
+            MapKind::Laboratory => {
+                self.create_static_box(vector![180.0, 520.0], vector![30.0, 130.0]);
+                self.create_static_box(vector![1100.0, 520.0], vector![30.0, 130.0]);
+                self.create_static_box(vector![640.0, 490.0], vector![170.0, 25.0]);
+            }
+        }
+    }
+
+    fn create_static_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
+        let body = RigidBodyBuilder::fixed().translation(position).build();
+        let body_handle = self.bodies.insert(body);
+
+        let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
+            .friction(0.8)
+            .restitution(0.05)
+            .build();
+
+        self.colliders
+            .insert_with_parent(collider, body_handle, &mut self.bodies);
+
+        self.props.push(Prop {
+            body: body_handle,
+            half_width: half_size.x,
+            half_height: half_size.y,
+            color: match self.map {
+                MapKind::TestRange => [115, 123, 132, 255],
+                MapKind::City => [92, 103, 114, 255],
+                MapKind::Laboratory => [75, 124, 118, 255],
+            },
+        });
+    }
+
     fn create_ragdoll(&mut self, origin: Vector<Real>) {
+        let density = match self.character {
+            CharacterKind::Melon => 0.7,
+            CharacterKind::Robot => 1.8,
+        };
+
         let torso = self.create_part(
             vector![origin.x, origin.y + 70.0],
             PartShape::Box(24.0, 44.0),
-            1.0,
+            density,
         );
 
         let head = self.create_part(
             vector![origin.x, origin.y],
             PartShape::Circle(27.0),
-            0.8,
+            density * 0.8,
         );
 
         let left_upper_arm = self.create_part(
             vector![origin.x - 43.0, origin.y + 66.0],
             PartShape::Box(10.0, 32.0),
-            0.5,
+            density * 0.5,
         );
-
         let right_upper_arm = self.create_part(
             vector![origin.x + 43.0, origin.y + 66.0],
             PartShape::Box(10.0, 32.0),
-            0.5,
+            density * 0.5,
         );
-
         let left_lower_arm = self.create_part(
             vector![origin.x - 70.0, origin.y + 112.0],
             PartShape::Box(9.0, 28.0),
-            0.4,
+            density * 0.4,
         );
-
         let right_lower_arm = self.create_part(
             vector![origin.x + 70.0, origin.y + 112.0],
             PartShape::Box(9.0, 28.0),
-            0.4,
+            density * 0.4,
         );
-
         let left_upper_leg = self.create_part(
             vector![origin.x - 15.0, origin.y + 142.0],
             PartShape::Box(12.0, 38.0),
-            0.7,
+            density * 0.7,
         );
-
         let right_upper_leg = self.create_part(
             vector![origin.x + 15.0, origin.y + 142.0],
             PartShape::Box(12.0, 38.0),
-            0.7,
+            density * 0.7,
         );
-
         let left_lower_leg = self.create_part(
             vector![origin.x - 18.0, origin.y + 198.0],
             PartShape::Box(10.0, 34.0),
-            0.6,
+            density * 0.6,
         );
-
         let right_lower_leg = self.create_part(
             vector![origin.x + 18.0, origin.y + 198.0],
             PartShape::Box(10.0, 34.0),
-            0.6,
+            density * 0.6,
         );
 
         self.connect(head, torso, point![0.0, 27.0], point![0.0, -44.0]);

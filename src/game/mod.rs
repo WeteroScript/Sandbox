@@ -29,7 +29,13 @@ impl Game {
 
         match self.state.mode {
             GameMode::MainMenu => {
-                if self.input.play_pressed() {
+                if self.input.select_character_pressed() {
+                    self.state.character = self.state.character.next();
+                    self.state.rebuild_world();
+                } else if self.input.select_map_pressed() {
+                    self.state.map = self.state.map.next();
+                    self.state.rebuild_world();
+                } else if self.input.play_pressed() {
                     self.state.mode = GameMode::Playing;
                 } else if self.input.settings_pressed() {
                     self.state.mode = GameMode::Settings;
@@ -42,10 +48,9 @@ impl Game {
                 self.state.physics.move_ragdoll(self.input.movement());
 
                 if self.input.spawn_pressed() {
-                    self.state.physics.spawn_box(
-                        vector![780.0, 180.0],
-                        vector![34.0, 34.0],
-                    );
+                    self.state
+                        .physics
+                        .spawn_box(vector![780.0, 180.0], vector![34.0, 34.0]);
                 }
 
                 self.state.physics.step(delta_time);
@@ -73,7 +78,7 @@ impl Game {
         clear_background(Color::from_rgba(18, 22, 30, 255));
 
         match self.state.mode {
-            GameMode::MainMenu => self.renderer.draw_main_menu(),
+            GameMode::MainMenu => self.renderer.draw_main_menu(&self.state),
             GameMode::Playing => self.renderer.draw_playing(&self.state),
             GameMode::Settings => self.renderer.draw_settings(),
             GameMode::Paused => self.renderer.draw_paused(&self.state),
