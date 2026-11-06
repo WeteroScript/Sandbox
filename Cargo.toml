@@ -1,0 +1,33 @@
+[package]
+name = "sandbox"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+description = "A 2D mobile physics sandbox game built with Rust"
+license = "MIT"
+
+[dependencies]
+macroquad = "0.4.13"
+rapier2d = "0.22.0"
+
+[package.metadata.android]
+package_name = "com.weteroscript.sandbox"
+label = "Sandbox"
+min_sdk_version = 23
+target_sdk_version = 34
+version_code = 1
+version_name = "0.1.0"
+fullscreen = true
+orientation = "landscape"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
