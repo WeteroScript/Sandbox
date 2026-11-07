@@ -3,6 +3,7 @@ mod mechanisms;
 mod physics;
 mod render;
 mod state;
+mod toggle;
 
 use macroquad::prelude::*;
 
@@ -11,6 +12,7 @@ use mechanisms::MechanismWorld;
 use physics::{CharacterKind, WeaponKind};
 use render::Renderer;
 use state::{GameMode, GameState, SpawnCategory, SpawnItem};
+use toggle::ToggleInteraction;
 
 pub struct Game {
     state: GameState,
@@ -35,6 +37,7 @@ impl Game {
         self.input
             .update(self.state.spawn_menu_open, self.drag_body.is_some());
 
+        self.update_toggle_interaction();
         self.update_dragging();
 
         if self.input.spawn_toggle_pressed() {
@@ -138,6 +141,56 @@ impl Game {
                 }
             }
         }
+    }
+
+    fn update_toggle_interaction(&mut self) {
+        if self.state.mode != GameMode::Playing || self.state.spawn_menu_open {
+            return;
+        }
+
+        let pointer = if is_mouse_button_pressed(MouseButton::Left) {
+            let mouse = mouse_position();
+            Some(vec2(mouse.0, mouse.1))
+        } else {
+            touches()
+                .into_iter()
+                .find(|touch| touch.phase == TouchPhase::Started)
+                .map(|touch| touch.position)
+        };
+
+        let Some(pointer) = pointer else {
+            return;
+        };
+
+        if pointer.y <= 62.0
+            || pointer.x < 0.0
+            || pointer.x > screen_width()
+            || self.is_ui_position(pointer)
+        {
+            return;
+        }
+
+        let world_position = self.screen_to_world(pointer);
+
+        self.mechanisms
+            .toggle_at(&self.state.physics, world_position);
+    }
+
+    fn is_ui_position(&self, position: Vec2) -> bool {
+        let width = screen_width();
+        let height = screen_height();
+
+        let joystick = vec2(100.0, height - 115.0);
+        let fire = vec2(width - 100.0, height - 118.0);
+        let weapon = vec2(width - 270.0, height - 170.0);
+        let grenade = vec2(width - 190.0, height - 205.0);
+        let barrel = vec2(width - 105.0, height - 205.0);
+
+        position.distance(joystick) <= 100.0
+            || position.distance(fire) <= 58.0
+            || position.distance(weapon) <= 50.0
+            || position.distance(grenade) <= 50.0
+            || position.distance(barrel) <= 50.0
     }
 
     fn update_mechanism_hotkeys(&mut self) {
@@ -385,13 +438,13 @@ impl Game {
         match self.state.mode {
             GameMode::MainMenu => self.renderer.draw_main_menu(&self.state),
             GameMode::Playing => {
-                self.renderer.draw_playing(&self.state);
                 self.draw_mechanisms();
+                self.renderer.draw_playing(&self.state);
             }
             GameMode::Settings => self.renderer.draw_settings(),
             GameMode::Paused => {
-                self.renderer.draw_paused(&self.state);
                 self.draw_mechanisms();
+                self.renderer.draw_paused(&self.state);
             }
         }
     }

@@ -1,3 +1,9 @@
+macro_rules! vector {
+    ($($tokens:tt)*) => {
+        rapier2d::prelude::vector![$($tokens)*]
+    };
+}
+
 mod game;
 
 use game::Game;
