@@ -86,6 +86,7 @@ impl InputState {
                         self.spawn_tab = Some(((position.x - panel_x) / tab_width) as usize);
                     } else if position.y >= 126.0 {
                         let item = ((position.y - 126.0) / 58.0) as usize;
+
                         if item < 8 {
                             self.spawn_item = Some(item);
                         }
@@ -113,12 +114,15 @@ impl InputState {
         if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
             movement.x -= 1.0;
         }
+
         if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
             movement.x += 1.0;
         }
+
         if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
             movement.y -= 1.0;
         }
+
         if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
             movement.y += 1.0;
         }
@@ -240,6 +244,18 @@ impl InputState {
     fn update_drag_pointer(&mut self, spawn_menu_open: bool) {
         self.drag_pointer = None;
 
+        if is_mouse_button_down(MouseButton::Left) {
+            let mouse = mouse_position();
+            let position = vec2(mouse.0, mouse.1);
+
+            if !self.in_spawn_panel(position, spawn_menu_open)
+                && !self.is_camera_control_position(position)
+            {
+                self.drag_pointer = Some(position);
+                return;
+            }
+        }
+
         let active_touches: Vec<Touch> = touches()
             .into_iter()
             .filter(|touch| {
@@ -273,6 +289,7 @@ impl InputState {
         if current_touches.len() >= 2 {
             let first = &current_touches[0];
             let second = &current_touches[1];
+
             let previous_first = self.previous_position(first.id);
             let previous_second = self.previous_position(second.id);
 

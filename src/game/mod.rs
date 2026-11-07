@@ -72,6 +72,7 @@ impl Game {
             GameMode::Playing => {
                 let delta_time = get_frame_time();
                 self.state.elapsed += delta_time;
+
                 self.state.physics.move_ragdoll(self.input.movement());
 
                 if self.input.next_weapon_pressed() {
@@ -139,48 +140,97 @@ impl Game {
         let world_position = self.screen_to_world(pointer);
 
         if self.drag_body.is_none() {
-            let handles = [
-                self.state.physics.ragdoll.head,
-                self.state.physics.ragdoll.torso,
-                self.state.physics.ragdoll.left_upper_arm,
-                self.state.physics.ragdoll.right_upper_arm,
-                self.state.physics.ragdoll.left_lower_arm,
-                self.state.physics.ragdoll.right_lower_arm,
-                self.state.physics.ragdoll.left_upper_leg,
-                self.state.physics.ragdoll.right_upper_leg,
-                self.state.physics.ragdoll.left_lower_leg,
-                self.state.physics.ragdoll.right_lower_leg,
-            ];
-
-            self.drag_body = handles
-                .into_iter()
-                .filter_map(|handle| {
-                    let position = self.state.physics.body_position(handle)?;
-                    let distance = vec2(
-                        position.translation.x,
-                        position.translation.y,
-                    )
-                    .distance(world_position);
-
-                    if distance <= 72.0 {
-                        Some((handle, distance))
-                    } else {
-                        None
-                    }
-                })
-                .min_by(|left, right| left.1.total_cmp(&right.1))
-                .map(|(handle, _)| handle);
+            self.drag_body = self.find_body_at(world_position);
         }
 
         if let Some(handle) = self.drag_body {
             if let Some(body) = self.state.physics.bodies.get_mut(handle) {
-                body.set_translation(
-                    rapier2d::prelude::vector![world_position.x, world_position.y],
-                    true,
-                );
-                body.set_linvel(rapier2d::prelude::vector![0.0, 0.0], true);
-                body.set_angvel(0.0, true);
+                if body.is_dynamic() {
+                    body.set_translation(
+                        rapier2d::prelude::vector![world_position.x, world_position.y],
+                        true,
+                    );
+                    body.set_linvel(rapier2d::prelude::vector![0.0, 0.0], true);
+                    body.set_angvel(0.0, true);
+                }
             }
+        }
+    }
+
+    fn find_body_at(
+        &self,
+        world_position: Vec2,
+    ) -> Option<rapier2d::prelude::RigidBodyHandle> {
+        let ragdoll_handles = [
+            self.state.physics.ragdoll.head,
+            self.state.physics.ragdoll.torso,
+            self.state.physics.ragdoll.left_upper_arm,
+            self.state.physics.ragdoll.right_upper_arm,
+            self.state.physics.ragdoll.left_lower_arm,
+            self.state.physics.ragdoll.right_lower_arm,
+            self.state.physics.ragdoll.left_upper_leg,
+            self.state.physics.ragdoll.right_upper_leg,
+            self.state.physics.ragdoll.left_lower_leg,
+            self.state.physics.ragdoll.right_lower_leg,
+        ];
+
+        let mut nearest: Option<(rapier2d::prelude::RigidBodyHandle, f32)> = None;
+
+        for handle in ragdoll_handles {
+            if let Some(position) = self.state.physics.body_position(handle) {
+                let distance = vec2(
+                    position.translation.x,
+                    position.translation.y,
+                )
+                .distance(world_position);
+
+                if distance <= 72.0 {
+                    nearest = Self::nearest_body(nearest, handle, distance);
+                }
+            }
+        }
+
+        for prop in &self.state.physics.props {
+            if !prop.active {
+                continue;
+            }
+
+            let Some(body) = self.state.physics.bodies.get(prop.body) else {
+                continue;
+            };
+
+            if !body.is_dynamic() {
+                continue;
+            }
+
+            let Some(position) = self.state.physics.body_position(prop.body) else {
+                continue;
+            };
+
+            let distance = vec2(
+                position.translation.x,
+                position.translation.y,
+            )
+            .distance(world_position);
+
+            let hit_radius = prop.half_width.max(prop.half_height) + 28.0;
+
+            if distance <= hit_radius {
+                nearest = Self::nearest_body(nearest, prop.body, distance);
+            }
+        }
+
+        nearest.map(|(handle, _)| handle)
+    }
+
+    fn nearest_body(
+        current: Option<(rapier2d::prelude::RigidBodyHandle, f32)>,
+        handle: rapier2d::prelude::RigidBodyHandle,
+        distance: f32,
+    ) -> Option<(rapier2d::prelude::RigidBodyHandle, f32)> {
+        match current {
+            Some((_, current_distance)) if current_distance <= distance => current,
+            _ => Some((handle, distance)),
         }
     }
 
