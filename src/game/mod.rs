@@ -13,6 +13,7 @@ pub struct Game {
     state: GameState,
     input: InputState,
     renderer: Renderer,
+    drag_body: Option<rapier2d::prelude::RigidBodyHandle>,
 }
 
 impl Game {
@@ -21,11 +22,15 @@ impl Game {
             state: GameState::new(),
             input: InputState::new(),
             renderer: Renderer::new(),
+            drag_body: None,
         }
     }
 
     pub fn update(&mut self) {
-        self.input.update(self.state.spawn_menu_open);
+        self.input
+            .update(self.state.spawn_menu_open, self.drag_body.is_some());
+
+        self.update_dragging();
 
         if self.input.spawn_toggle_pressed() {
             self.state.spawn_menu_open = !self.state.spawn_menu_open;
@@ -52,9 +57,11 @@ impl Game {
                 if self.input.select_character_pressed() {
                     self.state.character = self.state.character.next();
                     self.state.rebuild_world();
+                    self.drag_body = None;
                 } else if self.input.select_map_pressed() {
                     self.state.map = self.state.map.next();
                     self.state.rebuild_world();
+                    self.drag_body = None;
                 } else if self.input.play_pressed() {
                     self.state.mode = GameMode::Playing;
                 } else if self.input.settings_pressed() {
@@ -120,6 +127,71 @@ impl Game {
                 }
             }
         }
+    }
+
+    fn update_dragging(&mut self) {
+        let Some(pointer) = self.input.drag_pointer() else {
+            self.drag_body = None;
+            return;
+        };
+
+        let world_position = self.screen_to_world(pointer);
+
+        if self.drag_body.is_none() {
+            let handles = [
+                self.state.physics.ragdoll.head,
+                self.state.physics.ragdoll.torso,
+                self.state.physics.ragdoll.left_upper_arm,
+                self.state.physics.ragdoll.right_upper_arm,
+                self.state.physics.ragdoll.left_lower_arm,
+                self.state.physics.ragdoll.right_lower_arm,
+                self.state.physics.ragdoll.left_upper_leg,
+                self.state.physics.ragdoll.right_upper_leg,
+                self.state.physics.ragdoll.left_lower_leg,
+                self.state.physics.ragdoll.right_lower_leg,
+            ];
+
+            self.drag_body = handles
+                .into_iter()
+                .filter_map(|handle| {
+                    let position = self.state.physics.body_position(handle)?;
+                    let distance = vec2(
+                        position.translation.x,
+                        position.translation.y,
+                    )
+                    .distance(world_position);
+
+                    if distance <= 72.0 {
+                        Some((handle, distance))
+                    } else {
+                        None
+                    }
+                })
+                .min_by(|left, right| left.1.total_cmp(&right.1))
+                .map(|(handle, _)| handle);
+        }
+
+        if let Some(handle) = self.drag_body {
+            if let Some(body) = self.state.physics.bodies.get_mut(handle) {
+                body.set_translation(
+                    rapier2d::prelude::vector![world_position.x, world_position.y],
+                    true,
+                );
+                body.set_linvel(rapier2d::prelude::vector![0.0, 0.0], true);
+                body.set_angvel(0.0, true);
+            }
+        }
+    }
+
+    fn screen_to_world(&self, position: Vec2) -> Vec2 {
+        let zoom = self.state.camera.zoom.max(0.1);
+
+        vec2(
+            self.state.camera.center.x
+                + (position.x - screen_width() * 0.5) / zoom,
+            self.state.camera.center.y
+                - (position.y - screen_height() * 0.5) / zoom,
+        )
     }
 
     fn spawn_menu_item(&mut self, index: usize) {

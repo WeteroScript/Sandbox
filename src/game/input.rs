@@ -22,6 +22,7 @@ pub struct InputState {
     movement: Vec2,
     camera_pan: Vec2,
     camera_zoom: f32,
+    drag_pointer: Option<Vec2>,
     spawn_toggle: bool,
     spawn_tab: Option<usize>,
     spawn_item: Option<usize>,
@@ -44,6 +45,7 @@ impl InputState {
             movement: Vec2::ZERO,
             camera_pan: Vec2::ZERO,
             camera_zoom: 0.0,
+            drag_pointer: None,
             spawn_toggle: false,
             spawn_tab: None,
             spawn_item: None,
@@ -51,7 +53,7 @@ impl InputState {
         }
     }
 
-    pub fn update(&mut self, spawn_menu_open: bool) {
+    pub fn update(&mut self, spawn_menu_open: bool, dragging: bool) {
         self.play = is_key_pressed(KeyCode::Enter)
             || is_key_pressed(KeyCode::Space)
             || (is_mouse_button_pressed(MouseButton::Left)
@@ -135,7 +137,8 @@ impl InputState {
         }
 
         self.movement = movement;
-        self.update_camera_gesture(spawn_menu_open);
+        self.update_drag_pointer(spawn_menu_open);
+        self.update_camera_gesture(spawn_menu_open, dragging);
     }
 
     pub fn play_pressed(&self) -> bool {
@@ -190,9 +193,14 @@ impl InputState {
         self.camera_zoom
     }
 
+    pub fn drag_pointer(&self) -> Option<Vec2> {
+        self.drag_pointer
+    }
+
     pub fn spawn_toggle_pressed(&self) -> bool {
         let width = screen_width();
         let mouse = mouse_position();
+
         if is_mouse_button_pressed(MouseButton::Left)
             && mouse.0 >= width - 72.0
             && mouse.1 <= 58.0
@@ -229,9 +237,37 @@ impl InputState {
         is_key_pressed(KeyCode::B) || self.touch_in_rect(self.pause_barrel_rect())
     }
 
-    fn update_camera_gesture(&mut self, spawn_menu_open: bool) {
+    fn update_drag_pointer(&mut self, spawn_menu_open: bool) {
+        self.drag_pointer = None;
+
+        let active_touches: Vec<Touch> = touches()
+            .into_iter()
+            .filter(|touch| {
+                touch.phase == TouchPhase::Started
+                    || touch.phase == TouchPhase::Stationary
+                    || touch.phase == TouchPhase::Moved
+            })
+            .collect();
+
+        if active_touches.len() != 1 {
+            return;
+        }
+
+        let position = active_touches[0].position;
+
+        if self.in_spawn_panel(position, spawn_menu_open)
+            || self.is_camera_control_position(position)
+        {
+            return;
+        }
+
+        self.drag_pointer = Some(position);
+    }
+
+    fn update_camera_gesture(&mut self, spawn_menu_open: bool, dragging: bool) {
         self.camera_pan = Vec2::ZERO;
         self.camera_zoom = 0.0;
+
         let current_touches = touches();
 
         if current_touches.len() >= 2 {
@@ -254,11 +290,14 @@ impl InputState {
                 self.camera_pan = (first.position + second.position) * 0.5
                     - (previous_first + previous_second) * 0.5;
             }
-        } else if let Some(touch) = current_touches.first() {
-            let panel_position = self.in_spawn_panel(touch.position, spawn_menu_open);
-            if !self.is_camera_control_position(touch.position) && !panel_position {
-                if let Some(previous_position) = self.previous_position(touch.id) {
-                    self.camera_pan = touch.position - previous_position;
+        } else if !dragging {
+            if let Some(touch) = current_touches.first() {
+                let panel_position = self.in_spawn_panel(touch.position, spawn_menu_open);
+
+                if !self.is_camera_control_position(touch.position) && !panel_position {
+                    if let Some(previous_position) = self.previous_position(touch.id) {
+                        self.camera_pan = touch.position - previous_position;
+                    }
                 }
             }
         }
@@ -312,6 +351,7 @@ impl InputState {
 
     fn touch_action_pressed(&self) -> bool {
         let center = vec2(screen_width() - 100.0, screen_height() - 118.0);
+
         touches()
             .into_iter()
             .any(|touch| touch.position.distance(center) <= 48.0)
