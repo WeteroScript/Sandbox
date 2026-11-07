@@ -51,10 +51,9 @@ impl Game {
         }
 
         if matches!(self.state.mode, GameMode::Playing | GameMode::Paused) {
-            self.state.camera.apply_gesture(
-                self.input.camera_pan(),
-                self.input.camera_zoom(),
-            );
+            self.state
+                .camera
+                .apply_gesture(self.input.camera_pan(), self.input.camera_zoom());
         }
 
         match self.state.mode {
@@ -110,7 +109,8 @@ impl Game {
                 }
 
                 self.state.physics.step(delta_time);
-                self.mechanisms.step(&mut self.state.physics, delta_time);
+                self.mechanisms
+                    .step(&mut self.state.physics, delta_time);
 
                 if self.input.pause_pressed() {
                     self.state.mode = GameMode::Paused;
@@ -152,19 +152,23 @@ impl Game {
         }
 
         if is_key_pressed(KeyCode::L) {
-            self.mechanisms.spawn_spring(&self.state.physics, position);
+            self.mechanisms
+                .spawn_spring(&self.state.physics, position);
         }
 
         if is_key_pressed(KeyCode::T) {
-            self.mechanisms.spawn_piston(&self.state.physics, position);
+            self.mechanisms
+                .spawn_piston(&self.state.physics, position);
         }
 
         if is_key_pressed(KeyCode::U) {
-            self.mechanisms.spawn_button(&self.state.physics, position);
+            self.mechanisms
+                .spawn_button(&self.state.physics, position);
         }
 
         if is_key_pressed(KeyCode::I) {
-            self.mechanisms.spawn_toggle(&self.state.physics, position);
+            self.mechanisms
+                .spawn_toggle(&self.state.physics, position);
         }
 
         if is_key_pressed(KeyCode::O) {
@@ -380,9 +384,21 @@ impl Game {
 
         match self.state.mode {
             GameMode::MainMenu => self.renderer.draw_main_menu(&self.state),
-            GameMode::Playing => self.renderer.draw_playing(&self.state),
+            GameMode::Playing => {
+                self.renderer.draw_playing(&self.state);
+                self.draw_mechanisms();
+            }
             GameMode::Settings => self.renderer.draw_settings(),
-            GameMode::Paused => self.renderer.draw_paused(&self.state),
+            GameMode::Paused => {
+                self.renderer.draw_paused(&self.state);
+                self.draw_mechanisms();
+            }
         }
+    }
+
+    fn draw_mechanisms(&self) {
+        set_camera(&self.state.camera.macroquad_camera());
+        self.mechanisms.draw_visuals(&self.state.physics);
+        set_default_camera();
     }
 }

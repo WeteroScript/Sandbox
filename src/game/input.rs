@@ -87,7 +87,7 @@ impl InputState {
                     } else if position.y >= 126.0 {
                         let item = ((position.y - 126.0) / 58.0) as usize;
 
-                        if item < 8 {
+                        if item < 16 {
                             self.spawn_item = Some(item);
                         }
                     }
