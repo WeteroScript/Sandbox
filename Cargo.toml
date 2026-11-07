@@ -9,6 +9,7 @@ license = "MIT"
 [dependencies]
 macroquad = "0.4.13"
 rapier2d = "0.22.0"
+nalgebra = "0.33.3"
 
 [package.metadata.android]
 android_version = 34
