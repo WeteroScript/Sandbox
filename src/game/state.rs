@@ -203,6 +203,7 @@ impl GameState {
             elapsed: 0.0,
             character,
             map,
+            camera: CameraState::new(),
             physics: PhysicsWorld::new(character, map),
             spawn_menu_open: true,
             spawn_category: SpawnCategory::Pistols,
