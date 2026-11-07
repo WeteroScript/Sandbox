@@ -245,10 +245,10 @@ impl Game {
             if let Some(body) = self.state.physics.bodies.get_mut(handle) {
                 if body.is_dynamic() {
                     body.set_translation(
-                        rapier2d::prelude::vector![world_position.x, world_position.y],
+                        rapier2d::prelude::Vector::new(world_position.x, world_position.y),
                         true,
                     );
-                    body.set_linvel(rapier2d::prelude::vector![0.0, 0.0], true);
+                    body.set_linvel(rapier2d::prelude::Vector::new(0.0, 0.0), true);
                     body.set_angvel(0.0, true);
                 }
             }
@@ -348,7 +348,7 @@ impl Game {
             return;
         };
 
-        let position = rapier2d::prelude::vector![780.0, 180.0];
+        let position = rapier2d::prelude::Vector::new(780.0, 180.0);
 
         match item {
             SpawnItem::Pistol => {
@@ -399,7 +399,7 @@ impl Game {
             SpawnItem::Box => {
                 self.state.physics.spawn_box(
                     position,
-                    rapier2d::prelude::vector![34.0, 34.0],
+                    rapier2d::prelude::Vector::new(34.0, 34.0),
                 );
             }
             SpawnItem::Grenade => self.state.physics.spawn_grenade(),
