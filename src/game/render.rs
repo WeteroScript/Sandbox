@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use rapier2d::prelude::vector;
 
 use super::physics::{CharacterKind, MapKind, PropKind, Ragdoll};
 use super::state::{GameState, SpawnCategory};
