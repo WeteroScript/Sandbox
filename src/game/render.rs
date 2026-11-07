@@ -16,7 +16,14 @@ impl Renderer {
         let center_x = screen_width() * 0.5;
         let start_y = screen_height() * 0.5 - 145.0;
 
-        self.draw_button(center_x - 170.0, start_y, 340.0, 58.0, "PLAY", Color::from_rgba(52, 168, 99, 255));
+        self.draw_button(
+            center_x - 170.0,
+            start_y,
+            340.0,
+            58.0,
+            "PLAY",
+            Color::from_rgba(52, 168, 99, 255),
+        );
         self.draw_button(
             center_x - 170.0,
             start_y + 72.0,
@@ -34,21 +41,50 @@ impl Renderer {
             Color::from_rgba(77, 105, 91, 255),
         );
 
-        draw_text("C: character    M: map", center_x - 115.0, screen_height() - 72.0, 18.0, LIGHTGRAY);
-        draw_text("Enter or left click to play", center_x - 130.0, screen_height() - 42.0, 18.0, GRAY);
+        draw_text(
+            "C: character    M: map",
+            center_x - 115.0,
+            screen_height() - 72.0,
+            18.0,
+            LIGHTGRAY,
+        );
+        draw_text(
+            "Enter or left click to play",
+            center_x - 130.0,
+            screen_height() - 42.0,
+            18.0,
+            GRAY,
+        );
     }
 
     pub fn draw_playing(&self, state: &GameState) {
         let width = screen_width();
         let height = screen_height();
 
+        set_camera(&state.camera.macroquad_camera());
+
         self.draw_background(state.map);
-        draw_rectangle(0.0, 650.0, width.max(1280.0), height.max(720.0) - 650.0, Color::from_rgba(67, 75, 81, 255));
-        draw_rectangle(0.0, 645.0, width.max(1280.0), 5.0, Color::from_rgba(118, 128, 121, 255));
+        draw_rectangle(
+            0.0,
+            650.0,
+            width.max(1280.0),
+            height.max(720.0) - 650.0,
+            Color::from_rgba(67, 75, 81, 255),
+        );
+        draw_rectangle(
+            0.0,
+            645.0,
+            width.max(1280.0),
+            5.0,
+            Color::from_rgba(118, 128, 121, 255),
+        );
 
         self.draw_props(state);
         self.draw_explosions(state);
         self.draw_ragdoll(state, &state.physics.ragdoll, state.character);
+
+        set_default_camera();
+
         self.draw_top_bar(state);
         self.draw_joint_health(state);
         self.draw_touch_controls();
@@ -69,28 +105,92 @@ impl Renderer {
         let center_y = screen_height() * 0.5;
 
         draw_text("Sound", center_x - 150.0, center_y - 20.0, 28.0, WHITE);
-        draw_rectangle(center_x + 80.0, center_y - 45.0, 100.0, 48.0, Color::from_rgba(65, 91, 120, 255));
+        draw_rectangle(
+            center_x + 80.0,
+            center_y - 45.0,
+            100.0,
+            48.0,
+            Color::from_rgba(65, 91, 120, 255),
+        );
         draw_text("ON", center_x + 113.0, center_y - 12.0, 24.0, WHITE);
-        draw_text("Escape or Backspace to return", center_x - 150.0, center_y + 100.0, 18.0, GRAY);
+        draw_text(
+            "Escape or Backspace to return",
+            center_x - 150.0,
+            center_y + 100.0,
+            18.0,
+            GRAY,
+        );
     }
 
     pub fn draw_paused(&self, state: &GameState) {
         self.draw_playing(state);
-        draw_rectangle(0.0, 0.0, screen_width(), screen_height(), Color::from_rgba(5, 8, 12, 225));
+        draw_rectangle(
+            0.0,
+            0.0,
+            screen_width(),
+            screen_height(),
+            Color::from_rgba(5, 8, 12, 225),
+        );
 
         let center_x = screen_width() * 0.5;
         let center_y = screen_height() * 0.5;
 
         draw_text("PAUSED", center_x - 78.0, center_y - 175.0, 42.0, WHITE);
-        draw_text("Spawn items while the simulation is paused", center_x - 205.0, center_y - 145.0, 16.0, LIGHTGRAY);
+        draw_text(
+            "Spawn items while the simulation is paused",
+            center_x - 205.0,
+            center_y - 145.0,
+            16.0,
+            LIGHTGRAY,
+        );
 
-        self.draw_button(center_x - 150.0, center_y - 125.0, 300.0, 56.0, "RESUME", Color::from_rgba(52, 168, 99, 255));
-        self.draw_button(center_x - 150.0, center_y - 50.0, 300.0, 48.0, "SPAWN BOX", Color::from_rgba(126, 91, 55, 255));
-        self.draw_button(center_x - 150.0, center_y + 8.0, 300.0, 48.0, "SPAWN GRENADE", Color::from_rgba(65, 145, 80, 255));
-        self.draw_button(center_x - 150.0, center_y + 66.0, 300.0, 48.0, "SPAWN BARREL", Color::from_rgba(170, 74, 48, 255));
+        self.draw_button(
+            center_x - 150.0,
+            center_y - 125.0,
+            300.0,
+            56.0,
+            "RESUME",
+            Color::from_rgba(52, 168, 99, 255),
+        );
+        self.draw_button(
+            center_x - 150.0,
+            center_y - 50.0,
+            300.0,
+            48.0,
+            "SPAWN BOX",
+            Color::from_rgba(126, 91, 55, 255),
+        );
+        self.draw_button(
+            center_x - 150.0,
+            center_y + 8.0,
+            300.0,
+            48.0,
+            "SPAWN GRENADE",
+            Color::from_rgba(65, 145, 80, 255),
+        );
+        self.draw_button(
+            center_x - 150.0,
+            center_y + 66.0,
+            300.0,
+            48.0,
+            "SPAWN BARREL",
+            Color::from_rgba(170, 74, 48, 255),
+        );
 
-        draw_text("Q: box    G: grenade    B: barrel", center_x - 145.0, center_y + 155.0, 16.0, GRAY);
-        draw_text("Escape: return to menu", center_x - 105.0, center_y + 180.0, 16.0, GRAY);
+        draw_text(
+            "Q: box    G: grenade    B: barrel",
+            center_x - 145.0,
+            center_y + 155.0,
+            16.0,
+            GRAY,
+        );
+        draw_text(
+            "Escape: return to menu",
+            center_x - 105.0,
+            center_y + 180.0,
+            16.0,
+            GRAY,
+        );
     }
 
     fn draw_props(&self, state: &GameState) {
@@ -100,7 +200,13 @@ impl Renderer {
             }
 
             if let Some(position) = state.physics.body_position(prop.body) {
-                let color = Color::from_rgba(prop.color[0], prop.color[1], prop.color[2], prop.color[3]);
+                let color = Color::from_rgba(
+                    prop.color[0],
+                    prop.color[1],
+                    prop.color[2],
+                    prop.color[3],
+                );
+
                 self.draw_rotated_rectangle(
                     vec2(position.translation.x, position.translation.y),
                     prop.half_width,
@@ -130,12 +236,14 @@ impl Renderer {
     fn draw_explosions(&self, state: &GameState) {
         for explosion in &state.physics.explosions {
             let alpha = (explosion.life / 0.35).clamp(0.0, 1.0);
+
             draw_circle(
                 explosion.position.x,
                 explosion.position.y,
                 explosion.radius * 0.22 * (1.0 - alpha),
                 Color::new(1.0, 0.32, 0.04, alpha * 0.55),
             );
+
             draw_circle_lines(
                 explosion.position.x,
                 explosion.position.y,
@@ -169,36 +277,76 @@ impl Renderer {
         }
     }
 
-    fn draw_part(&self, state: &GameState, handle: rapier2d::prelude::RigidBodyHandle, width: f32, height: f32, color: Color) {
+    fn draw_part(
+        &self,
+        state: &GameState,
+        handle: rapier2d::prelude::RigidBodyHandle,
+        width: f32,
+        height: f32,
+        color: Color,
+    ) {
         if !state.physics.is_detached(handle) {
             self.draw_box_body(state, handle, width, height, color);
         }
     }
 
-    fn draw_circle_body(&self, state: &GameState, handle: rapier2d::prelude::RigidBodyHandle, radius: f32, color: Color) {
+    fn draw_circle_body(
+        &self,
+        state: &GameState,
+        handle: rapier2d::prelude::RigidBodyHandle,
+        radius: f32,
+        color: Color,
+    ) {
         if let Some(position) = state.physics.body_position(handle) {
             draw_circle(position.translation.x, position.translation.y, radius, color);
         }
     }
 
-    fn draw_box_body(&self, state: &GameState, handle: rapier2d::prelude::RigidBodyHandle, width: f32, height: f32, color: Color) {
+    fn draw_box_body(
+        &self,
+        state: &GameState,
+        handle: rapier2d::prelude::RigidBodyHandle,
+        width: f32,
+        height: f32,
+        color: Color,
+    ) {
         if let Some(position) = state.physics.body_position(handle) {
-            self.draw_rotated_rectangle(vec2(position.translation.x, position.translation.y), width, height, position.rotation.angle(), color);
+            self.draw_rotated_rectangle(
+                vec2(position.translation.x, position.translation.y),
+                width,
+                height,
+                position.rotation.angle(),
+                color,
+            );
         }
     }
 
-    fn draw_rotated_rectangle(&self, center: Vec2, width: f32, height: f32, angle: f32, color: Color) {
+    fn draw_rotated_rectangle(
+        &self,
+        center: Vec2,
+        width: f32,
+        height: f32,
+        angle: f32,
+        color: Color,
+    ) {
         let corners = [
             vec2(-width, -height),
             vec2(width, -height),
             vec2(width, height),
             vec2(-width, height),
         ];
+
         let sin = angle.sin();
         let cos = angle.cos();
+
         let points: Vec<Vec2> = corners
             .iter()
-            .map(|point| vec2(center.x + point.x * cos - point.y * sin, center.y + point.x * sin + point.y * cos))
+            .map(|point| {
+                vec2(
+                    center.x + point.x * cos - point.y * sin,
+                    center.y + point.x * sin + point.y * cos,
+                )
+            })
             .collect();
 
         draw_triangle(points[0], points[1], points[2], color);
@@ -206,7 +354,14 @@ impl Renderer {
 
         for index in 0..4 {
             let next = (index + 1) % 4;
-            draw_line(points[index].x, points[index].y, points[next].x, points[next].y, 2.0, BLACK);
+            draw_line(
+                points[index].x,
+                points[index].y,
+                points[next].x,
+                points[next].y,
+                2.0,
+                BLACK,
+            );
         }
     }
 
@@ -217,7 +372,13 @@ impl Renderer {
         let width = 220.0;
 
         draw_text("JOINT INTEGRITY", x, y, 16.0, WHITE);
-        draw_rectangle(x, y + 8.0, width, 14.0, Color::from_rgba(35, 40, 46, 220));
+        draw_rectangle(
+            x,
+            y + 8.0,
+            width,
+            14.0,
+            Color::from_rgba(35, 40, 46, 220),
+        );
 
         let color = if ratio > 0.6 {
             Color::from_rgba(65, 185, 92, 255)
@@ -228,7 +389,13 @@ impl Renderer {
         };
 
         draw_rectangle(x, y + 8.0, width * ratio, 14.0, color);
-        draw_text(&format!("{:.0}%", ratio * 100.0), x + width + 8.0, y + 20.0, 16.0, WHITE);
+        draw_text(
+            &format!("{:.0}%", ratio * 100.0),
+            x + width + 8.0,
+            y + 20.0,
+            16.0,
+            WHITE,
+        );
     }
 
     fn draw_background(&self, map: MapKind) {
@@ -243,70 +410,184 @@ impl Renderer {
         match map {
             MapKind::TestRange => {
                 for x in (0..1280).step_by(80) {
-                    draw_line(x as f32, 0.0, x as f32, 650.0, 1.0, Color::from_rgba(55, 67, 80, 180));
+                    draw_line(
+                        x as f32,
+                        0.0,
+                        x as f32,
+                        650.0,
+                        1.0,
+                        Color::from_rgba(55, 67, 80, 180),
+                    );
                 }
             }
             MapKind::City => {
-                draw_rectangle(0.0, 400.0, 1280.0, 250.0, Color::from_rgba(48, 52, 58, 255));
+                draw_rectangle(
+                    0.0,
+                    400.0,
+                    1280.0,
+                    250.0,
+                    Color::from_rgba(48, 52, 58, 255),
+                );
+
                 for x in (0..1280).step_by(180) {
-                    draw_rectangle(x as f32, 180.0, 110.0, 220.0, Color::from_rgba(67, 76, 91, 255));
+                    draw_rectangle(
+                        x as f32,
+                        180.0,
+                        110.0,
+                        220.0,
+                        Color::from_rgba(67, 76, 91, 255),
+                    );
                 }
             }
             MapKind::Laboratory => {
                 draw_circle(270.0, 620.0, 70.0, Color::from_rgba(45, 190, 104, 170));
                 draw_circle(930.0, 620.0, 85.0, Color::from_rgba(45, 190, 104, 170));
-                draw_line(390.0, 120.0, 390.0, 500.0, 8.0, Color::from_rgba(235, 55, 75, 220));
-                draw_line(890.0, 120.0, 890.0, 500.0, 8.0, Color::from_rgba(235, 55, 75, 220));
+                draw_line(
+                    390.0,
+                    120.0,
+                    390.0,
+                    500.0,
+                    8.0,
+                    Color::from_rgba(235, 55, 75, 220),
+                );
+                draw_line(
+                    890.0,
+                    120.0,
+                    890.0,
+                    500.0,
+                    8.0,
+                    Color::from_rgba(235, 55, 75, 220),
+                );
             }
         }
     }
 
     fn draw_header(&self, title: &str) {
-        draw_rectangle(0.0, 0.0, screen_width(), 88.0, Color::from_rgba(28, 35, 45, 255));
+        draw_rectangle(
+            0.0,
+            0.0,
+            screen_width(),
+            88.0,
+            Color::from_rgba(28, 35, 45, 255),
+        );
         draw_text(title, 32.0, 57.0, 32.0, WHITE);
     }
 
     fn draw_top_bar(&self, state: &GameState) {
-        draw_rectangle(0.0, 0.0, screen_width(), 62.0, Color::from_rgba(28, 35, 45, 235));
+        draw_rectangle(
+            0.0,
+            0.0,
+            screen_width(),
+            62.0,
+            Color::from_rgba(28, 35, 45, 235),
+        );
         draw_text(state.map.name(), 24.0, 39.0, 22.0, WHITE);
-        draw_text(state.character.name(), screen_width() - 150.0, 28.0, 16.0, LIGHTGRAY);
-        draw_text(state.physics.weapon.name(), screen_width() - 150.0, 48.0, 16.0, YELLOW);
+        draw_text(
+            state.character.name(),
+            screen_width() - 150.0,
+            28.0,
+            16.0,
+            LIGHTGRAY,
+        );
+        draw_text(
+            state.physics.weapon.name(),
+            screen_width() - 150.0,
+            48.0,
+            16.0,
+            YELLOW,
+        );
     }
 
     fn draw_touch_controls(&self) {
         let width = screen_width();
         let height = screen_height();
 
-        draw_circle(100.0, height - 115.0, 66.0, Color::from_rgba(30, 38, 47, 190));
-        draw_circle(100.0, height - 115.0, 29.0, Color::from_rgba(122, 137, 146, 220));
+        draw_circle(
+            100.0,
+            height - 115.0,
+            66.0,
+            Color::from_rgba(30, 38, 47, 190),
+        );
+        draw_circle(
+            100.0,
+            height - 115.0,
+            29.0,
+            Color::from_rgba(122, 137, 146, 220),
+        );
         draw_text("MOVE", 77.0, height - 108.0, 12.0, WHITE);
 
         let fire = vec2(width - 100.0, height - 118.0);
-        draw_circle(fire.x, fire.y, 42.0, Color::from_rgba(183, 76, 62, 230));
+        draw_circle(
+            fire.x,
+            fire.y,
+            42.0,
+            Color::from_rgba(183, 76, 62, 230),
+        );
         draw_text("FIRE", fire.x - 18.0, fire.y + 5.0, 13.0, WHITE);
 
         let weapon = vec2(width - 270.0, height - 170.0);
-        draw_circle(weapon.x, weapon.y, 36.0, Color::from_rgba(76, 93, 136, 235));
+        draw_circle(
+            weapon.x,
+            weapon.y,
+            36.0,
+            Color::from_rgba(76, 93, 136, 235),
+        );
         draw_text("WEAPON", weapon.x - 25.0, weapon.y + 4.0, 11.0, WHITE);
 
         let grenade = vec2(width - 190.0, height - 205.0);
-        draw_circle(grenade.x, grenade.y, 36.0, Color::from_rgba(65, 145, 80, 235));
+        draw_circle(
+            grenade.x,
+            grenade.y,
+            36.0,
+            Color::from_rgba(65, 145, 80, 235),
+        );
         draw_text("G", grenade.x - 5.0, grenade.y + 7.0, 22.0, WHITE);
 
         let barrel = vec2(width - 105.0, height - 205.0);
-        draw_circle(barrel.x, barrel.y, 36.0, Color::from_rgba(170, 74, 48, 235));
+        draw_circle(
+            barrel.x,
+            barrel.y,
+            36.0,
+            Color::from_rgba(170, 74, 48, 235),
+        );
         draw_text("B", barrel.x - 6.0, barrel.y + 7.0, 22.0, WHITE);
 
         let box_control = vec2(width - 192.0, height - 90.0);
-        draw_circle(box_control.x, box_control.y, 27.0, Color::from_rgba(126, 91, 55, 235));
+        draw_circle(
+            box_control.x,
+            box_control.y,
+            27.0,
+            Color::from_rgba(126, 91, 55, 235),
+        );
         draw_text("+", box_control.x - 8.0, box_control.y + 8.0, 25.0, WHITE);
     }
 
-    fn draw_button(&self, x: f32, y: f32, width: f32, height: f32, label: &str, color: Color) {
+    fn draw_button(
+        &self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        label: &str,
+        color: Color,
+    ) {
         draw_rectangle(x, y, width, height, color);
-        draw_rectangle_lines(x, y, width, height, 2.0, Color::from_rgba(225, 230, 230, 80));
+        draw_rectangle_lines(
+            x,
+            y,
+            width,
+            height,
+            2.0,
+            Color::from_rgba(225, 230, 230, 80),
+        );
 
         let text_width = measure_text(label, None, 24, 1.0).width;
-        draw_text(label, x + (width - text_width) * 0.5, y + height * 0.64, 24.0, WHITE);
+        draw_text(
+            label,
+            x + (width - text_width) * 0.5,
+            y + height * 0.64,
+            24.0,
+            WHITE,
+        );
     }
 }

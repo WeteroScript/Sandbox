@@ -20,6 +20,9 @@ pub struct InputState {
     next_weapon: bool,
     action: Action,
     movement: Vec2,
+    camera_pan: Vec2,
+    camera_zoom: f32,
+    previous_touches: Vec<(u64, Vec2)>,
 }
 
 impl InputState {
@@ -36,6 +39,9 @@ impl InputState {
             next_weapon: false,
             action: Action::None,
             movement: Vec2::ZERO,
+            camera_pan: Vec2::ZERO,
+            camera_zoom: 0.0,
+            previous_touches: Vec::new(),
         }
     }
 
@@ -103,6 +109,7 @@ impl InputState {
         }
 
         self.movement = movement;
+        self.update_camera_gesture();
     }
 
     pub fn play_pressed(&self) -> bool {
@@ -149,6 +156,14 @@ impl InputState {
         self.movement
     }
 
+    pub fn camera_pan(&self) -> Vec2 {
+        self.camera_pan
+    }
+
+    pub fn camera_zoom(&self) -> f32 {
+        self.camera_zoom
+    }
+
     pub fn pause_resume_pressed(&self) -> bool {
         self.play || self.touch_in_rect(self.pause_resume_rect())
     }
@@ -163,6 +178,88 @@ impl InputState {
 
     pub fn pause_spawn_barrel_pressed(&self) -> bool {
         is_key_pressed(KeyCode::B) || self.touch_in_rect(self.pause_barrel_rect())
+    }
+
+    fn update_camera_gesture(&mut self) {
+        self.camera_pan = Vec2::ZERO;
+        self.camera_zoom = 0.0;
+
+        let current_touches = touches();
+
+        if current_touches.len() >= 2 {
+            let first = &current_touches[0];
+            let second = &current_touches[1];
+
+            let previous_first = self.previous_position(first.id);
+            let previous_second = self.previous_position(second.id);
+
+            if let (Some(previous_first), Some(previous_second)) =
+                (previous_first, previous_second)
+            {
+                let previous_distance = previous_first.distance(previous_second);
+                let current_distance = first.position.distance(second.position);
+
+                if previous_distance > 1.0 {
+                    self.camera_zoom =
+                        (current_distance / previous_distance - 1.0).clamp(-0.12, 0.12);
+                }
+
+                let previous_center = (previous_first + previous_second) * 0.5;
+                let current_center = (first.position + second.position) * 0.5;
+                self.camera_pan = current_center - previous_center;
+            }
+        } else if let Some(touch) = current_touches.first() {
+            if !self.is_camera_control_position(touch.position) {
+                if let Some(previous_position) = self.previous_position(touch.id) {
+                    self.camera_pan = touch.position - previous_position;
+                }
+            }
+        }
+
+        self.previous_touches = current_touches
+            .iter()
+            .map(|touch| (touch.id, touch.position))
+            .collect();
+    }
+
+    fn previous_position(&self, id: u64) -> Option<Vec2> {
+        self.previous_touches
+            .iter()
+            .find(|(previous_id, _)| *previous_id == id)
+            .map(|(_, position)| *position)
+    }
+
+    fn is_camera_control_position(&self, position: Vec2) -> bool {
+        let height = screen_height();
+        let width = screen_width();
+
+        let joystick_center = vec2(100.0, height - 115.0);
+        if position.distance(joystick_center) <= 100.0 {
+            return true;
+        }
+
+        let fire_center = vec2(width - 100.0, height - 118.0);
+        if position.distance(fire_center) <= 58.0 {
+            return true;
+        }
+
+        let weapon_center = vec2(width - 270.0, height - 170.0);
+        if position.distance(weapon_center) <= 50.0 {
+            return true;
+        }
+
+        let grenade_center = vec2(width - 190.0, height - 205.0);
+        if position.distance(grenade_center) <= 50.0 {
+            return true;
+        }
+
+        let barrel_center = vec2(width - 105.0, height - 205.0);
+        if position.distance(barrel_center) <= 50.0 {
+            return true;
+        }
+
+        let box_center = vec2(width - 192.0, height - 90.0);
+        position.distance(box_center) <= 42.0
     }
 
     fn touch_action_pressed(&self) -> bool {

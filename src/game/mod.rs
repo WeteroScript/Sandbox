@@ -27,6 +27,13 @@ impl Game {
     pub fn update(&mut self) {
         self.input.update();
 
+        if matches!(self.state.mode, GameMode::Playing | GameMode::Paused) {
+            self.state.camera.apply_gesture(
+                self.input.camera_pan(),
+                self.input.camera_zoom(),
+            );
+        }
+
         match self.state.mode {
             GameMode::MainMenu => {
                 if self.input.select_character_pressed() {
@@ -58,9 +65,10 @@ impl Game {
                 }
 
                 if self.input.spawn_pressed() {
-                    self.state
-                        .physics
-                        .spawn_box(rapier2d::prelude::Vector::new(780.0, 180.0), rapier2d::prelude::Vector::new(34.0, 34.0));
+                    self.state.physics.spawn_box(
+                        rapier2d::prelude::Vector::new(780.0, 180.0),
+                        rapier2d::prelude::Vector::new(34.0, 34.0),
+                    );
                 }
 
                 if self.input.damage_pressed() {
@@ -80,9 +88,10 @@ impl Game {
             }
             GameMode::Paused => {
                 if self.input.pause_spawn_box_pressed() {
-                    self.state
-                        .physics
-                        .spawn_box(rapier2d::prelude::Vector::new(780.0, 180.0), rapier2d::prelude::Vector::new(34.0, 34.0));
+                    self.state.physics.spawn_box(
+                        rapier2d::prelude::Vector::new(780.0, 180.0),
+                        rapier2d::prelude::Vector::new(34.0, 34.0),
+                    );
                 } else if self.input.pause_spawn_grenade_pressed() {
                     self.state.physics.spawn_grenade();
                 } else if self.input.pause_spawn_barrel_pressed() {
