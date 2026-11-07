@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use super::physics::{CharacterKind, MapKind, PropKind, Ragdoll, WeaponKind};
+use super::physics::{CharacterKind, MapKind, PropKind, Ragdoll};
 use super::state::{GameState, SpawnCategory};
 
 pub struct Renderer;
