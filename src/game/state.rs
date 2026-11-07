@@ -18,7 +18,6 @@ impl CameraState {
     pub fn apply_gesture(&mut self, pan: Vec2, zoom_delta: f32) {
         self.center -= pan / self.zoom.max(0.1);
         self.zoom = (self.zoom * (1.0 + zoom_delta)).clamp(0.55, 2.8);
-
         self.center.x = self.center.x.clamp(320.0, 960.0);
         self.center.y = self.center.y.clamp(180.0, 540.0);
     }
@@ -31,6 +30,43 @@ impl CameraState {
                 -2.0 * self.zoom / macroquad::prelude::screen_height(),
             ),
             ..Default::default()
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpawnCategory {
+    Pistols,
+    Weapons,
+    Melons,
+    Mechanisms,
+}
+
+impl SpawnCategory {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Pistols => Self::Weapons,
+            Self::Weapons => Self::Melons,
+            Self::Melons => Self::Mechanisms,
+            Self::Mechanisms => Self::Pistols,
+        }
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::Pistols => "PISTOLS",
+            Self::Weapons => "WEAPONS",
+            Self::Melons => "MELONS",
+            Self::Mechanisms => "MECHANISMS",
+        }
+    }
+
+    pub fn items(self) -> &'static [&'static str] {
+        match self {
+            Self::Pistols => &["PISTOL", "SILENCED PISTOL", "HEAVY PISTOL"],
+            Self::Weapons => &["RIFLE", "SHOTGUN", "BAT", "KATANA"],
+            Self::Melons => &["MELON", "ROBOT", "MELON HEAD"],
+            Self::Mechanisms => &["BOX", "GRENADE", "BARREL", "PLATFORM"],
         }
     }
 }
@@ -50,6 +86,8 @@ pub struct GameState {
     pub map: MapKind,
     pub camera: CameraState,
     pub physics: PhysicsWorld,
+    pub spawn_menu_open: bool,
+    pub spawn_category: SpawnCategory,
 }
 
 impl GameState {
@@ -64,6 +102,8 @@ impl GameState {
             map,
             camera: CameraState::new(),
             physics: PhysicsWorld::new(character, map),
+            spawn_menu_open: true,
+            spawn_category: SpawnCategory::Pistols,
         }
     }
 

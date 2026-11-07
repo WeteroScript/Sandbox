@@ -1,7 +1,7 @@
 use macroquad::prelude::*;
 
 use super::physics::{CharacterKind, MapKind, PropKind, Ragdoll};
-use super::state::GameState;
+use super::state::{GameState, SpawnCategory};
 
 pub struct Renderer;
 
@@ -12,7 +12,6 @@ impl Renderer {
 
     pub fn draw_main_menu(&self, state: &GameState) {
         self.draw_header("SANDBOX");
-
         let center_x = screen_width() * 0.5;
         let start_y = screen_height() * 0.5 - 145.0;
 
@@ -62,7 +61,6 @@ impl Renderer {
         let height = screen_height();
 
         set_camera(&state.camera.macroquad_camera());
-
         self.draw_background(state.map);
         draw_rectangle(
             0.0,
@@ -84,10 +82,15 @@ impl Renderer {
         self.draw_ragdoll(state, &state.physics.ragdoll, state.character);
 
         set_default_camera();
-
         self.draw_top_bar(state);
         self.draw_joint_health(state);
         self.draw_touch_controls();
+
+        if state.spawn_menu_open {
+            self.draw_spawn_menu(state);
+        } else {
+            self.draw_spawn_toggle();
+        }
 
         draw_text(
             &format!("Physics time: {:.1}", state.elapsed),
@@ -100,7 +103,6 @@ impl Renderer {
 
     pub fn draw_settings(&self) {
         self.draw_header("SETTINGS");
-
         let center_x = screen_width() * 0.5;
         let center_y = screen_height() * 0.5;
 
@@ -136,14 +138,6 @@ impl Renderer {
         let center_y = screen_height() * 0.5;
 
         draw_text("PAUSED", center_x - 78.0, center_y - 175.0, 42.0, WHITE);
-        draw_text(
-            "Spawn items while the simulation is paused",
-            center_x - 205.0,
-            center_y - 145.0,
-            16.0,
-            LIGHTGRAY,
-        );
-
         self.draw_button(
             center_x - 150.0,
             center_y - 125.0,
@@ -176,21 +170,113 @@ impl Renderer {
             "SPAWN BARREL",
             Color::from_rgba(170, 74, 48, 255),
         );
+    }
 
-        draw_text(
-            "Q: box    G: grenade    B: barrel",
-            center_x - 145.0,
-            center_y + 155.0,
-            16.0,
-            GRAY,
+    fn draw_spawn_toggle(&self) {
+        let x = screen_width() - 68.0;
+        draw_rectangle(x, 10.0, 58.0, 48.0, Color::from_rgba(38, 48, 60, 245));
+        draw_text("+", x + 17.0, 45.0, 32.0, WHITE);
+    }
+
+    fn draw_spawn_menu(&self, state: &GameState) {
+        let width = screen_width();
+        let panel_x = width - 300.0;
+
+        draw_rectangle(
+            panel_x,
+            0.0,
+            300.0,
+            screen_height(),
+            Color::from_rgba(25, 31, 40, 248),
         );
-        draw_text(
-            "Escape: return to menu",
-            center_x - 105.0,
-            center_y + 180.0,
-            16.0,
-            GRAY,
+        draw_rectangle(panel_x, 0.0, 300.0, 58.0, Color::from_rgba(39, 50, 63, 255));
+        draw_text("SPAWN", panel_x + 18.0, 37.0, 24.0, WHITE);
+
+        draw_rectangle(
+            width - 60.0,
+            10.0,
+            42.0,
+            38.0,
+            Color::from_rgba(78, 91, 105, 255),
         );
+        draw_text("x", width - 47.0, 38.0, 22.0, WHITE);
+
+        let categories = [
+            SpawnCategory::Pistols,
+            SpawnCategory::Weapons,
+            SpawnCategory::Melons,
+            SpawnCategory::Mechanisms,
+        ];
+        let tab_width = 75.0;
+
+        for (index, category) in categories.iter().enumerate() {
+            let x = panel_x + index as f32 * tab_width;
+            let active = *category == state.spawn_category;
+            draw_rectangle(
+                x,
+                58.0,
+                tab_width,
+                58.0,
+                if active {
+                    Color::from_rgba(62, 126, 91, 255)
+                } else {
+                    Color::from_rgba(45, 55, 68, 255)
+                },
+            );
+
+            let label = match category {
+                SpawnCategory::Pistols => "PIST",
+                SpawnCategory::Weapons => "WEAP",
+                SpawnCategory::Melons => "MEL",
+                SpawnCategory::Mechanisms => "MECH",
+            };
+            let text_width = measure_text(label, None, 14, 1.0).width;
+            draw_text(label, x + (tab_width - text_width) * 0.5, 91.0, 14.0, WHITE);
+        }
+
+        for (index, item) in state.spawn_category.items().iter().enumerate() {
+            let y = 126.0 + index as f32 * 58.0;
+            draw_rectangle(
+                panel_x + 12.0,
+                y,
+                276.0,
+                48.0,
+                Color::from_rgba(48, 59, 72, 255),
+            );
+            draw_rectangle(
+                panel_x + 22.0,
+                y + 8.0,
+                32.0,
+                32.0,
+                self.item_color(state.spawn_category, index),
+            );
+            draw_text(item, panel_x + 70.0, y + 31.0, 17.0, WHITE);
+        }
+    }
+
+    fn item_color(&self, category: SpawnCategory, index: usize) -> Color {
+        match category {
+            SpawnCategory::Pistols => Color::from_rgba(120, 128, 140, 255),
+            SpawnCategory::Weapons => {
+                if index == 3 {
+                    Color::from_rgba(155, 180, 195, 255)
+                } else {
+                    Color::from_rgba(90, 102, 115, 255)
+                }
+            }
+            SpawnCategory::Melons => {
+                if index == 1 {
+                    Color::from_rgba(155, 166, 178, 255)
+                } else {
+                    Color::from_rgba(104, 176, 92, 255)
+                }
+            }
+            SpawnCategory::Mechanisms => match index {
+                1 => Color::from_rgba(65, 175, 85, 255),
+                2 => Color::from_rgba(170, 74, 48, 255),
+                _ => Color::from_rgba(150, 105, 62, 255),
+            },
+        }
     }
 
     fn draw_props(&self, state: &GameState) {
@@ -236,14 +322,12 @@ impl Renderer {
     fn draw_explosions(&self, state: &GameState) {
         for explosion in &state.physics.explosions {
             let alpha = (explosion.life / 0.35).clamp(0.0, 1.0);
-
             draw_circle(
                 explosion.position.x,
                 explosion.position.y,
                 explosion.radius * 0.22 * (1.0 - alpha),
                 Color::new(1.0, 0.32, 0.04, alpha * 0.55),
             );
-
             draw_circle_lines(
                 explosion.position.x,
                 explosion.position.y,
@@ -335,10 +419,8 @@ impl Renderer {
             vec2(width, height),
             vec2(-width, height),
         ];
-
         let sin = angle.sin();
         let cos = angle.cos();
-
         let points: Vec<Vec2> = corners
             .iter()
             .map(|point| {
@@ -372,13 +454,7 @@ impl Renderer {
         let width = 220.0;
 
         draw_text("JOINT INTEGRITY", x, y, 16.0, WHITE);
-        draw_rectangle(
-            x,
-            y + 8.0,
-            width,
-            14.0,
-            Color::from_rgba(35, 40, 46, 220),
-        );
+        draw_rectangle(x, y + 8.0, width, 14.0, Color::from_rgba(35, 40, 46, 220));
 
         let color = if ratio > 0.6 {
             Color::from_rgba(65, 185, 92, 255)
@@ -405,7 +481,7 @@ impl Renderer {
             MapKind::Laboratory => Color::from_rgba(25, 49, 53, 255),
         };
 
-        draw_rectangle(0.0, 0.0, screen_width(), 650.0, color);
+        draw_rectangle(0.0, 0.0, 1280.0, 650.0, color);
 
         match map {
             MapKind::TestRange => {
@@ -421,14 +497,7 @@ impl Renderer {
                 }
             }
             MapKind::City => {
-                draw_rectangle(
-                    0.0,
-                    400.0,
-                    1280.0,
-                    250.0,
-                    Color::from_rgba(48, 52, 58, 255),
-                );
-
+                draw_rectangle(0.0, 400.0, 1280.0, 250.0, Color::from_rgba(48, 52, 58, 255));
                 for x in (0..1280).step_by(180) {
                     draw_rectangle(
                         x as f32,
@@ -442,22 +511,8 @@ impl Renderer {
             MapKind::Laboratory => {
                 draw_circle(270.0, 620.0, 70.0, Color::from_rgba(45, 190, 104, 170));
                 draw_circle(930.0, 620.0, 85.0, Color::from_rgba(45, 190, 104, 170));
-                draw_line(
-                    390.0,
-                    120.0,
-                    390.0,
-                    500.0,
-                    8.0,
-                    Color::from_rgba(235, 55, 75, 220),
-                );
-                draw_line(
-                    890.0,
-                    120.0,
-                    890.0,
-                    500.0,
-                    8.0,
-                    Color::from_rgba(235, 55, 75, 220),
-                );
+                draw_line(390.0, 120.0, 390.0, 500.0, 8.0, Color::from_rgba(235, 55, 75, 220));
+                draw_line(890.0, 120.0, 890.0, 500.0, 8.0, Color::from_rgba(235, 55, 75, 220));
             }
         }
     }
@@ -502,64 +557,25 @@ impl Renderer {
         let width = screen_width();
         let height = screen_height();
 
-        draw_circle(
-            100.0,
-            height - 115.0,
-            66.0,
-            Color::from_rgba(30, 38, 47, 190),
-        );
-        draw_circle(
-            100.0,
-            height - 115.0,
-            29.0,
-            Color::from_rgba(122, 137, 146, 220),
-        );
+        draw_circle(100.0, height - 115.0, 66.0, Color::from_rgba(30, 38, 47, 190));
+        draw_circle(100.0, height - 115.0, 29.0, Color::from_rgba(122, 137, 146, 220));
         draw_text("MOVE", 77.0, height - 108.0, 12.0, WHITE);
 
         let fire = vec2(width - 100.0, height - 118.0);
-        draw_circle(
-            fire.x,
-            fire.y,
-            42.0,
-            Color::from_rgba(183, 76, 62, 230),
-        );
+        draw_circle(fire.x, fire.y, 42.0, Color::from_rgba(183, 76, 62, 230));
         draw_text("FIRE", fire.x - 18.0, fire.y + 5.0, 13.0, WHITE);
 
         let weapon = vec2(width - 270.0, height - 170.0);
-        draw_circle(
-            weapon.x,
-            weapon.y,
-            36.0,
-            Color::from_rgba(76, 93, 136, 235),
-        );
+        draw_circle(weapon.x, weapon.y, 36.0, Color::from_rgba(76, 93, 136, 235));
         draw_text("WEAPON", weapon.x - 25.0, weapon.y + 4.0, 11.0, WHITE);
 
         let grenade = vec2(width - 190.0, height - 205.0);
-        draw_circle(
-            grenade.x,
-            grenade.y,
-            36.0,
-            Color::from_rgba(65, 145, 80, 235),
-        );
+        draw_circle(grenade.x, grenade.y, 36.0, Color::from_rgba(65, 145, 80, 235));
         draw_text("G", grenade.x - 5.0, grenade.y + 7.0, 22.0, WHITE);
 
         let barrel = vec2(width - 105.0, height - 205.0);
-        draw_circle(
-            barrel.x,
-            barrel.y,
-            36.0,
-            Color::from_rgba(170, 74, 48, 235),
-        );
+        draw_circle(barrel.x, barrel.y, 36.0, Color::from_rgba(170, 74, 48, 235));
         draw_text("B", barrel.x - 6.0, barrel.y + 7.0, 22.0, WHITE);
-
-        let box_control = vec2(width - 192.0, height - 90.0);
-        draw_circle(
-            box_control.x,
-            box_control.y,
-            27.0,
-            Color::from_rgba(126, 91, 55, 235),
-        );
-        draw_text("+", box_control.x - 8.0, box_control.y + 8.0, 25.0, WHITE);
     }
 
     fn draw_button(

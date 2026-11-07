@@ -7,7 +7,7 @@ use macroquad::prelude::*;
 
 use input::{Action, InputState};
 use render::Renderer;
-use state::{GameMode, GameState};
+use state::{GameMode, GameState, SpawnCategory};
 
 pub struct Game {
     state: GameState,
@@ -25,7 +25,20 @@ impl Game {
     }
 
     pub fn update(&mut self) {
-        self.input.update();
+        self.input.update(self.state.spawn_menu_open);
+
+        if self.input.spawn_toggle_pressed() {
+            self.state.spawn_menu_open = !self.state.spawn_menu_open;
+        }
+
+        if let Some(tab) = self.input.spawn_tab() {
+            self.state.spawn_category = match tab {
+                0 => SpawnCategory::Pistols,
+                1 => SpawnCategory::Weapons,
+                2 => SpawnCategory::Melons,
+                _ => SpawnCategory::Mechanisms,
+            };
+        }
 
         if matches!(self.state.mode, GameMode::Playing | GameMode::Paused) {
             self.state.camera.apply_gesture(
@@ -55,6 +68,10 @@ impl Game {
 
                 if self.input.next_weapon_pressed() {
                     self.state.physics.cycle_weapon();
+                }
+
+                if let Some(item) = self.input.spawn_item() {
+                    self.spawn_menu_item(item);
                 }
 
                 match self.input.action() {
@@ -102,6 +119,40 @@ impl Game {
                     self.state.mode = GameMode::MainMenu;
                 }
             }
+        }
+    }
+
+    fn spawn_menu_item(&mut self, item: usize) {
+        let position = rapier2d::prelude::Vector::new(780.0, 180.0);
+
+        match self.state.spawn_category {
+            SpawnCategory::Pistols | SpawnCategory::Weapons => {
+                self.state.physics.cycle_weapon();
+                self.state.physics.spawn_box(
+                    position,
+                    rapier2d::prelude::Vector::new(38.0, 10.0),
+                );
+            }
+            SpawnCategory::Melons => {
+                let size = if item == 1 {
+                    rapier2d::prelude::Vector::new(34.0, 34.0)
+                } else {
+                    rapier2d::prelude::Vector::new(28.0, 28.0)
+                };
+                self.state.physics.spawn_box(position, size);
+            }
+            SpawnCategory::Mechanisms => match item {
+                0 => self.state.physics.spawn_box(
+                    position,
+                    rapier2d::prelude::Vector::new(34.0, 34.0),
+                ),
+                1 => self.state.physics.spawn_grenade(),
+                2 => self.state.physics.spawn_barrel(),
+                _ => self.state.physics.spawn_box(
+                    position,
+                    rapier2d::prelude::Vector::new(90.0, 14.0),
+                ),
+            },
         }
     }
 
