@@ -1,6 +1,6 @@
 use macroquad::prelude::*;
 
-use super::physics::{CharacterKind, MapKind, PropKind, Ragdoll};
+use super::physics::{CharacterKind, MapKind, PropKind, Ragdoll, WeaponKind};
 use super::state::{GameState, SpawnCategory};
 
 pub struct Renderer;
@@ -62,6 +62,7 @@ impl Renderer {
 
         set_camera(&state.camera.macroquad_camera());
         self.draw_background(state.map);
+
         draw_rectangle(
             0.0,
             650.0,
@@ -174,7 +175,13 @@ impl Renderer {
 
     fn draw_spawn_toggle(&self) {
         let x = screen_width() - 68.0;
-        draw_rectangle(x, 10.0, 58.0, 48.0, Color::from_rgba(38, 48, 60, 245));
+        draw_rectangle(
+            x,
+            10.0,
+            58.0,
+            48.0,
+            Color::from_rgba(38, 48, 60, 245),
+        );
         draw_text("+", x + 17.0, 45.0, 32.0, WHITE);
     }
 
@@ -189,7 +196,13 @@ impl Renderer {
             screen_height(),
             Color::from_rgba(25, 31, 40, 248),
         );
-        draw_rectangle(panel_x, 0.0, 300.0, 58.0, Color::from_rgba(39, 50, 63, 255));
+        draw_rectangle(
+            panel_x,
+            0.0,
+            300.0,
+            58.0,
+            Color::from_rgba(39, 50, 63, 255),
+        );
         draw_text("SPAWN", panel_x + 18.0, 37.0, 24.0, WHITE);
 
         draw_rectangle(
@@ -212,6 +225,7 @@ impl Renderer {
         for (index, category) in categories.iter().enumerate() {
             let x = panel_x + index as f32 * tab_width;
             let active = *category == state.spawn_category;
+
             draw_rectangle(
                 x,
                 58.0,
@@ -231,11 +245,18 @@ impl Renderer {
                 SpawnCategory::Mechanisms => "MECH",
             };
             let text_width = measure_text(label, None, 14, 1.0).width;
-            draw_text(label, x + (tab_width - text_width) * 0.5, 91.0, 14.0, WHITE);
+            draw_text(
+                label,
+                x + (tab_width - text_width) * 0.5,
+                91.0,
+                14.0,
+                WHITE,
+            );
         }
 
         for (index, item) in state.spawn_category.items().iter().enumerate() {
             let y = 126.0 + index as f32 * 58.0;
+
             draw_rectangle(
                 panel_x + 12.0,
                 y,
@@ -256,24 +277,28 @@ impl Renderer {
 
     fn item_color(&self, category: SpawnCategory, index: usize) -> Color {
         match category {
-            SpawnCategory::Pistols => Color::from_rgba(120, 128, 140, 255),
-            SpawnCategory::Weapons => {
-                if index == 3 {
-                    Color::from_rgba(155, 180, 195, 255)
-                } else {
-                    Color::from_rgba(90, 102, 115, 255)
-                }
-            }
+            SpawnCategory::Pistols => match index {
+                1 => Color::from_rgba(82, 91, 104, 255),
+                2 => Color::from_rgba(165, 125, 76, 255),
+                _ => Color::from_rgba(120, 128, 140, 255),
+            },
+            SpawnCategory::Weapons => match index {
+                1 => Color::from_rgba(128, 92, 63, 255),
+                2 => Color::from_rgba(145, 86, 49, 255),
+                3 => Color::from_rgba(185, 195, 202, 255),
+                _ => Color::from_rgba(76, 91, 108, 255),
+            },
             SpawnCategory::Melons => {
                 if index == 1 {
-                    Color::from_rgba(155, 166, 178, 255)
+                    Color::from_rgba(156, 166, 176, 255)
                 } else {
-                    Color::from_rgba(104, 176, 92, 255)
+                    Color::from_rgba(106, 175, 92, 255)
                 }
             }
             SpawnCategory::Mechanisms => match index {
                 1 => Color::from_rgba(65, 175, 85, 255),
                 2 => Color::from_rgba(170, 74, 48, 255),
+                3 => Color::from_rgba(110, 123, 135, 255),
                 _ => Color::from_rgba(150, 105, 62, 255),
             },
         }
@@ -285,43 +310,364 @@ impl Renderer {
                 continue;
             }
 
-            if let Some(position) = state.physics.body_position(prop.body) {
-                let color = Color::from_rgba(
-                    prop.color[0],
-                    prop.color[1],
-                    prop.color[2],
-                    prop.color[3],
-                );
+            let Some(position) = state.physics.body_position(prop.body) else {
+                continue;
+            };
 
-                self.draw_rotated_rectangle(
-                    vec2(position.translation.x, position.translation.y),
+            let center = vec2(position.translation.x, position.translation.y);
+            let angle = position.rotation.angle();
+
+            match prop.kind {
+                PropKind::Weapon => {
+                    self.draw_weapon(
+                        center,
+                        angle,
+                        prop.half_width,
+                        prop.half_height,
+                        prop.color,
+                    );
+                }
+                PropKind::Character => {
+                    if (prop.half_width - prop.half_height).abs() < 0.5 {
+                        self.draw_melon_prop(center, angle, prop.half_width);
+                    } else {
+                        self.draw_robot_prop(center, angle, prop.half_width, prop.half_height);
+                    }
+                }
+                PropKind::Grenade => self.draw_grenade(center, angle, prop.timer),
+                PropKind::Barrel => self.draw_barrel(
+                    center,
+                    angle,
                     prop.half_width,
                     prop.half_height,
-                    position.rotation.angle(),
-                    color,
-                );
-
-                if prop.kind == PropKind::Grenade {
-                    draw_circle(position.translation.x, position.translation.y, 5.0, YELLOW);
+                ),
+                PropKind::Box => self.draw_box_prop(
+                    center,
+                    angle,
+                    prop.half_width,
+                    prop.half_height,
+                    prop.durability,
+                ),
+                PropKind::Platform => {
+                    self.draw_platform(center, angle, prop.half_width, prop.half_height);
                 }
+                PropKind::Projectile => {
+                    let velocity = state
+                        .physics
+                        .bodies
+                        .get(prop.body)
+                        .map(|body| body.linvel())
+                        .unwrap_or(vector![1.0, 0.0]);
+                    let projectile_angle = velocity.y.atan2(velocity.x);
 
-                if prop.kind == PropKind::Barrel {
-                    draw_line(
-                        position.translation.x - prop.half_width * 0.7,
-                        position.translation.y,
-                        position.translation.x + prop.half_width * 0.7,
-                        position.translation.y,
-                        3.0,
-                        Color::from_rgba(75, 35, 30, 255),
+                    self.draw_rotated_rectangle(
+                        center,
+                        prop.half_width.max(4.0),
+                        prop.half_height,
+                        projectile_angle,
+                        Color::from_rgba(242, 217, 91, 255),
+                    );
+                    draw_circle(center.x, center.y, 3.0, WHITE);
+                }
+                PropKind::Static => {
+                    self.draw_rotated_rectangle(
+                        center,
+                        prop.half_width,
+                        prop.half_height,
+                        angle,
+                        Color::from_rgba(
+                            prop.color[0],
+                            prop.color[1],
+                            prop.color[2],
+                            prop.color[3],
+                        ),
                     );
                 }
             }
         }
     }
 
+    fn draw_weapon(
+        &self,
+        center: Vec2,
+        angle: f32,
+        half_width: f32,
+        half_height: f32,
+        raw_color: [u8; 4],
+    ) {
+        let color = Color::from_rgba(raw_color[0], raw_color[1], raw_color[2], raw_color[3]);
+        let dark = Color::from_rgba(26, 30, 35, 255);
+        let width = half_width * 2.0;
+
+        self.draw_rotated_rectangle(center, half_width, half_height, angle, color);
+
+        if width >= 88.0 {
+            let stock = self.rotated_point(center, angle, -half_width + 12.0, 0.0);
+            let barrel_start = self.rotated_point(center, angle, half_width * 0.35, -2.0);
+            let barrel_end = self.rotated_point(center, angle, half_width + 13.0, -2.0);
+
+            self.draw_rotated_rectangle(
+                self.rotated_point(center, angle, -half_width * 0.55, half_height + 6.0),
+                half_width * 0.22,
+                8.0,
+                angle,
+                dark,
+            );
+            draw_line(
+                barrel_start.x,
+                barrel_start.y,
+                barrel_end.x,
+                barrel_end.y,
+                4.0,
+                dark,
+            );
+            draw_circle(stock.x, stock.y, 3.0, WHITE);
+        } else if width >= 70.0 {
+            let barrel_start = self.rotated_point(center, angle, half_width * 0.3, 0.0);
+            let barrel_end = self.rotated_point(center, angle, half_width + 11.0, 0.0);
+
+            draw_line(
+                barrel_start.x,
+                barrel_start.y,
+                barrel_end.x,
+                barrel_end.y,
+                5.0,
+                dark,
+            );
+            self.draw_rotated_rectangle(
+                self.rotated_point(center, angle, -half_width * 0.25, half_height + 8.0),
+                7.0,
+                10.0,
+                angle,
+                dark,
+            );
+        } else if width >= 55.0 {
+            let grip = self.rotated_point(center, angle, -half_width * 0.25, half_height + 9.0);
+
+            self.draw_rotated_rectangle(grip, 8.0, 14.0, angle, dark);
+            draw_circle(
+                self.rotated_point(center, angle, half_width * 0.35, 0.0).x,
+                self.rotated_point(center, angle, half_width * 0.35, 0.0).y,
+                3.0,
+                YELLOW,
+            );
+        } else {
+            let grip = self.rotated_point(center, angle, -half_width * 0.25, half_height + 7.0);
+            self.draw_rotated_rectangle(grip, 7.0, 11.0, angle, dark);
+            draw_circle(
+                self.rotated_point(center, angle, half_width * 0.35, 0.0).x,
+                self.rotated_point(center, angle, half_width * 0.35, 0.0).y,
+                2.5,
+                YELLOW,
+            );
+        }
+    }
+
+    fn draw_melon_prop(&self, center: Vec2, angle: f32, radius: f32) {
+        draw_circle(center.x, center.y, radius, Color::from_rgba(106, 175, 92, 255));
+        draw_circle_lines(center.x, center.y, radius, 2.0, Color::from_rgba(38, 76, 47, 255));
+
+        for offset in [-0.62_f32, -0.2, 0.22, 0.64] {
+            let start = self.rotated_point(
+                center,
+                angle,
+                offset * radius,
+                -radius * 0.78,
+            );
+            let end = self.rotated_point(
+                center,
+                angle,
+                offset * radius,
+                radius * 0.78,
+            );
+            draw_line(
+                start.x,
+                start.y,
+                end.x,
+                end.y,
+                2.0,
+                Color::from_rgba(62, 125, 65, 230),
+            );
+        }
+
+        let left_eye = self.rotated_point(center, angle, -radius * 0.28, -radius * 0.2);
+        let right_eye = self.rotated_point(center, angle, radius * 0.28, -radius * 0.2);
+        draw_circle(left_eye.x, left_eye.y, radius * 0.09, DARKGRAY);
+        draw_circle(right_eye.x, right_eye.y, radius * 0.09, DARKGRAY);
+
+        let mouth_left = self.rotated_point(center, angle, -radius * 0.2, radius * 0.2);
+        let mouth_right = self.rotated_point(center, angle, radius * 0.2, radius * 0.2);
+        draw_line(
+            mouth_left.x,
+            mouth_left.y,
+            mouth_right.x,
+            mouth_right.y,
+            2.0,
+            Color::from_rgba(45, 74, 44, 255),
+        );
+    }
+
+    fn draw_robot_prop(&self, center: Vec2, angle: f32, half_width: f32, half_height: f32) {
+        let body = Color::from_rgba(156, 166, 176, 255);
+        let dark = Color::from_rgba(62, 72, 82, 255);
+        let light = Color::from_rgba(208, 216, 219, 255);
+
+        self.draw_rotated_rectangle(center, half_width, half_height, angle, body);
+        self.draw_rotated_rectangle(
+            self.rotated_point(center, angle, 0.0, -half_height * 0.25),
+            half_width * 0.62,
+            half_height * 0.3,
+            angle,
+            dark,
+        );
+
+        let eye_left = self.rotated_point(center, angle, -half_width * 0.28, -half_height * 0.24);
+        let eye_right = self.rotated_point(center, angle, half_width * 0.28, -half_height * 0.24);
+        draw_circle(eye_left.x, eye_left.y, 3.5, Color::from_rgba(85, 220, 184, 255));
+        draw_circle(eye_right.x, eye_right.y, 3.5, Color::from_rgba(85, 220, 184, 255));
+
+        draw_line(
+            self.rotated_point(center, angle, -half_width * 0.55, half_height * 0.4).x,
+            self.rotated_point(center, angle, -half_width * 0.55, half_height * 0.4).y,
+            self.rotated_point(center, angle, half_width * 0.55, half_height * 0.4).x,
+            self.rotated_point(center, angle, half_width * 0.55, half_height * 0.4).y,
+            3.0,
+            light,
+        );
+    }
+
+    fn draw_grenade(&self, center: Vec2, angle: f32, timer: f32) {
+        draw_circle(center.x, center.y, 14.0, Color::from_rgba(65, 175, 85, 255));
+        draw_circle_lines(center.x, center.y, 14.0, 2.0, Color::from_rgba(27, 78, 45, 255));
+
+        let neck = self.rotated_point(center, angle, 0.0, -13.0);
+        self.draw_rotated_rectangle(neck, 5.0, 4.0, angle, Color::from_rgba(65, 70, 72, 255));
+
+        let pin_left = self.rotated_point(center, angle, -4.0, -18.0);
+        let pin_right = self.rotated_point(center, angle, 5.0, -18.0);
+        draw_line(
+            pin_left.x,
+            pin_left.y,
+            pin_right.x,
+            pin_right.y,
+            2.0,
+            LIGHTGRAY,
+        );
+
+        let pulse = if timer > 0.0 {
+            (3.0 - timer).sin().abs()
+        } else {
+            1.0
+        };
+        draw_circle(center.x, center.y, 3.0 + pulse * 2.0, Color::from_rgba(245, 210, 75, 255));
+    }
+
+    fn draw_barrel(&self, center: Vec2, angle: f32, half_width: f32, half_height: f32) {
+        let body = Color::from_rgba(170, 74, 48, 255);
+        let dark = Color::from_rgba(75, 35, 30, 255);
+
+        self.draw_rotated_rectangle(center, half_width, half_height, angle, body);
+
+        for offset in [-0.58_f32, 0.0, 0.58] {
+            let point = self.rotated_point(center, angle, offset * half_width, 0.0);
+            draw_line(
+                self.rotated_point(point, angle, 0.0, -half_height).x,
+                self.rotated_point(point, angle, 0.0, -half_height).y,
+                self.rotated_point(point, angle, 0.0, half_height).x,
+                self.rotated_point(point, angle, 0.0, half_height).y,
+                3.0,
+                dark,
+            );
+        }
+
+        let cap_top = self.rotated_point(center, angle, 0.0, -half_height + 5.0);
+        let cap_bottom = self.rotated_point(center, angle, 0.0, half_height - 5.0);
+        draw_line(
+            self.rotated_point(cap_top, angle, -half_width, 0.0).x,
+            self.rotated_point(cap_top, angle, -half_width, 0.0).y,
+            self.rotated_point(cap_top, angle, half_width, 0.0).x,
+            self.rotated_point(cap_top, angle, half_width, 0.0).y,
+            2.0,
+            LIGHTGRAY,
+        );
+        draw_line(
+            self.rotated_point(cap_bottom, angle, -half_width, 0.0).x,
+            self.rotated_point(cap_bottom, angle, -half_width, 0.0).y,
+            self.rotated_point(cap_bottom, angle, half_width, 0.0).x,
+            self.rotated_point(cap_bottom, angle, half_width, 0.0).y,
+            2.0,
+            LIGHTGRAY,
+        );
+    }
+
+    fn draw_box_prop(&self, center: Vec2, angle: f32, half_width: f32, half_height: f32, durability: f32) {
+        let wood = Color::from_rgba(156, 101, 58, 255);
+        let dark = Color::from_rgba(84, 53, 35, 255);
+
+        self.draw_rotated_rectangle(center, half_width, half_height, angle, wood);
+
+        let horizontal_left = self.rotated_point(center, angle, -half_width, 0.0);
+        let horizontal_right = self.rotated_point(center, angle, half_width, 0.0);
+        draw_line(
+            horizontal_left.x,
+            horizontal_left.y,
+            horizontal_right.x,
+            horizontal_right.y,
+            3.0,
+            dark,
+        );
+
+        let vertical_top = self.rotated_point(center, angle, 0.0, -half_height);
+        let vertical_bottom = self.rotated_point(center, angle, 0.0, half_height);
+        draw_line(
+            vertical_top.x,
+            vertical_top.y,
+            vertical_bottom.x,
+            vertical_bottom.y,
+            3.0,
+            dark,
+        );
+
+        if durability.is_finite() {
+            let ratio = (durability / 3.0).clamp(0.0, 1.0);
+            let bar_center = self.rotated_point(center, angle, 0.0, -half_height - 7.0);
+            draw_line(
+                bar_center.x - half_width,
+                bar_center.y,
+                bar_center.x + half_width,
+                bar_center.y,
+                3.0,
+                Color::from_rgba(30, 35, 38, 220),
+            );
+            draw_line(
+                bar_center.x - half_width,
+                bar_center.y,
+                bar_center.x - half_width + half_width * 2.0 * ratio,
+                bar_center.y,
+                3.0,
+                Color::from_rgba(80, 205, 101, 255),
+            );
+        }
+    }
+
+    fn draw_platform(&self, center: Vec2, angle: f32, half_width: f32, half_height: f32) {
+        let metal = Color::from_rgba(110, 123, 135, 255);
+        let edge = Color::from_rgba(205, 214, 216, 255);
+
+        self.draw_rotated_rectangle(center, half_width, half_height, angle, metal);
+
+        for offset in [-0.7_f32, -0.35, 0.0, 0.35, 0.7] {
+            let point = self.rotated_point(center, angle, offset * half_width, 0.0);
+            let start = self.rotated_point(point, angle, 0.0, -half_height);
+            let end = self.rotated_point(point, angle, 0.0, half_height);
+            draw_line(start.x, start.y, end.x, end.y, 2.0, edge);
+        }
+    }
+
     fn draw_explosions(&self, state: &GameState) {
         for explosion in &state.physics.explosions {
             let alpha = (explosion.life / 0.35).clamp(0.0, 1.0);
+
             draw_circle(
                 explosion.position.x,
                 explosion.position.y,
@@ -356,9 +702,118 @@ impl Renderer {
         self.draw_part(state, ragdoll.right_lower_leg, 10.0, 34.0, secondary);
 
         if let Some(head) = state.physics.body_position(ragdoll.head) {
-            draw_circle(head.translation.x - 9.0, head.translation.y - 5.0, 4.0, DARKGRAY);
-            draw_circle(head.translation.x + 9.0, head.translation.y - 5.0, 4.0, DARKGRAY);
+            let center = vec2(head.translation.x, head.translation.y);
+            let angle = head.rotation.angle();
+
+            match character {
+                CharacterKind::Melon => self.draw_melon_head(center, angle),
+                CharacterKind::Robot => self.draw_robot_head(center, angle),
+            }
         }
+
+        if let Some(torso) = state.physics.body_position(ragdoll.torso) {
+            let center = vec2(torso.translation.x, torso.translation.y);
+            let angle = torso.rotation.angle();
+
+            match character {
+                CharacterKind::Melon => {
+                    let leaf = self.rotated_point(center, angle, 0.0, -45.0);
+                    draw_circle(leaf.x, leaf.y, 7.0, Color::from_rgba(48, 113, 55, 255));
+                    draw_line(
+                        self.rotated_point(center, angle, -17.0, 0.0).x,
+                        self.rotated_point(center, angle, -17.0, 0.0).y,
+                        self.rotated_point(center, angle, 17.0, 0.0).x,
+                        self.rotated_point(center, angle, 17.0, 0.0).y,
+                        3.0,
+                        Color::from_rgba(47, 91, 50, 220),
+                    );
+                }
+                CharacterKind::Robot => {
+                    self.draw_rotated_rectangle(
+                        self.rotated_point(center, angle, 0.0, -8.0),
+                        12.0,
+                        5.0,
+                        angle,
+                        Color::from_rgba(77, 212, 180, 255),
+                    );
+                    draw_line(
+                        self.rotated_point(center, angle, -18.0, 18.0).x,
+                        self.rotated_point(center, angle, -18.0, 18.0).y,
+                        self.rotated_point(center, angle, 18.0, 18.0).x,
+                        self.rotated_point(center, angle, 18.0, 18.0).y,
+                        3.0,
+                        Color::from_rgba(70, 80, 90, 255),
+                    );
+                }
+            }
+        }
+    }
+
+    fn draw_melon_head(&self, center: Vec2, angle: f32) {
+        draw_circle(center.x, center.y, 27.0, Color::from_rgba(106, 175, 92, 255));
+        draw_circle_lines(center.x, center.y, 27.0, 2.0, Color::from_rgba(38, 76, 47, 255));
+
+        for offset in [-0.55_f32, -0.18, 0.2, 0.58] {
+            let start = self.rotated_point(center, angle, offset * 27.0, -23.0);
+            let end = self.rotated_point(center, angle, offset * 27.0, 23.0);
+            draw_line(
+                start.x,
+                start.y,
+                end.x,
+                end.y,
+                2.0,
+                Color::from_rgba(62, 125, 65, 230),
+            );
+        }
+
+        let left_eye = self.rotated_point(center, angle, -8.0, -5.0);
+        let right_eye = self.rotated_point(center, angle, 8.0, -5.0);
+        draw_circle(left_eye.x, left_eye.y, 3.5, DARKGRAY);
+        draw_circle(right_eye.x, right_eye.y, 3.5, DARKGRAY);
+
+        let mouth_left = self.rotated_point(center, angle, -7.0, 8.0);
+        let mouth_right = self.rotated_point(center, angle, 7.0, 8.0);
+        draw_line(
+            mouth_left.x,
+            mouth_left.y,
+            mouth_right.x,
+            mouth_right.y,
+            2.0,
+            Color::from_rgba(45, 74, 44, 255),
+        );
+    }
+
+    fn draw_robot_head(&self, center: Vec2, angle: f32) {
+        self.draw_rotated_rectangle(
+            center,
+            27.0,
+            27.0,
+            angle,
+            Color::from_rgba(156, 166, 176, 255),
+        );
+        self.draw_rotated_rectangle(
+            self.rotated_point(center, angle, 0.0, -5.0),
+            18.0,
+            9.0,
+            angle,
+            Color::from_rgba(62, 72, 82, 255),
+        );
+
+        let left_eye = self.rotated_point(center, angle, -8.0, -5.0);
+        let right_eye = self.rotated_point(center, angle, 8.0, -5.0);
+        draw_circle(left_eye.x, left_eye.y, 3.5, Color::from_rgba(85, 220, 184, 255));
+        draw_circle(right_eye.x, right_eye.y, 3.5, Color::from_rgba(85, 220, 184, 255));
+
+        let antenna = self.rotated_point(center, angle, 0.0, -30.0);
+        draw_line(
+            self.rotated_point(center, angle, 0.0, -27.0).x,
+            self.rotated_point(center, angle, 0.0, -27.0).y,
+            antenna.x,
+            antenna.y,
+            2.0,
+            LIGHTGRAY,
+        );
+        draw_circle(antenna.x, antenna.y, 3.0, Color::from_rgba(85, 220, 184, 255));
     }
 
     fn draw_part(
@@ -383,6 +838,13 @@ impl Renderer {
     ) {
         if let Some(position) = state.physics.body_position(handle) {
             draw_circle(position.translation.x, position.translation.y, radius, color);
+            draw_circle_lines(
+                position.translation.x,
+                position.translation.y,
+                radius,
+                2.0,
+                Color::from_rgba(30, 45, 42, 220),
+            );
         }
     }
 
@@ -419,16 +881,9 @@ impl Renderer {
             vec2(width, height),
             vec2(-width, height),
         ];
-        let sin = angle.sin();
-        let cos = angle.cos();
         let points: Vec<Vec2> = corners
             .iter()
-            .map(|point| {
-                vec2(
-                    center.x + point.x * cos - point.y * sin,
-                    center.y + point.x * sin + point.y * cos,
-                )
-            })
+            .map(|point| self.rotated_point(center, angle, point.x, point.y))
             .collect();
 
         draw_triangle(points[0], points[1], points[2], color);
@@ -447,6 +902,16 @@ impl Renderer {
         }
     }
 
+    fn rotated_point(&self, center: Vec2, angle: f32, local_x: f32, local_y: f32) -> Vec2 {
+        let sin = angle.sin();
+        let cos = angle.cos();
+
+        vec2(
+            center.x + local_x * cos - local_y * sin,
+            center.y + local_x * sin + local_y * cos,
+        )
+    }
+
     fn draw_joint_health(&self, state: &GameState) {
         let ratio = state.physics.joint_health_ratio();
         let x = screen_width() - 260.0;
@@ -454,7 +919,13 @@ impl Renderer {
         let width = 220.0;
 
         draw_text("JOINT INTEGRITY", x, y, 16.0, WHITE);
-        draw_rectangle(x, y + 8.0, width, 14.0, Color::from_rgba(35, 40, 46, 220));
+        draw_rectangle(
+            x,
+            y + 8.0,
+            width,
+            14.0,
+            Color::from_rgba(35, 40, 46, 220),
+        );
 
         let color = if ratio > 0.6 {
             Color::from_rgba(65, 185, 92, 255)
@@ -497,7 +968,13 @@ impl Renderer {
                 }
             }
             MapKind::City => {
-                draw_rectangle(0.0, 400.0, 1280.0, 250.0, Color::from_rgba(48, 52, 58, 255));
+                draw_rectangle(
+                    0.0,
+                    400.0,
+                    1280.0,
+                    250.0,
+                    Color::from_rgba(48, 52, 58, 255),
+                );
                 for x in (0..1280).step_by(180) {
                     draw_rectangle(
                         x as f32,
@@ -511,8 +988,22 @@ impl Renderer {
             MapKind::Laboratory => {
                 draw_circle(270.0, 620.0, 70.0, Color::from_rgba(45, 190, 104, 170));
                 draw_circle(930.0, 620.0, 85.0, Color::from_rgba(45, 190, 104, 170));
-                draw_line(390.0, 120.0, 390.0, 500.0, 8.0, Color::from_rgba(235, 55, 75, 220));
-                draw_line(890.0, 120.0, 890.0, 500.0, 8.0, Color::from_rgba(235, 55, 75, 220));
+                draw_line(
+                    390.0,
+                    120.0,
+                    390.0,
+                    500.0,
+                    8.0,
+                    Color::from_rgba(235, 55, 75, 220),
+                );
+                draw_line(
+                    890.0,
+                    120.0,
+                    890.0,
+                    500.0,
+                    8.0,
+                    Color::from_rgba(235, 55, 75, 220),
+                );
             }
         }
     }
@@ -557,24 +1048,54 @@ impl Renderer {
         let width = screen_width();
         let height = screen_height();
 
-        draw_circle(100.0, height - 115.0, 66.0, Color::from_rgba(30, 38, 47, 190));
-        draw_circle(100.0, height - 115.0, 29.0, Color::from_rgba(122, 137, 146, 220));
+        draw_circle(
+            100.0,
+            height - 115.0,
+            66.0,
+            Color::from_rgba(30, 38, 47, 190),
+        );
+        draw_circle(
+            100.0,
+            height - 115.0,
+            29.0,
+            Color::from_rgba(122, 137, 146, 220),
+        );
         draw_text("MOVE", 77.0, height - 108.0, 12.0, WHITE);
 
         let fire = vec2(width - 100.0, height - 118.0);
-        draw_circle(fire.x, fire.y, 42.0, Color::from_rgba(183, 76, 62, 230));
+        draw_circle(
+            fire.x,
+            fire.y,
+            42.0,
+            Color::from_rgba(183, 76, 62, 230),
+        );
         draw_text("FIRE", fire.x - 18.0, fire.y + 5.0, 13.0, WHITE);
 
         let weapon = vec2(width - 270.0, height - 170.0);
-        draw_circle(weapon.x, weapon.y, 36.0, Color::from_rgba(76, 93, 136, 235));
+        draw_circle(
+            weapon.x,
+            weapon.y,
+            36.0,
+            Color::from_rgba(76, 93, 136, 235),
+        );
         draw_text("WEAPON", weapon.x - 25.0, weapon.y + 4.0, 11.0, WHITE);
 
         let grenade = vec2(width - 190.0, height - 205.0);
-        draw_circle(grenade.x, grenade.y, 36.0, Color::from_rgba(65, 145, 80, 235));
+        draw_circle(
+            grenade.x,
+            grenade.y,
+            36.0,
+            Color::from_rgba(65, 145, 80, 235),
+        );
         draw_text("G", grenade.x - 5.0, grenade.y + 7.0, 22.0, WHITE);
 
         let barrel = vec2(width - 105.0, height - 205.0);
-        draw_circle(barrel.x, barrel.y, 36.0, Color::from_rgba(170, 74, 48, 235));
+        draw_circle(
+            barrel.x,
+            barrel.y,
+            36.0,
+            Color::from_rgba(170, 74, 48, 235),
+        );
         draw_text("B", barrel.x - 6.0, barrel.y + 7.0, 22.0, WHITE);
     }
 
