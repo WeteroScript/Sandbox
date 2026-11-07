@@ -1,5 +1,4 @@
 use macroquad::prelude::Vec2;
-use rapier2d::prelude::RigidBodyHandle;
 
 use super::mechanisms::{MechanismKind, MechanismWorld};
 use super::physics::PhysicsWorld;
@@ -56,11 +55,4 @@ impl ToggleInteraction for MechanismWorld {
         false
     }
 
-    fn toggle_at_unused_body(
-        &mut self,
-        _physics: &PhysicsWorld,
-        _handle: RigidBodyHandle,
-    ) -> bool {
-        false
-    }
 }
