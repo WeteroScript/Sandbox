@@ -65,7 +65,10 @@ impl MapKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WeaponKind {
     Pistol,
+    SilencedPistol,
+    HeavyPistol,
     Rifle,
+    Shotgun,
     Bat,
     Katana,
 }
@@ -73,8 +76,11 @@ pub enum WeaponKind {
 impl WeaponKind {
     pub fn next(self) -> Self {
         match self {
-            Self::Pistol => Self::Rifle,
-            Self::Rifle => Self::Bat,
+            Self::Pistol => Self::SilencedPistol,
+            Self::SilencedPistol => Self::HeavyPistol,
+            Self::HeavyPistol => Self::Rifle,
+            Self::Rifle => Self::Shotgun,
+            Self::Shotgun => Self::Bat,
             Self::Bat => Self::Katana,
             Self::Katana => Self::Pistol,
         }
@@ -83,7 +89,10 @@ impl WeaponKind {
     pub fn name(self) -> &'static str {
         match self {
             Self::Pistol => "PISTOL",
+            Self::SilencedPistol => "SILENCED PISTOL",
+            Self::HeavyPistol => "HEAVY PISTOL",
             Self::Rifle => "RIFLE",
+            Self::Shotgun => "SHOTGUN",
             Self::Bat => "BAT",
             Self::Katana => "KATANA",
         }
@@ -126,6 +135,9 @@ pub struct Prop {
 pub enum PropKind {
     Static,
     Box,
+    Platform,
+    Weapon,
+    Character,
     Grenade,
     Barrel,
     Projectile,
@@ -223,6 +235,7 @@ impl PhysicsWorld {
         for explosion in &mut self.explosions {
             explosion.life -= dt;
         }
+
         self.explosions.retain(|explosion| explosion.life > 0.0);
     }
 
@@ -235,14 +248,16 @@ impl PhysicsWorld {
             return;
         }
 
-        let direction = vector![direction.x, direction.y];
         let force = match self.character {
             CharacterKind::Melon => 900.0,
             CharacterKind::Robot => 1250.0,
         };
 
         if let Some(torso) = self.bodies.get_mut(self.ragdoll.torso) {
-            torso.add_force(vector![direction.x * force, direction.y * force * 0.2], true);
+            torso.add_force(
+                vector![direction.x * force, direction.y * force * 0.2],
+                true,
+            );
         }
     }
 
@@ -258,10 +273,69 @@ impl PhysicsWorld {
 
         match self.weapon {
             WeaponKind::Pistol => self.spawn_projectile(origin, 1200.0, 8.0),
+            WeaponKind::SilencedPistol => self.spawn_projectile(origin, 1350.0, 7.0),
+            WeaponKind::HeavyPistol => self.spawn_projectile(origin, 1050.0, 18.0),
             WeaponKind::Rifle => self.spawn_projectile(origin, 1800.0, 12.0),
+            WeaponKind::Shotgun => {
+                for offset in [-0.18_f32, -0.09, 0.0, 0.09, 0.18] {
+                    self.spawn_projectile_with_angle(origin, 1250.0, 7.0, offset);
+                }
+            }
             WeaponKind::Bat => self.apply_melee_impulse(origin, 100.0, 700.0),
             WeaponKind::Katana => self.apply_melee_impulse(origin, 130.0, 1100.0),
         }
+    }
+
+    pub fn spawn_weapon(&mut self, position: Vector<Real>, weapon: WeaponKind) {
+        let (half_size, color) = match weapon {
+            WeaponKind::Pistol => (vector![28.0, 8.0], [120, 128, 140, 255]),
+            WeaponKind::SilencedPistol => (vector![34.0, 7.0], [82, 91, 104, 255]),
+            WeaponKind::HeavyPistol => (vector![30.0, 11.0], [165, 125, 76, 255]),
+            WeaponKind::Rifle => (vector![48.0, 7.0], [76, 91, 108, 255]),
+            WeaponKind::Shotgun => (vector![46.0, 10.0], [128, 92, 63, 255]),
+            WeaponKind::Bat => (vector![42.0, 8.0], [145, 86, 49, 255]),
+            WeaponKind::Katana => (vector![58.0, 4.0], [185, 195, 202, 255]),
+        };
+
+        self.spawn_special(
+            position,
+            half_size,
+            PropKind::Weapon,
+            color,
+            -1.0,
+            f32::INFINITY,
+        );
+    }
+
+    pub fn spawn_character_prop(
+        &mut self,
+        position: Vector<Real>,
+        character: CharacterKind,
+    ) {
+        let (half_size, color) = match character {
+            CharacterKind::Melon => (vector![28.0, 28.0], [106, 175, 92, 255]),
+            CharacterKind::Robot => (vector![27.0, 34.0], [156, 166, 176, 255]),
+        };
+
+        self.spawn_special(
+            position,
+            half_size,
+            PropKind::Character,
+            color,
+            -1.0,
+            24.0,
+        );
+    }
+
+    pub fn spawn_platform(&mut self, position: Vector<Real>) {
+        self.spawn_special(
+            position,
+            vector![90.0, 14.0],
+            PropKind::Platform,
+            [110, 123, 135, 255],
+            -1.0,
+            f32::INFINITY,
+        );
     }
 
     pub fn spawn_grenade(&mut self) {
@@ -301,6 +375,7 @@ impl PhysicsWorld {
         for joint in &mut self.joints {
             joint.health -= joint.max_health * 0.45;
         }
+
         self.remove_broken_joints();
     }
 
@@ -337,11 +412,21 @@ impl PhysicsWorld {
             .build();
 
         let body_handle = self.bodies.insert(body);
-        let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
-            .density(if kind == PropKind::Barrel { 1.3 } else { 0.8 })
-            .friction(0.7)
-            .restitution(0.15)
-            .build();
+
+        let collider = if kind == PropKind::Character {
+            ColliderBuilder::ball(half_size.x)
+        } else {
+            ColliderBuilder::cuboid(half_size.x, half_size.y)
+        }
+        .density(match kind {
+            PropKind::Weapon => 0.45,
+            PropKind::Character => 0.7,
+            PropKind::Barrel => 1.3,
+            _ => 0.8,
+        })
+        .friction(0.7)
+        .restitution(0.15)
+        .build();
 
         self.colliders
             .insert_with_parent(collider, body_handle, &mut self.bodies);
@@ -360,10 +445,25 @@ impl PhysicsWorld {
         self.spawn_index = self.spawn_index.wrapping_add(1);
     }
 
-    fn spawn_projectile(&mut self, position: Vector<Real>, speed: f32, damage: f32) {
+    fn spawn_projectile(
+        &mut self,
+        position: Vector<Real>,
+        speed: f32,
+        damage: f32,
+    ) {
+        self.spawn_projectile_with_angle(position, speed, damage, 0.0);
+    }
+
+    fn spawn_projectile_with_angle(
+        &mut self,
+        position: Vector<Real>,
+        speed: f32,
+        damage: f32,
+        angle: f32,
+    ) {
         let body = RigidBodyBuilder::dynamic()
             .translation(position)
-            .linvel(vector![speed, 0.0])
+            .linvel(vector![speed * angle.cos(), speed * angle.sin()])
             .gravity_scale(0.0)
             .ccd_enabled(true)
             .build();
@@ -389,7 +489,12 @@ impl PhysicsWorld {
         });
     }
 
-    fn apply_melee_impulse(&mut self, origin: Vector<Real>, radius: f32, impulse: f32) {
+    fn apply_melee_impulse(
+        &mut self,
+        origin: Vector<Real>,
+        radius: f32,
+        impulse: f32,
+    ) {
         let origin = vector![origin.x, origin.y];
 
         for (_, body) in self.bodies.iter_mut() {
@@ -406,6 +511,7 @@ impl PhysicsWorld {
                 } else {
                     vector![1.0, 0.0]
                 };
+
                 body.apply_impulse(direction * impulse, true);
             }
         }
@@ -433,6 +539,7 @@ impl PhysicsWorld {
                             position.translation.y
                         ]);
                     }
+
                     self.props[index].active = false;
                 }
             }
@@ -466,7 +573,10 @@ impl PhysicsWorld {
                 let target = &self.props[target_index];
 
                 if !target.active
-                    || !matches!(target.kind, PropKind::Box | PropKind::Barrel)
+                    || !matches!(
+                        target.kind,
+                        PropKind::Box | PropKind::Barrel | PropKind::Character
+                    )
                     || target_index == projectile_index
                 {
                     continue;
@@ -532,7 +642,11 @@ impl PhysicsWorld {
         }
 
         for position in detonations {
-            self.explode(macroquad::prelude::vec2(position.x, position.y), 240.0, 1150.0);
+            self.explode(
+                macroquad::prelude::vec2(position.x, position.y),
+                240.0,
+                1150.0,
+            );
         }
     }
 
@@ -555,6 +669,7 @@ impl PhysicsWorld {
                 } else {
                     vector![0.0, -1.0]
                 };
+
                 body.apply_impulse(direction * impulse * falloff, true);
             }
         }
@@ -564,12 +679,17 @@ impl PhysicsWorld {
             .iter()
             .enumerate()
             .filter_map(|(index, prop)| {
-                if !prop.active || !matches!(prop.kind, PropKind::Box | PropKind::Barrel) {
+                if !prop.active
+                    || !matches!(prop.kind, PropKind::Box | PropKind::Barrel)
+                {
                     return None;
                 }
 
                 let body_position = self.body_position(prop.body)?;
-                let point = macroquad::prelude::vec2(body_position.translation.x, body_position.translation.y);
+                let point = macroquad::prelude::vec2(
+                    body_position.translation.x,
+                    body_position.translation.y,
+                );
 
                 if point.distance(position) < radius {
                     Some((index, point))
@@ -594,6 +714,7 @@ impl PhysicsWorld {
         }
 
         self.apply_test_damage();
+
         self.explosions.push(Explosion {
             position,
             radius,
@@ -680,6 +801,7 @@ impl PhysicsWorld {
                 .translation(vector![640.0, 650.0])
                 .build(),
         );
+
         let collider = ColliderBuilder::cuboid(640.0, 25.0)
             .friction(0.8)
             .restitution(0.05)
@@ -709,7 +831,10 @@ impl PhysicsWorld {
     }
 
     fn create_static_box(&mut self, position: Vector<Real>, half_size: Vector<Real>) {
-        let body = self.bodies.insert(RigidBodyBuilder::fixed().translation(position).build());
+        let body = self
+            .bodies
+            .insert(RigidBodyBuilder::fixed().translation(position).build());
+
         let collider = ColliderBuilder::cuboid(half_size.x, half_size.y)
             .friction(0.8)
             .restitution(0.05)
@@ -740,26 +865,106 @@ impl PhysicsWorld {
             CharacterKind::Robot => 1.8,
         };
 
-        let torso = self.create_part(vector![origin.x, origin.y + 70.0], PartShape::Box(24.0, 44.0), density);
-        let head = self.create_part(vector![origin.x, origin.y], PartShape::Circle(27.0), density * 0.8);
-        let left_upper_arm = self.create_part(vector![origin.x - 43.0, origin.y + 66.0], PartShape::Box(10.0, 32.0), density * 0.5);
-        let right_upper_arm = self.create_part(vector![origin.x + 43.0, origin.y + 66.0], PartShape::Box(10.0, 32.0), density * 0.5);
-        let left_lower_arm = self.create_part(vector![origin.x - 70.0, origin.y + 112.0], PartShape::Box(9.0, 28.0), density * 0.4);
-        let right_lower_arm = self.create_part(vector![origin.x + 70.0, origin.y + 112.0], PartShape::Box(9.0, 28.0), density * 0.4);
-        let left_upper_leg = self.create_part(vector![origin.x - 15.0, origin.y + 142.0], PartShape::Box(12.0, 38.0), density * 0.7);
-        let right_upper_leg = self.create_part(vector![origin.x + 15.0, origin.y + 142.0], PartShape::Box(12.0, 38.0), density * 0.7);
-        let left_lower_leg = self.create_part(vector![origin.x - 18.0, origin.y + 198.0], PartShape::Box(10.0, 34.0), density * 0.6);
-        let right_lower_leg = self.create_part(vector![origin.x + 18.0, origin.y + 198.0], PartShape::Box(10.0, 34.0), density * 0.6);
+        let torso = self.create_part(
+            vector![origin.x, origin.y + 70.0],
+            PartShape::Box(24.0, 44.0),
+            density,
+        );
+        let head = self.create_part(
+            vector![origin.x, origin.y],
+            PartShape::Circle(27.0),
+            density * 0.8,
+        );
+        let left_upper_arm = self.create_part(
+            vector![origin.x - 43.0, origin.y + 66.0],
+            PartShape::Box(10.0, 32.0),
+            density * 0.5,
+        );
+        let right_upper_arm = self.create_part(
+            vector![origin.x + 43.0, origin.y + 66.0],
+            PartShape::Box(10.0, 32.0),
+            density * 0.5,
+        );
+        let left_lower_arm = self.create_part(
+            vector![origin.x - 70.0, origin.y + 112.0],
+            PartShape::Box(9.0, 28.0),
+            density * 0.4,
+        );
+        let right_lower_arm = self.create_part(
+            vector![origin.x + 70.0, origin.y + 112.0],
+            PartShape::Box(9.0, 28.0),
+            density * 0.4,
+        );
+        let left_upper_leg = self.create_part(
+            vector![origin.x - 15.0, origin.y + 142.0],
+            PartShape::Box(12.0, 38.0),
+            density * 0.7,
+        );
+        let right_upper_leg = self.create_part(
+            vector![origin.x + 15.0, origin.y + 142.0],
+            PartShape::Box(12.0, 38.0),
+            density * 0.7,
+        );
+        let left_lower_leg = self.create_part(
+            vector![origin.x - 18.0, origin.y + 198.0],
+            PartShape::Box(10.0, 34.0),
+            density * 0.6,
+        );
+        let right_lower_leg = self.create_part(
+            vector![origin.x + 18.0, origin.y + 198.0],
+            PartShape::Box(10.0, 34.0),
+            density * 0.6,
+        );
 
         self.connect(head, torso, point![0.0, 27.0], point![0.0, -44.0]);
-        self.connect(torso, left_upper_arm, point![-24.0, -28.0], point![0.0, -32.0]);
-        self.connect(torso, right_upper_arm, point![24.0, -28.0], point![0.0, -32.0]);
-        self.connect(left_upper_arm, left_lower_arm, point![0.0, 32.0], point![0.0, -28.0]);
-        self.connect(right_upper_arm, right_lower_arm, point![0.0, 32.0], point![0.0, -28.0]);
-        self.connect(torso, left_upper_leg, point![-13.0, 44.0], point![0.0, -38.0]);
-        self.connect(torso, right_upper_leg, point![13.0, 44.0], point![0.0, -38.0]);
-        self.connect(left_upper_leg, left_lower_leg, point![0.0, 38.0], point![0.0, -34.0]);
-        self.connect(right_upper_leg, right_lower_leg, point![0.0, 38.0], point![0.0, -34.0]);
+        self.connect(
+            torso,
+            left_upper_arm,
+            point![-24.0, -28.0],
+            point![0.0, -32.0],
+        );
+        self.connect(
+            torso,
+            right_upper_arm,
+            point![24.0, -28.0],
+            point![0.0, -32.0],
+        );
+        self.connect(
+            left_upper_arm,
+            left_lower_arm,
+            point![0.0, 32.0],
+            point![0.0, -28.0],
+        );
+        self.connect(
+            right_upper_arm,
+            right_lower_arm,
+            point![0.0, 32.0],
+            point![0.0, -28.0],
+        );
+        self.connect(
+            torso,
+            left_upper_leg,
+            point![-13.0, 44.0],
+            point![0.0, -38.0],
+        );
+        self.connect(
+            torso,
+            right_upper_leg,
+            point![13.0, 44.0],
+            point![0.0, -38.0],
+        );
+        self.connect(
+            left_upper_leg,
+            left_lower_leg,
+            point![0.0, 38.0],
+            point![0.0, -34.0],
+        );
+        self.connect(
+            right_upper_leg,
+            right_lower_leg,
+            point![0.0, 38.0],
+            point![0.0, -34.0],
+        );
 
         self.ragdoll = Ragdoll {
             head,
