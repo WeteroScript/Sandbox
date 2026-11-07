@@ -1,4 +1,5 @@
 mod input;
+mod mechanisms;
 mod physics;
 mod render;
 mod state;
@@ -6,6 +7,7 @@ mod state;
 use macroquad::prelude::*;
 
 use input::{Action, InputState};
+use mechanisms::MechanismWorld;
 use physics::{CharacterKind, WeaponKind};
 use render::Renderer;
 use state::{GameMode, GameState, SpawnCategory, SpawnItem};
@@ -15,6 +17,7 @@ pub struct Game {
     input: InputState,
     renderer: Renderer,
     drag_body: Option<rapier2d::prelude::RigidBodyHandle>,
+    mechanisms: MechanismWorld,
 }
 
 impl Game {
@@ -24,6 +27,7 @@ impl Game {
             input: InputState::new(),
             renderer: Renderer::new(),
             drag_body: None,
+            mechanisms: MechanismWorld::new(),
         }
     }
 
@@ -59,10 +63,12 @@ impl Game {
                     self.state.character = self.state.character.next();
                     self.state.rebuild_world();
                     self.drag_body = None;
+                    self.mechanisms.clear();
                 } else if self.input.select_map_pressed() {
                     self.state.map = self.state.map.next();
                     self.state.rebuild_world();
                     self.drag_body = None;
+                    self.mechanisms.clear();
                 } else if self.input.play_pressed() {
                     self.state.mode = GameMode::Playing;
                 } else if self.input.settings_pressed() {
@@ -78,6 +84,8 @@ impl Game {
                 if self.input.next_weapon_pressed() {
                     self.state.physics.cycle_weapon();
                 }
+
+                self.update_mechanism_hotkeys();
 
                 if let Some(item) = self.input.spawn_item() {
                     self.spawn_menu_item(item);
@@ -102,6 +110,7 @@ impl Game {
                 }
 
                 self.state.physics.step(delta_time);
+                self.mechanisms.step(&mut self.state.physics, delta_time);
 
                 if self.input.pause_pressed() {
                     self.state.mode = GameMode::Paused;
@@ -128,6 +137,38 @@ impl Game {
                     self.state.mode = GameMode::MainMenu;
                 }
             }
+        }
+    }
+
+    fn update_mechanism_hotkeys(&mut self) {
+        let position = vec2(780.0, 180.0);
+
+        if is_key_pressed(KeyCode::R) {
+            self.mechanisms.spawn_rod(&self.state.physics, position);
+        }
+
+        if is_key_pressed(KeyCode::Y) {
+            self.mechanisms.spawn_rope(&self.state.physics, position);
+        }
+
+        if is_key_pressed(KeyCode::L) {
+            self.mechanisms.spawn_spring(&self.state.physics, position);
+        }
+
+        if is_key_pressed(KeyCode::T) {
+            self.mechanisms.spawn_piston(&self.state.physics, position);
+        }
+
+        if is_key_pressed(KeyCode::U) {
+            self.mechanisms.spawn_button(&self.state.physics, position);
+        }
+
+        if is_key_pressed(KeyCode::I) {
+            self.mechanisms.spawn_toggle(&self.state.physics, position);
+        }
+
+        if is_key_pressed(KeyCode::O) {
+            self.mechanisms.toggle_next();
         }
     }
 
@@ -307,6 +348,30 @@ impl Game {
             SpawnItem::Grenade => self.state.physics.spawn_grenade(),
             SpawnItem::Barrel => self.state.physics.spawn_barrel(),
             SpawnItem::Platform => self.state.physics.spawn_platform(position),
+            SpawnItem::Rod => {
+                self.mechanisms
+                    .spawn_rod(&self.state.physics, Vec2::new(780.0, 180.0));
+            }
+            SpawnItem::Rope => {
+                self.mechanisms
+                    .spawn_rope(&self.state.physics, Vec2::new(780.0, 180.0));
+            }
+            SpawnItem::Spring => {
+                self.mechanisms
+                    .spawn_spring(&self.state.physics, Vec2::new(780.0, 180.0));
+            }
+            SpawnItem::Piston => {
+                self.mechanisms
+                    .spawn_piston(&self.state.physics, Vec2::new(780.0, 180.0));
+            }
+            SpawnItem::Button => {
+                self.mechanisms
+                    .spawn_button(&self.state.physics, Vec2::new(780.0, 180.0));
+            }
+            SpawnItem::Toggle => {
+                self.mechanisms
+                    .spawn_toggle(&self.state.physics, Vec2::new(780.0, 180.0));
+            }
         }
     }
 

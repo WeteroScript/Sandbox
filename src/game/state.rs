@@ -50,6 +50,12 @@ pub enum SpawnItem {
     Grenade,
     Barrel,
     Platform,
+    Rod,
+    Rope,
+    Spring,
+    Piston,
+    Button,
+    Toggle,
 }
 
 impl SpawnItem {
@@ -69,6 +75,12 @@ impl SpawnItem {
             Self::Grenade => "GRENADE",
             Self::Barrel => "BARREL",
             Self::Platform => "PLATFORM",
+            Self::Rod => "ROD",
+            Self::Rope => "ROPE",
+            Self::Spring => "SPRING",
+            Self::Piston => "PISTON",
+            Self::Button => "BUTTON",
+            Self::Toggle => "TOGGLE",
         }
     }
 }
@@ -105,7 +117,18 @@ impl SpawnCategory {
             Self::Pistols => &["PISTOL", "SILENCED PISTOL", "HEAVY PISTOL"],
             Self::Weapons => &["RIFLE", "SHOTGUN", "BAT", "KATANA"],
             Self::Melons => &["MELON", "ROBOT", "MELON HEAD"],
-            Self::Mechanisms => &["BOX", "GRENADE", "BARREL", "PLATFORM"],
+            Self::Mechanisms => &[
+                "BOX",
+                "GRENADE",
+                "BARREL",
+                "PLATFORM",
+                "ROD",
+                "ROPE",
+                "SPRING",
+                "PISTON",
+                "BUTTON",
+                "TOGGLE",
+            ],
         }
     }
 
@@ -138,6 +161,12 @@ impl SpawnCategory {
                 SpawnItem::Grenade,
                 SpawnItem::Barrel,
                 SpawnItem::Platform,
+                SpawnItem::Rod,
+                SpawnItem::Rope,
+                SpawnItem::Spring,
+                SpawnItem::Piston,
+                SpawnItem::Button,
+                SpawnItem::Toggle,
             ]
             .get(index)
             .copied(),
@@ -174,7 +203,6 @@ impl GameState {
             elapsed: 0.0,
             character,
             map,
-            camera: CameraState::new(),
             physics: PhysicsWorld::new(character, map),
             spawn_menu_open: true,
             spawn_category: SpawnCategory::Pistols,
