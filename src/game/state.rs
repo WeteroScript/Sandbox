@@ -35,6 +35,45 @@ impl CameraState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpawnItem {
+    Pistol,
+    SilencedPistol,
+    HeavyPistol,
+    Rifle,
+    Shotgun,
+    Bat,
+    Katana,
+    Melon,
+    Robot,
+    MelonHead,
+    Box,
+    Grenade,
+    Barrel,
+    Platform,
+}
+
+impl SpawnItem {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Pistol => "PISTOL",
+            Self::SilencedPistol => "SILENCED PISTOL",
+            Self::HeavyPistol => "HEAVY PISTOL",
+            Self::Rifle => "RIFLE",
+            Self::Shotgun => "SHOTGUN",
+            Self::Bat => "BAT",
+            Self::Katana => "KATANA",
+            Self::Melon => "MELON",
+            Self::Robot => "ROBOT",
+            Self::MelonHead => "MELON HEAD",
+            Self::Box => "BOX",
+            Self::Grenade => "GRENADE",
+            Self::Barrel => "BARREL",
+            Self::Platform => "PLATFORM",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpawnCategory {
     Pistols,
     Weapons,
@@ -67,6 +106,41 @@ impl SpawnCategory {
             Self::Weapons => &["RIFLE", "SHOTGUN", "BAT", "KATANA"],
             Self::Melons => &["MELON", "ROBOT", "MELON HEAD"],
             Self::Mechanisms => &["BOX", "GRENADE", "BARREL", "PLATFORM"],
+        }
+    }
+
+    pub fn item(self, index: usize) -> Option<SpawnItem> {
+        match self {
+            Self::Pistols => [
+                SpawnItem::Pistol,
+                SpawnItem::SilencedPistol,
+                SpawnItem::HeavyPistol,
+            ]
+            .get(index)
+            .copied(),
+            Self::Weapons => [
+                SpawnItem::Rifle,
+                SpawnItem::Shotgun,
+                SpawnItem::Bat,
+                SpawnItem::Katana,
+            ]
+            .get(index)
+            .copied(),
+            Self::Melons => [
+                SpawnItem::Melon,
+                SpawnItem::Robot,
+                SpawnItem::MelonHead,
+            ]
+            .get(index)
+            .copied(),
+            Self::Mechanisms => [
+                SpawnItem::Box,
+                SpawnItem::Grenade,
+                SpawnItem::Barrel,
+                SpawnItem::Platform,
+            ]
+            .get(index)
+            .copied(),
         }
     }
 }

@@ -7,7 +7,7 @@ use macroquad::prelude::*;
 
 use input::{Action, InputState};
 use render::Renderer;
-use state::{GameMode, GameState, SpawnCategory};
+use state::{GameMode, GameState, SpawnCategory, SpawnItem};
 
 pub struct Game {
     state: GameState,
@@ -122,37 +122,65 @@ impl Game {
         }
     }
 
-    fn spawn_menu_item(&mut self, item: usize) {
+    fn spawn_menu_item(&mut self, index: usize) {
+        let Some(item) = self.state.spawn_category.item(index) else {
+            return;
+        };
+
         let position = rapier2d::prelude::Vector::new(780.0, 180.0);
 
-        match self.state.spawn_category {
-            SpawnCategory::Pistols | SpawnCategory::Weapons => {
+        match item {
+            SpawnItem::Pistol
+            | SpawnItem::SilencedPistol
+            | SpawnItem::HeavyPistol
+            | SpawnItem::Rifle
+            | SpawnItem::Shotgun => {
                 self.state.physics.cycle_weapon();
                 self.state.physics.spawn_box(
                     position,
                     rapier2d::prelude::Vector::new(38.0, 10.0),
                 );
             }
-            SpawnCategory::Melons => {
-                let size = if item == 1 {
-                    rapier2d::prelude::Vector::new(34.0, 34.0)
-                } else {
-                    rapier2d::prelude::Vector::new(28.0, 28.0)
-                };
-                self.state.physics.spawn_box(position, size);
+            SpawnItem::Melon | SpawnItem::MelonHead => {
+                self.state.physics.spawn_box(
+                    position,
+                    rapier2d::prelude::Vector::new(28.0, 28.0),
+                );
             }
-            SpawnCategory::Mechanisms => match item {
-                0 => self.state.physics.spawn_box(
+            SpawnItem::Robot => {
+                self.state.physics.spawn_box(
                     position,
                     rapier2d::prelude::Vector::new(34.0, 34.0),
-                ),
-                1 => self.state.physics.spawn_grenade(),
-                2 => self.state.physics.spawn_barrel(),
-                _ => self.state.physics.spawn_box(
+                );
+            }
+            SpawnItem::Bat => {
+                self.state.physics.cycle_weapon();
+                self.state.physics.spawn_box(
+                    position,
+                    rapier2d::prelude::Vector::new(42.0, 8.0),
+                );
+            }
+            SpawnItem::Katana => {
+                self.state.physics.cycle_weapon();
+                self.state.physics.spawn_box(
+                    position,
+                    rapier2d::prelude::Vector::new(52.0, 5.0),
+                );
+            }
+            SpawnItem::Box => {
+                self.state.physics.spawn_box(
+                    position,
+                    rapier2d::prelude::Vector::new(34.0, 34.0),
+                );
+            }
+            SpawnItem::Grenade => self.state.physics.spawn_grenade(),
+            SpawnItem::Barrel => self.state.physics.spawn_barrel(),
+            SpawnItem::Platform => {
+                self.state.physics.spawn_box(
                     position,
                     rapier2d::prelude::Vector::new(90.0, 14.0),
-                ),
-            },
+                );
+            }
         }
     }
 
