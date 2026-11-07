@@ -357,7 +357,7 @@ impl Renderer {
                         .physics
                         .bodies
                         .get(prop.body)
-                        .map(|body| body.linvel())
+                        .map(|body| *body.linvel())
                         .unwrap_or(vector![1.0, 0.0]);
                     let projectile_angle = velocity.y.atan2(velocity.x);
 
