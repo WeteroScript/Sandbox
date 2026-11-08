@@ -789,8 +789,9 @@ impl PhysicsWorld {
                         let velocity = *body.linvel();
                         let drag = velocity * (-mass * 1.9);
                         let buoyancy = mass * 1020.0;
+                        let angular_velocity = body.angvel();
                         body.add_force(vector![drag.x, drag.y - buoyancy], true);
-                        body.add_torque(-body.angvel() * mass * 1.6, true);
+                        body.add_torque(-angular_velocity * mass * 1.6, true);
                     }
                 }
             }
