@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <string>
 
 enum class SandboxTool { Grab, Freeze, Clone, Delete };
 enum class SpawnKind { None, Box, Ball, Ragdoll };
@@ -21,7 +22,10 @@ struct UiLayout
     SDL_FRect spawnBall{};
     SDL_FRect spawnRagdoll{};
     SDL_FRect quantityDown{};
+    SDL_FRect quantityLabel{};
     SDL_FRect quantityUp{};
+    SDL_FRect saveButton{};
+    SDL_FRect loadButton{};
     SDL_FRect clearButton{};
 };
 
@@ -66,6 +70,8 @@ private:
     float lastPanY_ = 0.0f;
     float accumulator_ = 0.0f;
     float fps_ = 0.0f;
+    float noticeTimer_ = 0.0f;
+    std::string notice_;
 
     int outputWidth_ = 1280;
     int outputHeight_ = 720;
@@ -78,6 +84,8 @@ private:
     void handlePointerUp();
     void handleUiClick(float x, float y);
     void placeSelected(float worldX, float worldY);
+    void saveScene();
+    void loadScene(bool silent = false);
     void update(float deltaTime);
     void render();
 

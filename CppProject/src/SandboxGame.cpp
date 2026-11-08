@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <string>
 
 namespace
 {
@@ -60,6 +62,7 @@ bool SandboxGame::initialize()
 
     SDL_SetRenderVSync(renderer_, 1);
     SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
+    loadScene(true);
     return true;
 }
 
@@ -136,8 +139,8 @@ UiLayout SandboxGame::makeUiLayout() const
     layout.spawnPanel = {
         margin,
         top + buttonHeight + 10.0f * scale,
-        238.0f * scale,
-        178.0f * scale
+        250.0f * scale,
+        194.0f * scale
     };
 
     const float innerX = layout.spawnPanel.x + 10.0f * scale;
@@ -151,10 +154,15 @@ UiLayout SandboxGame::makeUiLayout() const
     layout.spawnRagdoll = {innerX + 2.0f * (optionWidth + 5.0f * scale),
                            rowY, optionWidth, optionHeight};
 
-    const float controlsY = rowY + 46.0f * scale;
-    layout.quantityDown = {innerX, controlsY, 36.0f * scale, optionHeight};
-    layout.quantityUp = {innerX + 78.0f * scale, controlsY, 36.0f * scale, optionHeight};
-    layout.clearButton = {innerX + 123.0f * scale, controlsY, 91.0f * scale, optionHeight};
+    const float controlsY = rowY + 43.0f * scale;
+    layout.quantityDown = {innerX, controlsY, 34.0f * scale, optionHeight};
+    layout.quantityLabel = {innerX + 37.0f * scale, controlsY, 34.0f * scale, optionHeight};
+    layout.quantityUp = {innerX + 74.0f * scale, controlsY, 34.0f * scale, optionHeight};
+
+    const float actionsY = controlsY + 38.0f * scale;
+    layout.saveButton = {innerX, actionsY, 67.0f * scale, optionHeight};
+    layout.loadButton = {innerX + 72.0f * scale, actionsY, 67.0f * scale, optionHeight};
+    layout.clearButton = {innerX + 144.0f * scale, actionsY, 80.0f * scale, optionHeight};
 
     return layout;
 }
@@ -267,6 +275,12 @@ void SandboxGame::handleKey(SDL_Keycode key)
             break;
         case SDLK_TAB:
             spawnPanelOpen_ = !spawnPanelOpen_;
+            break;
+        case SDLK_F5:
+            saveScene();
+            break;
+        case SDLK_F9:
+            loadScene();
             break;
         case SDLK_MINUS:
         case SDLK_KP_MINUS:
@@ -453,6 +467,14 @@ void SandboxGame::handleUiClick(float x, float y)
     {
         spawnQuantity_ = std::min(10, spawnQuantity_ + 1);
     }
+    else if (pointInRect(x, y, layout.saveButton))
+    {
+        saveScene();
+    }
+    else if (pointInRect(x, y, layout.loadButton))
+    {
+        loadScene();
+    }
     else if (pointInRect(x, y, layout.clearButton))
     {
         physics_.clearDynamic();
@@ -484,8 +506,69 @@ void SandboxGame::placeSelected(float worldX, float worldY)
     }
 }
 
+void SandboxGame::saveScene()
+{
+    char* prefPath = SDL_GetPrefPath("WeteroScript", "Sandbox");
+    if (!prefPath)
+    {
+        notice_ = "Save path unavailable";
+        noticeTimer_ = 3.0f;
+        return;
+    }
+
+    const std::string path = std::string(prefPath) + "sandbox.scene";
+    SDL_free(prefPath);
+    notice_ = physics_.saveToFile(path) ? "Scene saved" : "Save failed";
+    noticeTimer_ = 3.0f;
+}
+
+void SandboxGame::loadScene(bool silent)
+{
+    char* prefPath = SDL_GetPrefPath("WeteroScript", "Sandbox");
+    if (!prefPath)
+    {
+        if (!silent)
+        {
+            notice_ = "Save path unavailable";
+            noticeTimer_ = 3.0f;
+        }
+        return;
+    }
+
+    const std::string path = std::string(prefPath) + "sandbox.scene";
+    SDL_free(prefPath);
+
+    std::ifstream probe(path, std::ios::binary);
+    if (!probe)
+    {
+        if (!silent)
+        {
+            notice_ = "No saved scene";
+            noticeTimer_ = 3.0f;
+        }
+        return;
+    }
+    probe.close();
+
+    const bool loaded = physics_.loadFromFile(path);
+    if (loaded)
+    {
+        grabbedIndex_ = -1;
+        accumulator_ = 0.0f;
+        notice_ = "Scene loaded";
+    }
+    else
+    {
+        notice_ = "Save is invalid";
+    }
+    if (!silent)
+        noticeTimer_ = 3.0f;
+}
+
 void SandboxGame::update(float deltaTime)
 {
+    noticeTimer_ = std::max(0.0f, noticeTimer_ - deltaTime);
+
     if (grabbedIndex_ >= 0 && pointerDown_ && tool_ == SandboxTool::Grab)
     {
         const b2Vec2 world = screenToWorld(pointerX_, pointerY_);
@@ -718,15 +801,17 @@ void SandboxGame::drawUi()
         drawButton(layout.spawnRagdoll, "MELON", spawnKind_ == SpawnKind::Ragdoll);
         drawButton(layout.quantityDown, "-", false);
         drawButton(layout.quantityUp, "+", false);
+        drawButton(layout.saveButton, "SAVE", false);
+        drawButton(layout.loadButton, "LOAD", false);
         drawButton(layout.clearButton, "CLEAR", false);
 
-        char quantity[24];
-        std::snprintf(quantity, sizeof(quantity), "COUNT: %d", spawnQuantity_);
+        char quantity[8];
+        std::snprintf(quantity, sizeof(quantity), "x%d", spawnQuantity_);
         setColor(renderer_, makeColor(236, 241, 247));
         SDL_RenderDebugText(
             renderer_,
-            layout.quantityDown.x + 41.0f * layout.scale,
-            layout.quantityDown.y + 12.0f * layout.scale,
+            layout.quantityLabel.x + 8.0f * layout.scale,
+            layout.quantityLabel.y + 12.0f * layout.scale,
             quantity
         );
 
@@ -737,7 +822,7 @@ void SandboxGame::drawUi()
         SDL_RenderDebugText(
             renderer_,
             layout.spawnPanel.x + 10.0f * layout.scale,
-            layout.spawnPanel.y + 143.0f * layout.scale,
+            layout.spawnPanel.y + 174.0f * layout.scale,
             hint
         );
     }
@@ -753,6 +838,14 @@ void SandboxGame::drawUi()
     );
     setColor(renderer_, makeColor(218, 226, 235));
     SDL_RenderDebugText(renderer_, 14.0f, static_cast<float>(outputHeight_) - 22.0f, status);
+
+    if (noticeTimer_ > 0.0f && !notice_.empty())
+    {
+        setColor(renderer_, makeColor(155, 232, 190));
+        const float textX = static_cast<float>(outputWidth_) * 0.5f -
+                            static_cast<float>(notice_.size()) * 4.0f;
+        SDL_RenderDebugText(renderer_, textX, 58.0f, notice_.c_str());
+    }
 }
 
 void SandboxGame::render()
