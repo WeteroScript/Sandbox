@@ -2239,9 +2239,9 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
     const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
     std::vector<SavedBody> saved;
-    std::vector<b2BodyId> savedBodyIds;
+    std::unordered_map<std::uint64_t, std::int32_t> savedBodyIndices;
     saved.reserve(records_.size());
-    savedBodyIds.reserve(records_.size());
+    savedBodyIndices.reserve(records_.size());
 
     for (const BodyRecord& record : records_)
     {
@@ -2283,8 +2283,9 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         body.breakable = record.breakable;
         body.powerSource = record.powerSource;
         body.batteryCharge = record.batteryCharge;
+        savedBodyIndices.emplace(
+            bodyIdKey(record.id), static_cast<std::int32_t>(saved.size()));
         saved.push_back(body);
-        savedBodyIds.push_back(record.id);
     }
 
     if (saved.size() > 10000)
@@ -2293,15 +2294,12 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
     std::vector<SavedMechanism> savedMechanisms;
     savedMechanisms.reserve(mechanisms_.size());
 
-    const auto savedIndexFor = [&savedBodyIds](b2BodyId id) -> std::int32_t
+    const auto savedIndexFor = [&savedBodyIndices](b2BodyId id) -> std::int32_t
     {
         if (!b2Body_IsValid(id))
             return -1;
-        const auto found = std::find_if(savedBodyIds.begin(), savedBodyIds.end(),
-            [id](b2BodyId candidate) { return sameBodyId(candidate, id); });
-        return found == savedBodyIds.end()
-            ? -1
-            : static_cast<std::int32_t>(found - savedBodyIds.begin());
+        const auto found = savedBodyIndices.find(bodyIdKey(id));
+        return found == savedBodyIndices.end() ? -1 : found->second;
     };
 
     for (const MechanismRecord& mechanism : mechanisms_)
@@ -2599,28 +2597,38 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         loadedIndices.push_back(index);
     }
 
-    for (int index : loadedIndices)
+    std::unordered_map<std::uint64_t, b2BodyId> characterBodyByPart;
+    characterBodyByPart.reserve(loadedIndices.size());
+    const auto characterPartKey = [](int groupId, int partIndex)
+    {
+        return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(groupId)) << 8) |
+               static_cast<std::uint64_t>(static_cast<std::uint8_t>(partIndex));
+    };
+
+    for (const int index : loadedIndices)
+    {
+        const BodyRecord& part = records_[static_cast<std::size_t>(index)];
+        if (part.groupId >= 0 && part.partIndex >= 0)
+            characterBodyByPart.emplace(
+                characterPartKey(part.groupId, part.partIndex), part.id);
+    }
+
+    for (const int index : loadedIndices)
     {
         BodyRecord& child = records_[static_cast<std::size_t>(index)];
         if (child.groupId < 0 || child.parentPart < 0)
             continue;
 
-        const auto parent = std::find_if(records_.begin(), records_.end(),
-            [&child](const BodyRecord& candidate)
-            {
-                return candidate.groupId == child.groupId &&
-                       candidate.partIndex == child.parentPart &&
-                       candidate.selectable;
-            });
-
-        if (parent == records_.end())
+        const auto parent = characterBodyByPart.find(
+            characterPartKey(child.groupId, child.parentPart));
+        if (parent == characterBodyByPart.end() || !b2Body_IsValid(parent->second))
         {
             clearDynamic();
             return false;
         }
 
         connectHingeLocal(
-            parent->id,
+            parent->second,
             child.id,
             child.parentAnchor,
             child.childAnchor,
