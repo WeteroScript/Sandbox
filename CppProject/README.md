@@ -21,7 +21,7 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Group freeze, clone, and delete for ragdolls.
 - Spawn panel for boxes, balls, and Melon ragdolls.
 - Spawn quantity from 1 to 10 and tap-to-place workflow.
-- Mouse and single-touch interaction; dragging on empty space pans the camera.
+- Mouse and touch interaction, including two-finger camera pan and pinch zoom.
 - Versioned scene save/load with body transforms, velocities, dimensions, colors, freeze state, and ragdoll joint links.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
 - Mouse-wheel zoom, pause, and simulation speed controls.
@@ -55,7 +55,8 @@ The output is under `app/build/outputs/apk/debug/`. The GitHub Actions APK workf
 ## Controls
 
 - Mouse or touch: select, drag, and place objects.
-- Middle mouse drag or touch on empty space: pan the camera.
+- Middle mouse drag or one-finger drag on empty space: pan the camera.
+- Two-finger gesture: pan and pinch-zoom the camera.
 - Mouse wheel: zoom.
 - `1`: GRAB.
 - `2`: FREEZE.

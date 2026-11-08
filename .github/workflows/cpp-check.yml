@@ -29,7 +29,7 @@ jobs:
             build-essential cmake ninja-build git \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libibus-1.0-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
-            libxi-dev libxss-dev libxinerama-dev libxkbcommon-dev \
+            libxi-dev libxss-dev libxinerama-dev libxtst-dev libxkbcommon-dev \
             libwayland-dev libdecor-0-dev \
             libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev \
             libdrm-dev libgbm-dev libusb-1.0-0-dev
