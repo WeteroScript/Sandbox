@@ -241,6 +241,9 @@ struct SavedBody
     bool frozen = false;
     b2Vec2 savedVelocity{0.0f, 0.0f};
     float savedAngularVelocity = 0.0f;
+    BucketKind bucketKind = BucketKind::None;
+    float bucketVolume = 0.0f;
+    float acidExposure = 0.0f;
 };
 
 bool writeSavedBody(std::ostream& out, const SavedBody& b)
@@ -266,10 +269,13 @@ bool writeSavedBody(std::ostream& out, const SavedBody& b)
         writeValue(out, b.jointLowerAngle) && writeValue(out, b.jointUpperAngle) &&
         writeValue(out, frozen) &&
         writeValue(out, b.savedVelocity.x) && writeValue(out, b.savedVelocity.y) &&
-        writeValue(out, b.savedAngularVelocity);
+        writeValue(out, b.savedAngularVelocity) &&
+        writeValue(out, static_cast<std::uint8_t>(b.bucketKind)) &&
+        writeValue(out, b.bucketVolume) &&
+        writeValue(out, b.acidExposure);
 }
 
-bool readSavedBody(std::istream& in, SavedBody& b)
+bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
 {
     std::uint8_t shape = 0;
     std::uint8_t frozen = 0;
@@ -295,6 +301,17 @@ bool readSavedBody(std::istream& in, SavedBody& b)
           readValue(in, b.savedAngularVelocity)))
         return false;
 
+    if (version >= 3)
+    {
+        std::uint8_t bucketKind = 0;
+        if (!readValue(in, bucketKind) ||
+            !readValue(in, b.bucketVolume) ||
+            !readValue(in, b.acidExposure) ||
+            bucketKind > static_cast<std::uint8_t>(BucketKind::Acid))
+            return false;
+        b.bucketKind = static_cast<BucketKind>(bucketKind);
+    }
+
     if (shape > static_cast<std::uint8_t>(BodyShape::Circle) || frozen > 1)
         return false;
 
@@ -309,7 +326,8 @@ bool readSavedBody(std::istream& in, SavedBody& b)
         b.x, b.y, b.angle, b.velocityX, b.velocityY, b.angularVelocity,
         b.parentAnchor.x, b.parentAnchor.y, b.childAnchor.x, b.childAnchor.y,
         b.jointLowerAngle, b.jointUpperAngle,
-        b.savedVelocity.x, b.savedVelocity.y, b.savedAngularVelocity
+        b.savedVelocity.x, b.savedVelocity.y, b.savedAngularVelocity,
+        b.bucketVolume, b.acidExposure
     };
 
     for (float value : values)
@@ -339,10 +357,51 @@ bool readSavedBody(std::istream& in, SavedBody& b)
         b.partIndex > 5 || b.parentPart > 5 ||
         (b.groupId < 0 && (b.partIndex >= 0 || b.parentPart >= 0)) ||
         (b.groupId >= 0 && b.partIndex < 0) ||
-        (b.parentPart >= 0 && b.parentPart == b.partIndex))
+        (b.parentPart >= 0 && b.parentPart == b.partIndex) ||
+        b.bucketVolume < 0.0f || b.bucketVolume > 100.0f ||
+        b.acidExposure < 0.0f || b.acidExposure > 100000.0f ||
+        (b.bucketKind == BucketKind::None && b.bucketVolume > 0.0f) ||
+        (b.bucketKind != BucketKind::None && b.groupId >= 0))
         return false;
 
     return true;
+}
+
+struct SavedSurface
+{
+    std::uint8_t kind = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float halfWidth = 0.0f;
+    float halfHeight = 0.0f;
+    float volume = 0.0f;
+};
+
+bool writeSavedSurface(std::ostream& out, const SavedSurface& surface)
+{
+    return writeValue(out, surface.kind) &&
+        writeValue(out, surface.x) && writeValue(out, surface.y) &&
+        writeValue(out, surface.halfWidth) && writeValue(out, surface.halfHeight) &&
+        writeValue(out, surface.volume);
+}
+
+bool readSavedSurface(std::istream& in, SavedSurface& surface)
+{
+    if (!(readValue(in, surface.kind) &&
+          readValue(in, surface.x) && readValue(in, surface.y) &&
+          readValue(in, surface.halfWidth) && readValue(in, surface.halfHeight) &&
+          readValue(in, surface.volume)))
+        return false;
+
+    return surface.kind <= static_cast<std::uint8_t>(SurfaceKind::Acid) &&
+        finite(surface.x) && finite(surface.y) &&
+        finite(surface.halfWidth) && finite(surface.halfHeight) &&
+        finite(surface.volume) &&
+        std::abs(surface.x) <= 1000000.0f &&
+        std::abs(surface.y) <= 1000000.0f &&
+        surface.halfWidth > 0.0f && surface.halfWidth <= 1000.0f &&
+        surface.halfHeight > 0.0f && surface.halfHeight <= 1000.0f &&
+        surface.volume >= 0.0f && surface.volume <= 10000.0f;
 }
 
 struct SavedMechanism
@@ -504,8 +563,9 @@ void PhysicsWorld::updateSurfaces(float dt)
 {
     static float environmentTime = 0.0f;
     environmentTime += dt;
+    std::vector<b2BodyId> dissolvedBodies;
 
-    for (const BodyRecord& record : records_)
+    for (BodyRecord& record : records_)
     {
         if (!record.selectable || record.frozen || !b2Body_IsValid(record.id))
             continue;
@@ -515,6 +575,7 @@ void PhysicsWorld::updateSurfaces(float dt)
         const float x = static_cast<float>(position.x);
         const float y = static_cast<float>(position.y);
 
+        bool immersedInAcid = false;
         for (const SurfaceZone& zone : surfaces_)
         {
             const float immersion =
@@ -523,35 +584,79 @@ void PhysicsWorld::updateSurfaces(float dt)
                 continue;
 
             const float mass = std::max(0.1f, b2Body_GetMass(record.id));
-            b2Vec2 velocity = b2Body_GetLinearVelocity(record.id);
+            const b2Vec2 velocity = b2Body_GetLinearVelocity(record.id);
+            const float angularVelocity = b2Body_GetAngularVelocity(record.id);
 
-            if (zone.kind == SurfaceKind::Water)
+            float buoyancyScale = 15.8f;
+            float dragScale = 2.0f;
+            float currentX = 0.0f;
+            float currentY = 0.0f;
+            float waveForce = 0.0f;
+
+            switch (zone.kind)
             {
-                const float buoyancy = mass * 15.8f * immersion;
-                b2Body_ApplyForceToCenter(record.id, {0.0f, buoyancy}, true);
-                velocity.x *= std::exp(-1.6f * dt * immersion);
-                velocity.y *= std::exp(-0.35f * dt * immersion);
-                b2Body_SetLinearVelocity(record.id, velocity);
-                b2Body_SetAngularVelocity(
-                    record.id,
-                    b2Body_GetAngularVelocity(record.id) *
-                        std::exp(-1.1f * dt * immersion)
-                );
+                case SurfaceKind::Water:
+                    buoyancyScale = 16.3f;
+                    dragScale = 2.8f;
+                    currentX = std::sin(environmentTime * 0.75f + zone.x * 0.6f) * 0.12f;
+                    currentY = std::cos(environmentTime * 1.35f + x * 0.8f) * 0.035f;
+                    waveForce = std::sin(environmentTime * 2.0f + x * 1.7f) * 0.30f;
+                    break;
+                case SurfaceKind::Lava:
+                    buoyancyScale = 13.4f;
+                    dragScale = 0.72f;
+                    currentX = std::sin(environmentTime * 0.45f + y) * 0.20f;
+                    waveForce = std::sin(environmentTime * 1.7f + x) * 0.75f;
+                    break;
+                case SurfaceKind::Acid:
+                    buoyancyScale = 15.1f;
+                    dragScale = 3.4f;
+                    currentX = std::sin(environmentTime * 0.9f + x) * 0.045f;
+                    immersedInAcid = true;
+                    break;
             }
-            else
-            {
-                const float lift = mass *
-                    (5.0f + 1.2f * std::sin(environmentTime * 3.0f + x)) * immersion;
-                const float drift =
-                    std::sin(environmentTime * 2.0f + y) * mass * 1.5f * immersion;
-                b2Body_ApplyForceToCenter(record.id, {drift, lift}, true);
-                b2Body_SetAngularVelocity(
-                    record.id,
-                    b2Body_GetAngularVelocity(record.id) *
-                        std::exp(-0.15f * dt * immersion)
-                );
-            }
+
+            // Buoyancy scales with the exact submerged shape area. Drag acts
+            // on velocity relative to the gently moving liquid, not on world speed.
+            b2Body_ApplyForceToCenter(
+                record.id,
+                {0.0f, mass * buoyancyScale * immersion}, true);
+
+            const float relativeX = velocity.x - currentX;
+            const float relativeY = velocity.y - currentY;
+            const float drag = mass * dragScale * immersion;
+            b2Body_ApplyForceToCenter(
+                record.id,
+                {-relativeX * drag, -relativeY * drag}, true);
+
+            if (waveForce != 0.0f)
+                b2Body_ApplyForceToCenter(
+                    record.id, {0.0f, mass * waveForce * immersion}, true);
+
+            b2Body_ApplyTorque(
+                record.id,
+                -angularVelocity * mass * dragScale * 0.45f * immersion,
+                true);
         }
+
+        if (immersedInAcid)
+            record.acidExposure += dt;
+        else
+            record.acidExposure = std::max(0.0f, record.acidExposure - dt * 0.08f);
+
+        if (record.acidExposure >= 8.0f)
+            dissolvedBodies.push_back(record.id);
+    }
+
+    for (b2BodyId dissolved : dissolvedBodies)
+    {
+        const auto found = std::find_if(records_.begin(), records_.end(),
+            [dissolved](const BodyRecord& record)
+            {
+                return b2Body_IsValid(record.id) && sameBodyId(record.id, dissolved);
+            });
+        if (found != records_.end())
+            deleteAt(static_cast<int>(found - records_.begin()));
     }
 }
 
@@ -1398,7 +1503,7 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
-    constexpr std::uint32_t version = 2;
+    constexpr std::uint32_t version = 3;
     constexpr std::uint32_t endianMarker = 0x01020304U;
     const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
@@ -1439,6 +1544,9 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         body.frozen = record.frozen;
         body.savedVelocity = record.savedVelocity;
         body.savedAngularVelocity = record.savedAngularVelocity;
+        body.bucketKind = record.bucketKind;
+        body.bucketVolume = record.bucketVolume;
+        body.acidExposure = record.acidExposure;
         saved.push_back(body);
         savedBodyIds.push_back(record.id);
     }
@@ -1500,6 +1608,22 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         if (!writeSavedMechanism(output, mechanism))
             return false;
 
+    const std::uint32_t surfaceCount = static_cast<std::uint32_t>(surfaces_.size());
+    if (surfaceCount > 128 || !writeValue(output, surfaceCount))
+        return false;
+    for (const SurfaceZone& zone : surfaces_)
+    {
+        SavedSurface surface;
+        surface.kind = static_cast<std::uint8_t>(zone.kind);
+        surface.x = zone.x;
+        surface.y = zone.y;
+        surface.halfWidth = zone.halfWidth;
+        surface.halfHeight = zone.halfHeight;
+        surface.volume = zone.volume;
+        if (!writeSavedSurface(output, surface))
+            return false;
+    }
+
     output.flush();
     return output.good();
 }
@@ -1543,7 +1667,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     if (!readValue(input, version) ||
         !readValue(input, endianMarker) ||
-        (version != 1 && version != 2) ||
+        (version < 1 || version > 3) ||
         endianMarker != 0x01020304U)
         return false;
 
@@ -1555,7 +1679,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     std::vector<SavedBody> saved(count);
     for (SavedBody& body : saved)
-        if (!readSavedBody(input, body))
+        if (!readSavedBody(input, body, version))
             return false;
 
     std::vector<SavedMechanism> savedMechanisms;
@@ -1648,10 +1772,30 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         }
     }
 
+    std::vector<SavedSurface> savedSurfaces;
+    if (version >= 3)
+    {
+        std::uint32_t surfaceCount = 0;
+        if (!readValue(input, surfaceCount) || surfaceCount > 128)
+            return false;
+        savedSurfaces.resize(surfaceCount);
+        for (SavedSurface& surface : savedSurfaces)
+            if (!readSavedSurface(input, surface))
+                return false;
+    }
+
     if (input.peek() != std::char_traits<char>::eof())
         return false;
 
     setMap(static_cast<MapKind>(savedMapValue), false);
+    if (version >= 3)
+    {
+        surfaces_.clear();
+        for (const SavedSurface& surface : savedSurfaces)
+            surfaces_.push_back(SurfaceZone{
+                static_cast<SurfaceKind>(surface.kind), surface.x, surface.y,
+                surface.halfWidth, surface.halfHeight, surface.volume});
+    }
     nextGroupId_ = 1;
     std::vector<int> loadedIndices;
     loadedIndices.reserve(saved.size());
@@ -1689,6 +1833,9 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         record.jointUpperAngle = body.jointUpperAngle;
         record.savedVelocity = body.savedVelocity;
         record.savedAngularVelocity = body.savedAngularVelocity;
+        record.bucketKind = body.bucketKind;
+        record.bucketVolume = body.bucketVolume;
+        record.acidExposure = body.acidExposure;
 
         b2Body_SetLinearVelocity(record.id, {body.velocityX, body.velocityY});
         b2Body_SetAngularVelocity(record.id, body.angularVelocity);

@@ -11,7 +11,8 @@
 
 enum class BodyShape : std::uint8_t { Box, Circle };
 enum class MapKind : std::uint8_t { TestRange, City, Laboratory };
-enum class SurfaceKind : std::uint8_t { Water, Lava };
+enum class SurfaceKind : std::uint8_t { Water, Lava, Acid };
+enum class BucketKind : std::uint8_t { None, Water, Lava, Acid };
 enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle };
 
 struct BodyRecord
@@ -34,6 +35,9 @@ struct BodyRecord
     bool frozen = false;
     b2Vec2 savedVelocity{0.0f, 0.0f};
     float savedAngularVelocity = 0.0f;
+    BucketKind bucketKind = BucketKind::None;
+    float bucketVolume = 0.0f;
+    float acidExposure = 0.0f;
 };
 
 struct SurfaceZone
@@ -43,6 +47,7 @@ struct SurfaceZone
     float y = 0.0f;
     float halfWidth = 1.0f;
     float halfHeight = 1.0f;
+    float volume = 0.0f;
 };
 
 struct MechanismRecord
@@ -77,6 +82,7 @@ public:
     int spawnBall(float x, float y);
     int spawnBarrel(float x, float y);
     int spawnPlatform(float x, float y);
+    int spawnBucket(BucketKind kind, float x, float y);
     int spawnRagdoll(float x, float y);
     int spawnRobot(float x, float y);
     int spawnMechanism(MechanismKind kind, float x, float y);
@@ -128,6 +134,8 @@ private:
     void clearWorldBodies();
     void buildMapGeometry();
     void addSurface(SurfaceKind kind, float x, float y, float halfWidth, float halfHeight);
+    void addPouredLiquid(SurfaceKind kind, float x, float y, float volume);
+    bool pourBucket(int index);
     void updateSurfaces(float deltaTime);
     void updateMechanisms(float deltaTime);
     void setMechanismsEnabled(bool enabled);
