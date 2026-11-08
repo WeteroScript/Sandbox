@@ -257,7 +257,7 @@ UiLayout SandboxGame::makeUiLayout() const
         };
     }
 
-    const float itemY = categoryY + 37.0f * scale;
+    const float itemY = categoryY + 45.0f * scale;
     const float itemGapX = 5.0f * scale;
     const float itemGapY = 5.0f * scale;
     const float itemWidth = (innerWidth - itemGapX * 2.0f) / 3.0f;
