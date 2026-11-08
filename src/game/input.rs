@@ -4,8 +4,6 @@ use macroquad::prelude::*;
 pub enum Action {
     None,
     Fire,
-    SpawnGrenade,
-    SpawnBarrel,
 }
 
 pub struct InputState {
@@ -13,7 +11,6 @@ pub struct InputState {
     settings: bool,
     pause: bool,
     back: bool,
-    spawn: bool,
     damage: bool,
     select_character: bool,
     select_map: bool,
@@ -23,7 +20,6 @@ pub struct InputState {
     camera_pan: Vec2,
     camera_zoom: f32,
     drag_pointer: Option<Vec2>,
-    spawn_toggle: bool,
     spawn_tab: Option<usize>,
     spawn_item: Option<usize>,
     previous_touches: Vec<(u64, Vec2)>,
@@ -36,7 +32,6 @@ impl InputState {
             settings: false,
             pause: false,
             back: false,
-            spawn: false,
             damage: false,
             select_character: false,
             select_map: false,
@@ -46,7 +41,6 @@ impl InputState {
             camera_pan: Vec2::ZERO,
             camera_zoom: 0.0,
             drag_pointer: None,
-            spawn_toggle: false,
             spawn_tab: None,
             spawn_item: None,
             previous_touches: Vec::new(),
@@ -65,13 +59,11 @@ impl InputState {
 
         self.pause = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::P);
         self.back = is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Backspace);
-        self.spawn = is_key_pressed(KeyCode::Q);
         self.damage = is_key_pressed(KeyCode::X);
         self.select_character = is_key_pressed(KeyCode::C);
         self.select_map = is_key_pressed(KeyCode::M);
         self.next_weapon = is_key_pressed(KeyCode::E);
 
-        self.spawn_toggle = self.spawn_toggle_pressed();
         self.spawn_tab = None;
         self.spawn_item = None;
 
@@ -95,11 +87,7 @@ impl InputState {
             }
         }
 
-        self.action = if is_key_pressed(KeyCode::G) {
-            Action::SpawnGrenade
-        } else if is_key_pressed(KeyCode::B) {
-            Action::SpawnBarrel
-        } else if is_key_pressed(KeyCode::F)
+        self.action = if is_key_pressed(KeyCode::F)
             || (is_mouse_button_pressed(MouseButton::Left)
                 && !self.in_spawn_panel(mouse_position().into(), spawn_menu_open))
             || (self.touch_action_pressed() && !spawn_menu_open)
@@ -127,15 +115,6 @@ impl InputState {
             movement.y += 1.0;
         }
 
-        for touch in touches() {
-            let center = vec2(100.0, screen_height() - 115.0);
-            let offset = touch.position - center;
-
-            if offset.length() <= 90.0 && offset.length_squared() > 36.0 {
-                movement = (offset / 66.0).clamp_length_max(1.0);
-            }
-        }
-
         if movement.length_squared() > 0.0 {
             movement = movement.normalize();
         }
@@ -159,10 +138,6 @@ impl InputState {
 
     pub fn back_pressed(&self) -> bool {
         self.back
-    }
-
-    pub fn spawn_pressed(&self) -> bool {
-        self.spawn
     }
 
     pub fn damage_pressed(&self) -> bool {
@@ -226,19 +201,7 @@ impl InputState {
     }
 
     pub fn pause_resume_pressed(&self) -> bool {
-        self.play || self.touch_in_rect(self.pause_resume_rect())
-    }
-
-    pub fn pause_spawn_box_pressed(&self) -> bool {
-        is_key_pressed(KeyCode::Q) || self.touch_in_rect(self.pause_box_rect())
-    }
-
-    pub fn pause_spawn_grenade_pressed(&self) -> bool {
-        is_key_pressed(KeyCode::G) || self.touch_in_rect(self.pause_grenade_rect())
-    }
-
-    pub fn pause_spawn_barrel_pressed(&self) -> bool {
-        is_key_pressed(KeyCode::B) || self.touch_in_rect(self.pause_barrel_rect())
+        self.play
     }
 
     fn update_drag_pointer(&mut self, spawn_menu_open: bool) {
@@ -248,9 +211,7 @@ impl InputState {
             let mouse = mouse_position();
             let position = vec2(mouse.0, mouse.1);
 
-            if !self.in_spawn_panel(position, spawn_menu_open)
-                && !self.is_camera_control_position(position)
-            {
+            if !self.in_spawn_panel(position, spawn_menu_open) {
                 self.drag_pointer = Some(position);
                 return;
             }
@@ -271,9 +232,7 @@ impl InputState {
 
         let position = active_touches[0].position;
 
-        if self.in_spawn_panel(position, spawn_menu_open)
-            || self.is_camera_control_position(position)
-        {
+        if self.in_spawn_panel(position, spawn_menu_open) {
             return;
         }
 
@@ -309,9 +268,7 @@ impl InputState {
             }
         } else if !dragging {
             if let Some(touch) = current_touches.first() {
-                let panel_position = self.in_spawn_panel(touch.position, spawn_menu_open);
-
-                if !self.is_camera_control_position(touch.position) && !panel_position {
+                if !self.in_spawn_panel(touch.position, spawn_menu_open) {
                     if let Some(previous_position) = self.previous_position(touch.id) {
                         self.camera_pan = touch.position - previous_position;
                     }
@@ -348,71 +305,11 @@ impl InputState {
             .map(|(_, position)| *position)
     }
 
-    fn is_camera_control_position(&self, position: Vec2) -> bool {
-        let height = screen_height();
-        let width = screen_width();
-
-        let controls = [
-            (vec2(100.0, height - 115.0), 100.0),
-            (vec2(width - 100.0, height - 118.0), 58.0),
-            (vec2(width - 270.0, height - 170.0), 50.0),
-            (vec2(width - 190.0, height - 205.0), 50.0),
-            (vec2(width - 105.0, height - 205.0), 50.0),
-            (vec2(width - 192.0, height - 90.0), 42.0),
-        ];
-
-        controls
-            .iter()
-            .any(|(center, radius)| position.distance(*center) <= *radius)
-    }
-
     fn touch_action_pressed(&self) -> bool {
         let center = vec2(screen_width() - 100.0, screen_height() - 118.0);
 
         touches()
             .into_iter()
             .any(|touch| touch.position.distance(center) <= 48.0)
-    }
-
-    fn touch_in_rect(&self, rect: Rect) -> bool {
-        touches()
-            .into_iter()
-            .any(|touch| rect.contains(touch.position))
-    }
-
-    fn pause_resume_rect(&self) -> Rect {
-        Rect::new(
-            screen_width() * 0.5 - 150.0,
-            screen_height() * 0.5 - 125.0,
-            300.0,
-            56.0,
-        )
-    }
-
-    fn pause_box_rect(&self) -> Rect {
-        Rect::new(
-            screen_width() * 0.5 - 150.0,
-            screen_height() * 0.5 - 50.0,
-            300.0,
-            48.0,
-        )
-    }
-
-    fn pause_grenade_rect(&self) -> Rect {
-        Rect::new(
-            screen_width() * 0.5 - 150.0,
-            screen_height() * 0.5 + 8.0,
-            300.0,
-            48.0,
-        )
-    }
-
-    fn pause_barrel_rect(&self) -> Rect {
-        Rect::new(
-            screen_width() * 0.5 - 150.0,
-            screen_height() * 0.5 + 66.0,
-            300.0,
-            48.0,
-        )
     }
 }

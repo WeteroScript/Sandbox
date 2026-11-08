@@ -87,24 +87,12 @@ impl Game {
                     self.state.physics.cycle_weapon();
                 }
 
-                self.update_mechanism_hotkeys();
-
                 if let Some(item) = self.input.spawn_item() {
                     self.spawn_menu_item(item);
                 }
 
-                match self.input.action() {
-                    Action::Fire => self.state.physics.fire_weapon(),
-                    Action::SpawnGrenade => self.state.physics.spawn_grenade(),
-                    Action::SpawnBarrel => self.state.physics.spawn_barrel(),
-                    Action::None => {}
-                }
-
-                if self.input.spawn_pressed() {
-                    self.state.physics.spawn_box(
-                        rapier2d::prelude::Vector::new(780.0, 180.0),
-                        rapier2d::prelude::Vector::new(34.0, 34.0),
-                    );
+                if matches!(self.input.action(), Action::Fire) {
+                    self.state.physics.fire_weapon();
                 }
 
                 if self.input.damage_pressed() {
@@ -124,16 +112,7 @@ impl Game {
                 }
             }
             GameMode::Paused => {
-                if self.input.pause_spawn_box_pressed() {
-                    self.state.physics.spawn_box(
-                        rapier2d::prelude::Vector::new(780.0, 180.0),
-                        rapier2d::prelude::Vector::new(34.0, 34.0),
-                    );
-                } else if self.input.pause_spawn_grenade_pressed() {
-                    self.state.physics.spawn_grenade();
-                } else if self.input.pause_spawn_barrel_pressed() {
-                    self.state.physics.spawn_barrel();
-                } else if self.input.pause_resume_pressed() {
+                if self.input.pause_resume_pressed() {
                     self.state.mode = GameMode::Playing;
                 } else if self.input.back_pressed() {
                     self.state.mode = GameMode::MainMenu;
@@ -175,57 +154,8 @@ impl Game {
             .toggle_at(&self.state.physics, world_position);
     }
 
-    fn is_ui_position(&self, position: Vec2) -> bool {
-        let width = screen_width();
-        let height = screen_height();
-
-        let joystick = vec2(100.0, height - 115.0);
-        let fire = vec2(width - 100.0, height - 118.0);
-        let weapon = vec2(width - 270.0, height - 170.0);
-        let grenade = vec2(width - 190.0, height - 205.0);
-        let barrel = vec2(width - 105.0, height - 205.0);
-
-        position.distance(joystick) <= 100.0
-            || position.distance(fire) <= 58.0
-            || position.distance(weapon) <= 50.0
-            || position.distance(grenade) <= 50.0
-            || position.distance(barrel) <= 50.0
-    }
-
-    fn update_mechanism_hotkeys(&mut self) {
-        let position = vec2(780.0, 180.0);
-
-        if is_key_pressed(KeyCode::R) {
-            self.mechanisms.spawn_rod(&self.state.physics, position);
-        }
-
-        if is_key_pressed(KeyCode::Y) {
-            self.mechanisms.spawn_rope(&self.state.physics, position);
-        }
-
-        if is_key_pressed(KeyCode::L) {
-            self.mechanisms
-                .spawn_spring(&self.state.physics, position);
-        }
-
-        if is_key_pressed(KeyCode::T) {
-            self.mechanisms
-                .spawn_piston(&self.state.physics, position);
-        }
-
-        if is_key_pressed(KeyCode::U) {
-            self.mechanisms
-                .spawn_button(&self.state.physics, position);
-        }
-
-        if is_key_pressed(KeyCode::I) {
-            self.mechanisms
-                .spawn_toggle(&self.state.physics, position);
-        }
-
-        if is_key_pressed(KeyCode::O) {
-            self.mechanisms.toggle_next();
-        }
+    fn is_ui_position(&self, _position: Vec2) -> bool {
+        false
     }
 
     fn update_dragging(&mut self) {
@@ -330,7 +260,7 @@ impl Game {
 
         vec2(
             self.state.camera.center.x + (position.x - screen_width() * 0.5) / zoom,
-            self.state.camera.center.y + (position.y - screen_height() * 0.5) / zoom,
+            self.state.camera.center.y - (position.y - screen_height() * 0.5) / zoom,
         )
     }
 
