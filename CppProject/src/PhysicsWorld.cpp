@@ -608,6 +608,43 @@ void PhysicsWorld::addPouredLiquid(
         kind, x, y, halfWidth, halfHeight, volume});
 }
 
+float PhysicsWorld::findLiquidSupportY(float x, float sourceY) const
+{
+    float highestSupport = -1000000.0f;
+
+    // Static arena geometry is the stable support for poured pools. A spill
+    // lands on the highest platform or obstacle directly below the bucket,
+    // falling back to the arena floor when no nearer support is found.
+    for (const BodyRecord& record : records_)
+    {
+        if (record.selectable || record.shape != BodyShape::Box ||
+            !b2Body_IsValid(record.id))
+            continue;
+
+        const b2Pos position = b2Body_GetPosition(record.id);
+        const b2Rot rotation = b2Body_GetRotation(record.id);
+        const float px = static_cast<float>(position.x);
+        const float py = static_cast<float>(position.y);
+        const float cosine = std::abs(static_cast<float>(rotation.c));
+        const float sine = std::abs(static_cast<float>(rotation.s));
+        const float extentX =
+            cosine * record.halfWidth + sine * record.halfHeight;
+        const float extentY =
+            sine * record.halfWidth + cosine * record.halfHeight;
+
+        if (x < px - extentX || x > px + extentX)
+            continue;
+
+        const float top = py + extentY;
+        if (top <= sourceY + 0.05f && top > highestSupport)
+            highestSupport = top;
+    }
+
+    // The arena floor is always present, but retain a safe fallback for maps
+    // whose geometry is edited later.
+    return highestSupport > -999999.0f ? highestSupport : sourceY - 0.5f;
+}
+
 int PhysicsWorld::spawnBucket(BucketKind kind, float x, float y)
 {
     if (kind == BucketKind::None)
@@ -646,11 +683,16 @@ bool PhysicsWorld::pourBucket(int index)
     }
 
     const b2Pos position = b2Body_GetPosition(bucket.id);
-    const float puddleY = static_cast<float>(position.y) -
-                          bucket.halfHeight - 0.18f;
+    const float sourceX = static_cast<float>(position.x);
+    const float sourceY = static_cast<float>(position.y) - bucket.halfHeight;
+    const float puddleHalfHeight = std::clamp(
+        0.34f + bucket.bucketVolume * 0.05f, 0.40f, 1.0f);
+    const float supportY = findLiquidSupportY(sourceX, sourceY);
+    const float puddleY = supportY + puddleHalfHeight;
+
     addPouredLiquid(
         liquid,
-        static_cast<float>(position.x),
+        sourceX,
         puddleY,
         bucket.bucketVolume
     );

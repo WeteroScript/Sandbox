@@ -135,6 +135,7 @@ private:
     void buildMapGeometry();
     void addSurface(SurfaceKind kind, float x, float y, float halfWidth, float halfHeight);
     void addPouredLiquid(SurfaceKind kind, float x, float y, float volume);
+    float findLiquidSupportY(float x, float sourceY) const;
     bool pourBucket(int index);
     void updateSurfaces(float deltaTime);
     void updateMechanisms(float deltaTime);
