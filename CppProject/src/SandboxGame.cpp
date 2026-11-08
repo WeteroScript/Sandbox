@@ -36,6 +36,17 @@ SDL_FColor toFloatColor(SDL_Color tint)
     };
 }
 
+SDL_Color shadeColor(SDL_Color tint, float factor, Uint8 alpha = 255)
+{
+    const auto channel = [factor](Uint8 value)
+    {
+        return static_cast<Uint8>(std::clamp(
+            static_cast<int>(std::lround(static_cast<float>(value) * factor)),
+            0, 255));
+    };
+    return SDL_Color{channel(tint.r), channel(tint.g), channel(tint.b), alpha};
+}
+
 void drawFilledCircle(SDL_Renderer* renderer, float x, float y,
                       float radius, SDL_Color tint)
 {
@@ -950,82 +961,207 @@ void SandboxGame::drawGrid()
 void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                           float angle, SDL_Color tint, bool outline)
 {
-    const float c = std::cos(angle);
-    const float s = std::sin(angle);
-    const std::array<SDL_FPoint, 4> local{{
-        {-halfWidth, -halfHeight},
-        {halfWidth, -halfHeight},
-        {halfWidth, halfHeight},
-        {-halfWidth, halfHeight}
-    }};
-
-    std::array<SDL_Vertex, 4> vertices{};
-    std::array<SDL_FPoint, 4> points{};
-
-    for (std::size_t i = 0; i < local.size(); ++i)
+    const float c = std::cos(angle), s = std::sin(angle);
+    const auto point = [&](float lx, float ly)
     {
-        points[i] = worldToScreen(
-            x + c * local[i].x - s * local[i].y,
-            y + s * local[i].x + c * local[i].y
-        );
-        vertices[i].position = points[i];
-        vertices[i].color = toFloatColor(tint);
-        vertices[i].tex_coord = {0.0f, 0.0f};
+        return worldToScreen(x + c*lx - s*ly, y + s*lx + c*ly);
+    };
+    const std::array<SDL_FPoint,4> local{{
+        {-halfWidth,-halfHeight},{halfWidth,-halfHeight},
+        {halfWidth,halfHeight},{-halfWidth,halfHeight}
+    }};
+    constexpr std::array<float,4> light{0.76f,0.91f,1.12f,1.22f};
+    std::array<SDL_Vertex,4> vertices{};
+    std::array<SDL_FPoint,4> corners{};
+    for (std::size_t i=0;i<4;++i)
+    {
+        corners[i]=point(local[i].x,local[i].y);
+        vertices[i].position=corners[i];
+        vertices[i].color=toFloatColor(shadeColor(tint,light[i]));
+        vertices[i].tex_coord={0.0f,0.0f};
+    }
+    constexpr std::array<int,6> indices{0,1,2,0,2,3};
+    SDL_RenderGeometry(renderer_,nullptr,vertices.data(),4,indices.data(),6);
+
+    setColor(renderer_,shadeColor(tint,1.42f));
+    SDL_RenderLine(renderer_,corners[3].x,corners[3].y,corners[2].x,corners[2].y);
+    SDL_RenderLine(renderer_,corners[3].x,corners[3].y,corners[0].x,corners[0].y);
+    setColor(renderer_,shadeColor(tint,0.43f));
+    SDL_RenderLine(renderer_,corners[0].x,corners[0].y,corners[1].x,corners[1].y);
+    SDL_RenderLine(renderer_,corners[1].x,corners[1].y,corners[2].x,corners[2].y);
+
+    if (halfWidth*pixelsPerMeter_ > 12.0f &&
+        halfHeight*pixelsPerMeter_ > 10.0f)
+    {
+        const bool wood=tint.r>tint.g*1.12f && tint.g>tint.b*1.18f;
+        const bool green=tint.g>tint.r*1.12f && tint.g>tint.b*1.04f;
+        const SDL_Color dark=shadeColor(tint,0.48f);
+        const SDL_Color bright=shadeColor(tint,1.42f);
+        if (wood)
+        {
+            for (int grain=-1;grain<=1;++grain)
+            {
+                const float yy=static_cast<float>(grain)*halfHeight*0.48f;
+                const SDL_FPoint a=point(-halfWidth*0.72f,yy);
+                const SDL_FPoint b=point(halfWidth*0.72f,yy+halfHeight*0.05f);
+                setColor(renderer_,SDL_Color{dark.r,dark.g,dark.b,155});
+                SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+                const SDL_FPoint knot=point(-halfWidth*0.22f,yy+halfHeight*0.06f);
+                drawFilledCircle(renderer_,knot.x,knot.y,1.7f,
+                                 SDL_Color{dark.r,dark.g,dark.b,180});
+            }
+        }
+        else if (green)
+        {
+            const SDL_FPoint a=point(-halfWidth*0.78f,-halfHeight*0.58f);
+            const SDL_FPoint b=point(halfWidth*0.78f,-halfHeight*0.58f);
+            const SDL_FPoint c=point(-halfWidth*0.68f,halfHeight*0.58f);
+            const SDL_FPoint d=point(halfWidth*0.68f,halfHeight*0.58f);
+            setColor(renderer_,SDL_Color{dark.r,dark.g,dark.b,155});
+            SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+            setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,125});
+            SDL_RenderLine(renderer_,c.x,c.y,d.x,d.y);
+        }
+        else
+        {
+            const float ix=halfWidth*0.22f, iy=halfHeight*0.22f;
+            const SDL_FPoint panel[4]={
+                point(-halfWidth+ix,-halfHeight+iy),
+                point(halfWidth-ix,-halfHeight+iy),
+                point(halfWidth-ix,halfHeight-iy),
+                point(-halfWidth+ix,halfHeight-iy)
+            };
+            setColor(renderer_,SDL_Color{dark.r,dark.g,dark.b,155});
+            for(int i=0;i<4;++i)
+                SDL_RenderLine(renderer_,panel[i].x,panel[i].y,
+                               panel[(i+1)%4].x,panel[(i+1)%4].y);
+            for(int vent=-1;vent<=1;++vent)
+            {
+                const float yy=static_cast<float>(vent)*halfHeight*0.15f;
+                const SDL_FPoint a=point(-halfWidth*0.20f,yy);
+                const SDL_FPoint b=point(halfWidth*0.20f,yy);
+                setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,140});
+                SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+            }
+        }
+
+        if (!green)
+        {
+            for(float bx:{-halfWidth*0.78f,halfWidth*0.78f})
+                for(float by:{-halfHeight*0.72f,halfHeight*0.72f})
+                {
+                    const SDL_FPoint bolt=point(bx,by);
+                    drawFilledCircle(renderer_,bolt.x,bolt.y,2.0f,
+                                     SDL_Color{24,29,35,195});
+                    drawFilledCircle(renderer_,bolt.x-0.4f,bolt.y-0.4f,0.7f,
+                                     SDL_Color{225,233,239,220});
+                }
+        }
     }
 
-    constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
-    SDL_RenderGeometry(renderer_, nullptr, vertices.data(), 4, indices.data(), 6);
-
-    if (outline)
+    if(outline)
     {
-        setColor(renderer_, makeColor(235, 241, 247));
-        for (std::size_t i = 0; i < points.size(); ++i)
-        {
-            const SDL_FPoint a = points[i];
-            const SDL_FPoint b = points[(i + 1) % points.size()];
-            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
-        }
+        setColor(renderer_,makeColor(245,248,250));
+        for(std::size_t i=0;i<4;++i)
+            SDL_RenderLine(renderer_,corners[i].x,corners[i].y,
+                           corners[(i+1)%4].x,corners[(i+1)%4].y);
     }
 }
 
-void SandboxGame::drawCircle(float x, float y, float radius, SDL_Color tint, bool outline)
+void SandboxGame::drawCircle(float x, float y, float radius, float angle,
+                             SDL_Color tint, bool outline)
 {
-    constexpr int segments = 28;
-    std::array<SDL_Vertex, segments + 1> vertices{};
-    std::array<int, segments * 3> indices{};
+    constexpr int segments=64;
+    std::array<SDL_Vertex,segments+1> vertices{};
+    std::array<int,segments*3> indices{};
+    const float c=std::cos(angle),s=std::sin(angle);
+    vertices[0].position=worldToScreen(x,y);
+    vertices[0].color=toFloatColor(shadeColor(tint,1.12f));
+    vertices[0].tex_coord={0.0f,0.0f};
 
-    vertices[0].position = worldToScreen(x, y);
-    vertices[0].color = toFloatColor(tint);
-    vertices[0].tex_coord = {0.0f, 0.0f};
-
-    for (int i = 0; i < segments; ++i)
+    for(int i=0;i<segments;++i)
     {
-        const float angle = 2.0f * kPi * static_cast<float>(i) / static_cast<float>(segments);
-        vertices[static_cast<std::size_t>(i + 1)].position = worldToScreen(
-            x + std::cos(angle) * radius,
-            y + std::sin(angle) * radius
-        );
-        vertices[static_cast<std::size_t>(i + 1)].color = toFloatColor(tint);
-        vertices[static_cast<std::size_t>(i + 1)].tex_coord = {0.0f, 0.0f};
+        const float theta=2.0f*kPi*static_cast<float>(i)/segments;
+        const float nx=std::cos(theta),ny=std::sin(theta);
+        const float illumination=std::max(0.0f,-0.48f*nx+0.78f*ny);
+        vertices[static_cast<std::size_t>(i+1)].position=
+            worldToScreen(x+nx*radius,y+ny*radius);
+        vertices[static_cast<std::size_t>(i+1)].color=
+            toFloatColor(shadeColor(tint,0.68f+0.48f*illumination));
+        vertices[static_cast<std::size_t>(i+1)].tex_coord={0.0f,0.0f};
+        const std::size_t base=static_cast<std::size_t>(i)*3;
+        indices[base]=0;indices[base+1]=i+1;indices[base+2]=(i+1)%segments+1;
+    }
+    SDL_RenderGeometry(renderer_,nullptr,vertices.data(),
+        static_cast<int>(vertices.size()),indices.data(),static_cast<int>(indices.size()));
 
-        const std::size_t base = static_cast<std::size_t>(i) * 3;
-        indices[base] = 0;
-        indices[base + 1] = i + 1;
-        indices[base + 2] = (i + 1) % segments + 1;
+    const auto point=[&](float lx,float ly)
+    {
+        return worldToScreen(x+c*lx-s*ly,y+s*lx+c*ly);
+    };
+    const bool melon=tint.g>tint.r*1.18f && tint.g>tint.b*1.08f;
+    const bool barrel=tint.r>tint.g*1.20f && tint.g>tint.b*1.15f;
+    if(melon)
+    {
+        setColor(renderer_,SDL_Color{42,113,59,175});
+        for(float sx:{-0.48f,-0.16f,0.16f,0.48f})
+        {
+            const float xx=sx*radius;
+            const float hh=std::sqrt(std::max(0.0f,radius*radius-xx*xx));
+            const SDL_FPoint a=point(xx,-hh*0.82f),b=point(xx,hh*0.82f);
+            SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+        }
+        for(const SDL_FPoint seed:std::array<SDL_FPoint,3>{{
+                {-0.22f,0.15f},{0.18f,-0.12f},{0.28f,0.30f}}})
+        {
+            const SDL_FPoint q=point(seed.x*radius,seed.y*radius);
+            drawFilledCircle(renderer_,q.x,q.y,
+                std::max(1.0f,radius*pixelsPerMeter_*0.035f),
+                SDL_Color{39,74,44,220});
+        }
+    }
+    else if(barrel)
+    {
+        setColor(renderer_,SDL_Color{91,54,29,165});
+        for(float band:{-0.32f,0.32f})
+        {
+            const float yy=band*radius;
+            const float hh=std::sqrt(std::max(0.0f,radius*radius-yy*yy));
+            SDL_FPoint previous=point(-hh,yy);
+            for(int i=1;i<=12;++i)
+            {
+                const float t=-1.0f+2.0f*static_cast<float>(i)/12.0f;
+                const SDL_FPoint q=point(t*hh,yy+std::sin(t*3.0f)*radius*0.035f);
+                SDL_RenderLine(renderer_,previous.x,previous.y,q.x,q.y);
+                previous=q;
+            }
+        }
     }
 
-    SDL_RenderGeometry(renderer_, nullptr, vertices.data(),
-                       static_cast<int>(vertices.size()),
-                       indices.data(), static_cast<int>(indices.size()));
+    const SDL_FPoint highlight=point(-radius*0.30f,radius*0.34f);
+    drawFilledCircle(renderer_,highlight.x,highlight.y,
+        std::max(2.0f,radius*pixelsPerMeter_*0.19f),
+        SDL_Color{255,255,255,78});
+    const SDL_FPoint glint=point(-radius*0.39f,radius*0.44f);
+    drawFilledCircle(renderer_,glint.x,glint.y,
+        std::max(1.0f,radius*pixelsPerMeter_*0.065f),
+        SDL_Color{255,255,255,155});
 
-    if (outline)
+    if(outline)
     {
-        setColor(renderer_, makeColor(235, 241, 247));
-        for (int i = 0; i < segments; ++i)
+        setColor(renderer_,makeColor(35,43,51));
+        for(int i=0;i<segments;++i)
         {
-            const SDL_FPoint a = vertices[static_cast<std::size_t>(i + 1)].position;
-            const SDL_FPoint b = vertices[static_cast<std::size_t>((i + 1) % segments + 1)].position;
-            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            const SDL_FPoint a=vertices[static_cast<std::size_t>(i+1)].position;
+            const SDL_FPoint b=vertices[static_cast<std::size_t>((i+1)%segments+1)].position;
+            SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+        }
+        setColor(renderer_,SDL_Color{246,249,252,190});
+        for(int i=8;i<22;++i)
+        {
+            const SDL_FPoint a=vertices[static_cast<std::size_t>(i+1)].position;
+            const SDL_FPoint b=vertices[static_cast<std::size_t>(i+2)].position;
+            SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
         }
     }
 }
@@ -1051,7 +1187,7 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
     const float angle = std::atan2(rotation.s, rotation.c);
 
     if (body.shape == BodyShape::Circle)
-        drawCircle(x, y, body.radius, tint, selected);
+        drawCircle(x, y, body.radius, angle, tint, selected);
     else
         drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint, selected);
 }

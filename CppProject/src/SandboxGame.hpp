@@ -120,7 +120,8 @@ private:
     void drawBody(const BodyRecord& body, bool selected);
     void drawBox(float x, float y, float halfWidth, float halfHeight,
                  float angle, SDL_Color tint, bool outline);
-    void drawCircle(float x, float y, float radius, SDL_Color tint, bool outline);
+    void drawCircle(float x, float y, float radius, float angle,
+                    SDL_Color tint, bool outline);
     void drawUi();
     void drawButton(const SDL_FRect& rect, const char* label, bool active);
     bool pointInRect(float x, float y, const SDL_FRect& rect) const;
