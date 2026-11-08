@@ -1343,8 +1343,11 @@ int main()
         surfaceWearWorld.records()[static_cast<std::size_t>(wornBarrelIndex)];
     CHECK(wornBarrel.impactDamage > 0.0f);
     CHECK(wornBarrel.impactDamage <= 0.92f);
-    CHECK(wornBarrel.impactMarkCount > 0);
-    CHECK(wornBarrel.impactMarkCount <= kMaxImpactMarks);
+    CHECK(expectedWearMarkCount > 0);
+    CHECK(expectedWearMarkCount <= kMaxImpactMarks);
+    const float expectedWearDamage = wornBarrel.impactDamage;
+    const auto expectedWearMarks = wornBarrel.impactMarks;
+    const std::uint8_t expectedWearMarkCount = expectedWearMarkCount;
 
     std::vector<std::uint8_t> surfaceWearSnapshot;
     CHECK(surfaceWearWorld.saveToSnapshot(surfaceWearSnapshot));
@@ -1356,14 +1359,14 @@ int main()
         if (body.shape != BodyShape::Circle ||
             body.material != MaterialKind::Metal || body.impactMarkCount == 0)
             continue;
-        CHECK(std::abs(body.impactDamage - wornBarrel.impactDamage) < 0.0001f);
-        CHECK(body.impactMarkCount == wornBarrel.impactMarkCount);
+        CHECK(std::abs(body.impactDamage - expectedWearDamage) < 0.0001f);
+        CHECK(body.impactMarkCount == expectedWearMarkCount);
         for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
         {
             CHECK(std::abs(body.impactMarks[mark].localX -
-                           wornBarrel.impactMarks[mark].localX) < 0.0001f);
+                           expectedWearMarks[mark].localX) < 0.0001f);
             CHECK(std::abs(body.impactMarks[mark].localY -
-                           wornBarrel.impactMarks[mark].localY) < 0.0001f);
+                           expectedWearMarks[mark].localY) < 0.0001f);
         }
         restoredWearMark = true;
     }
@@ -1378,8 +1381,8 @@ int main()
             body.material != MaterialKind::Metal || body.shape != BodyShape::Circle ||
             body.impactMarkCount == 0)
             continue;
-        CHECK(body.impactMarkCount == wornBarrel.impactMarkCount);
-        CHECK(std::abs(body.impactDamage - wornBarrel.impactDamage) < 0.0001f);
+        CHECK(body.impactMarkCount == expectedWearMarkCount);
+        CHECK(std::abs(body.impactDamage - expectedWearDamage) < 0.0001f);
         clonedWearMark = true;
     }
     CHECK(clonedWearMark);
