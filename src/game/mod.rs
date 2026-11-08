@@ -214,8 +214,8 @@ impl Game {
                 position,
                 rapier2d::prelude::Vector::new(34.0, 34.0),
             ),
-            SpawnItem::Grenade => self.state.physics.spawn_grenade(),
-            SpawnItem::Barrel => self.state.physics.spawn_barrel(),
+            SpawnItem::Grenade => self.state.physics.spawn_grenade(position),
+            SpawnItem::Barrel => self.state.physics.spawn_barrel(position),
             SpawnItem::Platform => self.state.physics.spawn_platform(position),
             SpawnItem::Rod => self.mechanisms.spawn_rod(
                 &self.state.physics,
@@ -309,7 +309,7 @@ impl Game {
         &self,
         world_position: Vec2,
     ) -> Option<rapier2d::prelude::RigidBodyHandle> {
-        let handles = [
+        let mut handles = vec![
             self.state.physics.ragdoll.head,
             self.state.physics.ragdoll.torso,
             self.state.physics.ragdoll.left_upper_arm,
@@ -321,6 +321,21 @@ impl Game {
             self.state.physics.ragdoll.left_lower_leg,
             self.state.physics.ragdoll.right_lower_leg,
         ];
+
+        for (ragdoll, _) in &self.state.physics.spawned_ragdolls {
+            handles.extend([
+                ragdoll.head,
+                ragdoll.torso,
+                ragdoll.left_upper_arm,
+                ragdoll.right_upper_arm,
+                ragdoll.left_lower_arm,
+                ragdoll.right_lower_arm,
+                ragdoll.left_upper_leg,
+                ragdoll.right_upper_leg,
+                ragdoll.left_lower_leg,
+                ragdoll.right_lower_leg,
+            ]);
+        }
 
         let mut nearest = None;
 
@@ -384,7 +399,7 @@ impl Game {
             self.state.camera.center.x
                 + (position.x - screen_width() * 0.5) / zoom,
             self.state.camera.center.y
-                - (position.y - screen_height() * 0.5) / zoom,
+                + (position.y - screen_height() * 0.5) / zoom,
         )
     }
 
