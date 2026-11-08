@@ -1,6 +1,6 @@
-# Sandbox — Unity rewrite
+# Sandbox — archived Unity prototype
 
-This folder contains the new Unity/C# implementation. The original Rust/Macroquad project remains in the repository and is not modified by this port.
+This folder contains an archived Unity/C# experiment. It is not the active game implementation. Development continues in the native C++ project under CppProject.
 
 ## Requirements
 
@@ -26,8 +26,6 @@ The setup command creates the initial scene, adds it to Build Settings and confi
 - Touch and mouse input through Unity's legacy input API.
 - Android landscape configuration.
 
-## Migration strategy
+## Archive status
 
-The Rust implementation is retained as a reference until the Unity port has feature parity. Next milestones are object quantity/placement flow, persistent scene serialization, map presets, water/lava effects, mechanisms, and performance profiling on Android.
-
-No APK is built by this setup step.
+The C++ rewrite in CppProject is the active implementation. This prototype is kept only for historical reference. No APK is built by this folder.

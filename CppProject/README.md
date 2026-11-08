@@ -22,6 +22,8 @@ Third-party source is downloaded during CMake configuration rather than copied i
 - Spawn panel for boxes, balls, and Melon ragdolls.
 - Spawn quantity from 1 to 10 and tap-to-place workflow.
 - Mouse and single-touch interaction.
+- Versioned scene save/load, including body transforms, velocities, materials, frozen state, and ragdoll joint links.
+- Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
 - Camera pan, mouse-wheel zoom, pause, and simulation speed controls.
 - Physics grid and FPS/object counters.
 - Desktop CMake target and Android native shared-library target.
@@ -39,7 +41,7 @@ Run the \`sandbox\` executable from \`CppProject/build\`.
 
 ## Android
 
-The CMake project defines an Android shared-library target named \`main\`. SDL3 handles the native application entry point and Android input layer. Android packaging and the Gradle wrapper are being added as a separate migration step.
+The CMake project defines an Android shared-library target named \`main\`. SDL3 handles the native application entry point and Android input layer. Android Gradle packaging and the SDLActivity integration are the next migration step.
 
 No Android APK has been built or device-tested as part of this commit.
 
@@ -59,3 +61,12 @@ No Android APK has been built or device-tested as part of this commit.
 The original Rust project remains in the repository as a reference. The previous Unity prototype is also retained for reference; C++ is now the active rewrite.
 
 The existing Android APK workflow is manual-only and is not triggered by ordinary pushes.
+
+## Physics regression test
+
+CTest contains a smoke test for ragdoll joints, grouped freeze, scene persistence, clone, and delete:
+
+```sh
+cmake --build CppProject/build --config Release
+ctest --test-dir CppProject/build --output-on-failure
+```

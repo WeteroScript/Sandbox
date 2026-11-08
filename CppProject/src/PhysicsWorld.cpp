@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
-#include <limits>
+#include <cstring>
 #include <type_traits>
 #include <vector>
 
@@ -139,10 +139,17 @@ bool readSavedBody(std::istream& in, SavedBody& b)
         if (!finite(value))
             return false;
 
-    if (b.halfWidth <= 0.0f || b.halfHeight <= 0.0f ||
-        b.radius <= 0.0f || b.density <= 0.0f ||
-        b.groupId < -1 || b.partIndex < -1 || b.parentPart < -1 ||
-        b.partIndex > 5 || b.parentPart > 5)
+    if (b.halfWidth <= 0.0f || b.halfWidth > 1000.0f ||
+        b.halfHeight <= 0.0f || b.halfHeight > 1000.0f ||
+        b.radius <= 0.0f || b.radius > 1000.0f ||
+        b.density <= 0.0f || b.density > 1000.0f ||
+        std::abs(b.x) > 1000000.0f || std::abs(b.y) > 1000000.0f ||
+        b.groupId < -1 || b.groupId > 1000000 ||
+        b.partIndex < -1 || b.parentPart < -1 ||
+        b.partIndex > 5 || b.parentPart > 5 ||
+        (b.groupId < 0 && (b.partIndex >= 0 || b.parentPart >= 0)) ||
+        (b.groupId >= 0 && b.partIndex < 0) ||
+        (b.parentPart >= 0 && b.parentPart == b.partIndex))
         return false;
 
     return true;
@@ -585,8 +592,7 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
     constexpr char expectedMagic[8] = {'S','B','X','2','D','S','C','N'};
     char magic[8]{};
     input.read(magic, sizeof(magic));
-    if (!input.good() || !std::equal(std::begin(magic), std::end(magic),
-                                     std::begin(expectedMagic)))
+    if (!input.good() || std::memcmp(magic, expectedMagic, sizeof(magic)) != 0)
         return false;
 
     std::uint32_t version = 0;
@@ -602,6 +608,32 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
     for (SavedBody& body : saved)
         if (!readSavedBody(input, body))
             return false;
+
+    for (std::size_t i = 0; i < saved.size(); ++i)
+    {
+        const SavedBody& body = saved[i];
+        if (body.groupId < 0)
+            continue;
+
+        for (std::size_t j = 0; j < i; ++j)
+        {
+            if (saved[j].groupId == body.groupId &&
+                saved[j].partIndex == body.partIndex)
+                return false;
+        }
+
+        if (body.parentPart >= 0)
+        {
+            const bool parentExists = std::any_of(saved.begin(), saved.end(),
+                [&body](const SavedBody& candidate)
+                {
+                    return candidate.groupId == body.groupId &&
+                           candidate.partIndex == body.parentPart;
+                });
+            if (!parentExists)
+                return false;
+        }
+    }
 
     if (input.peek() != std::char_traits<char>::eof())
         return false;

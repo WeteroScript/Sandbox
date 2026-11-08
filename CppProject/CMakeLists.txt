@@ -44,3 +44,14 @@ else()
   target_include_directories(sandbox PRIVATE src)
   target_link_libraries(sandbox PRIVATE SDL3::SDL3 box2d)
 endif()
+
+include(CTest)
+if(BUILD_TESTING AND NOT ANDROID)
+  add_executable(sandbox_physics_tests
+    tests/PhysicsWorldTests.cpp
+    src/PhysicsWorld.cpp
+  )
+  target_include_directories(sandbox_physics_tests PRIVATE src)
+  target_link_libraries(sandbox_physics_tests PRIVATE SDL3::SDL3 box2d)
+  add_test(NAME sandbox_physics_tests COMMAND sandbox_physics_tests)
+endif()
