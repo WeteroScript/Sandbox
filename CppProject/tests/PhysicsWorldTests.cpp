@@ -872,6 +872,8 @@ int main()
         strongImpactWorld.spawnMaterialBlock(MaterialKind::Wood, 0.0f, 5.0f);
     const int strongBallIndex = strongImpactWorld.spawnBall(-2.5f, 5.0f);
     CHECK(strongWoodIndex >= 0 && strongBallIndex >= 0);
+    CHECK(strongImpactWorld.records()[static_cast<std::size_t>(strongBallIndex)].material ==
+          MaterialKind::Rubber);
     const b2BodyId strongWoodId =
         strongImpactWorld.records()[static_cast<std::size_t>(strongWoodIndex)].id;
     b2Body_SetLinearVelocity(
@@ -885,17 +887,10 @@ int main()
         if (record.selectable && record.material == MaterialKind::Wood &&
             !record.breakable)
             ++woodDebrisCount;
-    std::cerr << "WOOD_DEBRIS_COUNT=" << woodDebrisCount << '\n';
-    for (const BodyRecord& record : strongImpactWorld.records())
-        if (record.material == MaterialKind::Wood)
-            std::cerr << "WOOD_RECORD selectable=" << record.selectable
-                      << " breakable=" << record.breakable
-                      << " shape=" << static_cast<int>(record.shape)
-                      << " group=" << record.groupId << '\n';
     CHECK(woodDebrisCount == 4);
 
     std::error_code error;
     std::filesystem::remove(savePath, error);
-    std::cout << "Physics, rotation, maps, character persistence, exact fluid immersion, malformed saves, mechanism deletion and piston-anchor cleanup passed.\n";
+    std::cout << "Physics, materials, impact fracture, rotation, maps, character persistence, fluid immersion, save compatibility, malformed saves and mechanism cleanup passed.\n";
     return 0;
 }
