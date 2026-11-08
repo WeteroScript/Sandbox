@@ -698,19 +698,34 @@ int main()
         acidWorld.step(1.0f / 60.0f, 4);
     CHECK(!b2Body_IsValid(acidTargetId));
 
-    // Every rope style creates a real two-body joint and survives save/load.
-    // Electrical toggle distributes power to powered actuators and restores it on tap.
+    // A single electrical switch controls piston, spring and elastic-rope actuators.
     PhysicsWorld powerWorld;
-    CHECK(powerWorld.spawnBox(0.0f, 0.0f) >= 0);
-    CHECK(powerWorld.spawnMechanism(MechanismKind::Piston, 0.0f, 0.0f) == 0);
-    CHECK(powerWorld.spawnMechanism(MechanismKind::Toggle, 5.0f, 5.0f) == 1);
-    CHECK(powerWorld.mechanisms()[0].active);
-    CHECK(powerWorld.interactAt(5.0f, 5.0f));
-    CHECK(!powerWorld.mechanisms()[0].active);
-    CHECK(powerWorld.interactAt(5.0f, 5.0f));
-    CHECK(powerWorld.mechanisms()[0].active);
+    CHECK(powerWorld.spawnBox(-3.0f, 5.0f) >= 0);
+    CHECK(powerWorld.spawnBox(3.0f, 5.0f) >= 0);
+    CHECK(powerWorld.spawnMechanism(MechanismKind::Piston, -3.0f, 5.0f) == 0);
+    CHECK(powerWorld.spawnMechanism(MechanismKind::Spring, 0.0f, 5.0f) == 1);
+    CHECK(powerWorld.spawnMechanism(MechanismKind::ElasticRope, 0.0f, 5.0f) == 2);
+    CHECK(powerWorld.spawnMechanism(MechanismKind::Toggle, 8.0f, 8.0f) == 3);
+    CHECK(powerWorld.mechanisms()[3].pressed);
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        CHECK(powerWorld.mechanisms()[i].active);
+        CHECK(b2Joint_IsValid(powerWorld.mechanisms()[i].joint));
+    }
+
+    CHECK(powerWorld.interactAt(8.0f, 8.0f));
+    CHECK(!powerWorld.mechanisms()[3].pressed);
+    for (std::size_t i = 0; i < 3; ++i)
+        CHECK(!powerWorld.mechanisms()[i].active);
+
+    CHECK(powerWorld.interactAt(8.0f, 8.0f));
+    CHECK(powerWorld.mechanisms()[3].pressed);
+    for (std::size_t i = 0; i < 3; ++i)
+        CHECK(powerWorld.mechanisms()[i].active);
+
     powerWorld.step(1.0f / 60.0f);
-    CHECK(b2Joint_IsValid(powerWorld.mechanisms()[0].joint));
+    for (std::size_t i = 0; i < 3; ++i)
+        CHECK(b2Joint_IsValid(powerWorld.mechanisms()[i].joint));
 
     PhysicsWorld ropeVariantWorld;
     ropeVariantWorld.setMap(MapKind::Laboratory, false);
@@ -734,6 +749,48 @@ int main()
     CHECK(restoredRopes.mechanisms()[3].kind == MechanismKind::Cable);
     for (const MechanismRecord& mechanism : restoredRopes.mechanisms())
         CHECK(b2Joint_IsValid(mechanism.joint));
+
+    // A fast prop collision marks only the contacted character part; the ragdoll
+    // remains six connected, non-fracturing bodies and damage survives save/load.
+    PhysicsWorld characterImpactWorld;
+    characterImpactWorld.setMap(MapKind::Laboratory, false);
+    const int impactedCharacterGroup = characterImpactWorld.spawnRagdoll(0.0f, 6.0f);
+    CHECK(impactedCharacterGroup >= 0);
+    const int impactBallIndex = characterImpactWorld.spawnBall(-2.0f, 6.75f);
+    CHECK(impactBallIndex >= 0);
+    b2Body_SetLinearVelocity(
+        characterImpactWorld.records()[static_cast<std::size_t>(impactBallIndex)].id,
+        {28.0f, 0.0f});
+    for (int i = 0; i < 16; ++i)
+        characterImpactWorld.step(1.0f / 60.0f, 4);
+
+    float accumulatedCharacterDamage = 0.0f;
+    int impactedCharacterParts = 0;
+    int characterTorsoJoints = -1;
+    for (const BodyRecord& record : characterImpactWorld.records())
+    {
+        if (record.groupId != impactedCharacterGroup)
+            continue;
+        CHECK(!record.breakable);
+        accumulatedCharacterDamage += record.impactDamage;
+        if (record.impactDamage > 0.025f)
+            ++impactedCharacterParts;
+        if (record.partIndex == 0)
+            characterTorsoJoints = b2Body_GetJointCount(record.id);
+    }
+    CHECK(accumulatedCharacterDamage > 0.025f);
+    CHECK(impactedCharacterParts > 0);
+    CHECK(characterTorsoJoints == 5);
+
+    std::vector<std::uint8_t> characterDamageSnapshot;
+    CHECK(characterImpactWorld.saveToSnapshot(characterDamageSnapshot));
+    PhysicsWorld restoredCharacterDamage;
+    CHECK(restoredCharacterDamage.loadFromSnapshot(characterDamageSnapshot));
+    float restoredCharacterDamageTotal = 0.0f;
+    for (const BodyRecord& record : restoredCharacterDamage.records())
+        if (record.groupId == impactedCharacterGroup)
+            restoredCharacterDamageTotal += record.impactDamage;
+    CHECK(restoredCharacterDamageTotal > 0.025f);
 
     // A character part stays inside a bounded motion envelope after a hit.
     PhysicsWorld stableCharacterWorld;

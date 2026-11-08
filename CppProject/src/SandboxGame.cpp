@@ -1587,6 +1587,7 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
     const float x = static_cast<float>(position.x);
     const float y = static_cast<float>(position.y);
     const float angle = std::atan2(rotation.s, rotation.c);
+    const float drawableImpact = body.groupId >= 0 ? 0.0f : body.impactDamage;
 
     float extentX = body.radius;
     float extentY = body.radius;
@@ -1688,10 +1689,44 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
     }
     else if (body.shape == BodyShape::Circle)
         drawCircle(x, y, body.radius, angle, tint, body.material,
-                   body.impactDamage, selected);
+                   drawableImpact, selected);
     else
         drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint,
-                body.material, body.impactDamage, selected);
+                body.material, drawableImpact, selected);
+
+    // Soft, stylized impact marks communicate character damage without gore or
+    // structural cracks. The mark is attached to the struck ragdoll part.
+    if (body.groupId >= 0 && body.impactDamage > 0.025f)
+    {
+        const float severity = std::clamp(body.impactDamage, 0.0f, 1.0f);
+        const float localX = body.shape == BodyShape::Circle
+            ? -body.radius * 0.22f : body.halfWidth * 0.20f;
+        const float localY = body.shape == BodyShape::Circle
+            ? body.radius * 0.12f : body.halfHeight * 0.18f;
+        const float markWorldX = x + std::cos(angle) * localX -
+                                 std::sin(angle) * localY;
+        const float markWorldY = y + std::sin(angle) * localX +
+                                 std::cos(angle) * localY;
+        const SDL_FPoint mark = worldToScreen(markWorldX, markWorldY);
+        const float baseSize = body.shape == BodyShape::Circle
+            ? body.radius : std::min(body.halfWidth, body.halfHeight);
+        const float markRadius = std::max(2.0f,
+            baseSize * pixelsPerMeter_ * (0.20f + severity * 0.07f));
+        const Uint8 alpha = static_cast<Uint8>(45.0f + severity * 105.0f);
+
+        drawFilledEllipse(renderer_, mark.x, mark.y,
+            markRadius * 1.18f, markRadius * 0.72f,
+            SDL_Color{74, 62, 82, alpha});
+        drawFilledEllipse(renderer_, mark.x - markRadius * 0.12f,
+            mark.y - markRadius * 0.10f,
+            markRadius * 0.48f, markRadius * 0.26f,
+            SDL_Color{166, 132, 139, static_cast<Uint8>(alpha / 2)});
+        setColor(renderer_, SDL_Color{56, 49, 65,
+                                      static_cast<Uint8>(alpha * 0.82f)});
+        SDL_RenderLine(renderer_,
+            mark.x - markRadius * 0.52f, mark.y + markRadius * 0.12f,
+            mark.x + markRadius * 0.34f, mark.y - markRadius * 0.20f);
+    }
 
     if (body.bucketKind != BucketKind::None)
         drawBucket(body, x, y, angle);

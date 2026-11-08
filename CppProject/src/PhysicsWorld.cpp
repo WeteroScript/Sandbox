@@ -892,6 +892,12 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
 
     for (MechanismRecord& mechanism : mechanisms_)
     {
+        if (mechanism.kind == MechanismKind::Toggle)
+        {
+            mechanism.pressed = enabled;
+            continue;
+        }
+
         if (!b2Joint_IsValid(mechanism.joint))
             continue;
 
@@ -906,57 +912,7 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
             mechanism.active = enabled;
             b2DistanceJoint_EnableMotor(mechanism.joint, enabled);
         }
-        else if (mechanism.kind == MechanismKind::Motor && !enabled)
-        {
-            mechanism.active = false;
-            b2RevoluteJoint_EnableMotor(mechanism.joint, false);
-        }
     }
-}
-
-int PhysicsWorld::findPowerSourceIndex(b2BodyId start) const
-{
-    if (!b2Body_IsValid(start))
-        return -1;
-
-    std::vector<b2BodyId> pending{start};
-    std::vector<b2BodyId> visited;
-    for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
-    {
-        const b2BodyId current = pending[cursor];
-        if (std::any_of(visited.begin(), visited.end(),
-                [current](b2BodyId id) { return sameBodyId(id, current); }))
-            continue;
-        visited.push_back(current);
-
-        for (std::size_t i = 0; i < records_.size(); ++i)
-        {
-            const BodyRecord& record = records_[i];
-            if (record.powerSource && record.batteryCharge > 0.01f &&
-                b2Body_IsValid(record.id) && sameBodyId(record.id, current))
-                return static_cast<int>(i);
-        }
-
-        for (const MechanismRecord& connection : mechanisms_)
-        {
-            if ((connection.kind != MechanismKind::Wire &&
-                 connection.kind != MechanismKind::Switch) ||
-                (connection.kind == MechanismKind::Switch && !connection.active))
-                continue;
-
-            b2BodyId next = b2_nullBodyId;
-            if (sameBodyId(connection.bodyA, current))
-                next = connection.bodyB;
-            else if (sameBodyId(connection.bodyB, current))
-                next = connection.bodyA;
-
-            if (b2Body_IsValid(next) &&
-                !std::any_of(visited.begin(), visited.end(),
-                    [next](b2BodyId id) { return sameBodyId(id, next); }))
-                pending.push_back(next);
-        }
-    }
-    return -1;
 }
 
 void PhysicsWorld::updateMechanisms(float dt)
@@ -1052,11 +1008,27 @@ void PhysicsWorld::processImpactEvents()
         const auto found = std::find_if(records_.begin(), records_.end(),
             [bodyId](const BodyRecord& record)
             {
-                return record.breakable && record.shape == BodyShape::Box &&
-                       !record.frozen && sameBodyId(record.id, bodyId) &&
-                       b2Body_IsValid(record.id);
+                return sameBodyId(record.id, bodyId) && b2Body_IsValid(record.id);
             });
         if (found == records_.end())
+            return;
+
+        // Character parts accumulate a persistent, non-structural impact mark.
+        // Light contacts are ignored; the articulated body and its joints remain intact.
+        if (found->groupId >= 0)
+        {
+            if (approachSpeed < 4.5f)
+                return;
+
+            const float severity = (approachSpeed - 4.5f) / 20.0f;
+            const float increment = std::clamp(0.06f + severity * 0.30f,
+                                               0.06f, 0.36f);
+            found->impactDamage = std::clamp(
+                found->impactDamage + increment, 0.0f, 0.88f);
+            return;
+        }
+
+        if (!found->breakable || found->shape != BodyShape::Box || found->frozen)
             return;
 
         const float threshold = materialProfile(found->material).fractureSpeed;
@@ -1179,7 +1151,7 @@ int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
     sd.material.restitution = profile.restitution;
     const bool canFracture = !isStatic && selectable && groupId < 0 &&
         allowFracture && profile.fractureSpeed > 0.0f;
-    sd.enableHitEvents = canFracture;
+    sd.enableHitEvents = canFracture || (selectable && groupId >= 0);
     const b2Polygon polygon = b2MakeBox(hw, hh);
     b2CreatePolygonShape(body, &sd, &polygon);
 
@@ -1222,7 +1194,7 @@ int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
     sd.material.restitution = profile.restitution;
     const bool canFracture = selectable && groupId < 0 && allowFracture &&
         profile.fractureSpeed > 0.0f;
-    sd.enableHitEvents = canFracture;
+    sd.enableHitEvents = canFracture || (selectable && groupId >= 0);
     const b2Circle circle{{0.0f, 0.0f}, radius};
     b2CreateCircleShape(body, &sd, &circle);
 
@@ -1354,6 +1326,7 @@ bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
         mechanism.anchorX = x;
         mechanism.anchorY = y;
         mechanism.restLength = kind == MechanismKind::Button ? 0.9f : 0.0f;
+        mechanism.pressed = kind == MechanismKind::Toggle && mechanismsEnabled_;
         mechanisms_.push_back(mechanism);
         return true;
     }
