@@ -614,6 +614,8 @@ int main()
     CHECK(bucketWorld.surfaces()[0].volume > 4.0f);
     const SurfaceZone& groundedWater = bucketWorld.surfaces()[0];
     CHECK(std::abs(groundedWater.y - groundedWater.halfHeight + 4.8f) < 0.02f);
+    const SurfaceZone& groundedAcid = bucketWorld.surfaces()[2];
+    CHECK(std::abs(groundedAcid.y - groundedAcid.halfHeight + 1.4f) < 0.02f);
 
     std::vector<std::uint8_t> bucketSnapshot;
     CHECK(bucketWorld.saveToSnapshot(bucketSnapshot));
