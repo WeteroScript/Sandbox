@@ -1321,6 +1321,67 @@ void SandboxGame::drawCircle(float x, float y, float radius, float angle,
     }
 }
 
+void SandboxGame::drawBucket(
+    const BodyRecord& body, float x, float y, float angle)
+{
+    const float cosine = std::cos(angle);
+    const float sine = std::sin(angle);
+    const auto point = [&](float localX, float localY)
+    {
+        return worldToScreen(
+            x + cosine * localX - sine * localY,
+            y + sine * localX + cosine * localY);
+    };
+
+    if (body.bucketVolume > 0.01f)
+    {
+        SDL_Color liquid{55, 162, 224, 235};
+        switch (body.bucketKind)
+        {
+            case BucketKind::Water: liquid = {55, 162, 224, 235}; break;
+            case BucketKind::Lava: liquid = {246, 103, 35, 245}; break;
+            case BucketKind::Acid: liquid = {143, 224, 75, 240}; break;
+            case BucketKind::None: break;
+        }
+
+        const float fillTop = std::clamp(
+            -0.02f + body.bucketVolume * 0.055f, -0.02f, 0.25f);
+        const std::array<SDL_FPoint, 4> corners{
+            point(-0.30f, -0.34f), point(0.30f, -0.34f),
+            point(0.27f, fillTop), point(-0.27f, fillTop)
+        };
+        std::array<SDL_Vertex, 4> vertices{};
+        for (std::size_t i = 0; i < vertices.size(); ++i)
+        {
+            vertices[i].position = corners[i];
+            vertices[i].color = toFloatColor(liquid);
+            vertices[i].tex_coord = {0.0f, 0.0f};
+        }
+        constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
+        SDL_RenderGeometry(renderer_, nullptr, vertices.data(), 4,
+                           indices.data(), 6);
+
+        const SDL_FPoint surfaceA = point(-0.27f, fillTop);
+        const SDL_FPoint surfaceB = point(0.27f, fillTop);
+        setColor(renderer_, makeColor(235, 248, 255, 220));
+        SDL_RenderLine(renderer_, surfaceA.x, surfaceA.y,
+                       surfaceB.x, surfaceB.y);
+    }
+
+    // Bright rim and a curved handle make the container readable at phone scale.
+    const SDL_FPoint rimA = point(-0.40f, 0.42f);
+    const SDL_FPoint rimB = point(0.40f, 0.42f);
+    const SDL_FPoint handleA = point(-0.33f, 0.37f);
+    const SDL_FPoint handleB = point(-0.24f, 0.64f);
+    const SDL_FPoint handleC = point(0.24f, 0.64f);
+    const SDL_FPoint handleD = point(0.33f, 0.37f);
+    setColor(renderer_, makeColor(225, 233, 240, 230));
+    SDL_RenderLine(renderer_, rimA.x, rimA.y, rimB.x, rimB.y);
+    SDL_RenderLine(renderer_, handleA.x, handleA.y, handleB.x, handleB.y);
+    SDL_RenderLine(renderer_, handleB.x, handleB.y, handleC.x, handleC.y);
+    SDL_RenderLine(renderer_, handleC.x, handleC.y, handleD.x, handleD.y);
+}
+
 void SandboxGame::drawBody(const BodyRecord& body, bool selected)
 {
     if (!b2Body_IsValid(body.id))
@@ -1335,6 +1396,14 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         tint.r = static_cast<Uint8>(tint.r * 0.78f);
         tint.g = static_cast<Uint8>(tint.g * 0.86f);
         tint.b = static_cast<Uint8>(tint.b * 1.08f);
+    }
+    if (body.acidExposure > 0.0f)
+    {
+        const float corrosion = std::clamp(body.acidExposure / 8.0f, 0.0f, 1.0f);
+        tint.r = static_cast<Uint8>(tint.r * (1.0f - corrosion * 0.45f));
+        tint.g = static_cast<Uint8>(std::min(
+            255.0f, static_cast<float>(tint.g) + corrosion * 70.0f));
+        tint.b = static_cast<Uint8>(tint.b * (1.0f - corrosion * 0.30f));
     }
 
     const float x = static_cast<float>(position.x);
@@ -1368,6 +1437,9 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         drawCircle(x, y, body.radius, angle, tint, selected);
     else
         drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint, selected);
+
+    if (body.bucketKind != BucketKind::None)
+        drawBucket(body, x, y, angle);
 }
 
 void SandboxGame::drawButton(const SDL_FRect& rect, const char* label, bool active)
@@ -1457,6 +1529,18 @@ void SandboxGame::drawUi()
         static constexpr std::array<const char*, 6> miscLabels{
             "WATER PAIL", "LAVA PAIL", "ACID PAIL", "", "", ""
         };
+        static constexpr std::array<SpawnItem, 6> propItems{
+            SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
+            SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot
+        };
+        static constexpr std::array<SpawnItem, 6> mechanismItems{
+            SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
+            SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle
+        };
+        static constexpr std::array<SpawnItem, 6> miscItems{
+            SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
+            SpawnItem::Box, SpawnItem::Box, SpawnItem::Box
+        };
 
         const auto& labels = spawnCategory_ == SpawnCategory::Props
             ? propLabels
@@ -1496,16 +1580,7 @@ void SandboxGame::drawUi()
             quantity
         );
 
-        setColor(renderer_, makeColor(173, 185, 198));
-        const char* hint = spawnPlacementActive_
-            ? "Tap scene to place selected item"
-            : "Choose an item to enter placement mode";
-        SDL_RenderDebugText(
-            renderer_,
-            layout.spawnPanel.x + 10.0f * layout.scale,
-            layout.spawnPanel.y + layout.spawnPanel.h - 19.0f * layout.scale,
-            hint
-        );
+
     }
 
     char status[180];
@@ -1757,7 +1832,7 @@ void SandboxGame::drawSurfaces()
             setColor(renderer_, makeColor(12, 60, 111, 185));
             SDL_RenderRect(renderer_, &rect);
         }
-        else
+        else if (zone.kind == SurfaceKind::Lava)
         {
             drawGradientRect(renderer_, rect,
                 makeColor(255, 143, 48, 195),
@@ -1806,6 +1881,49 @@ void SandboxGame::drawSurfaces()
             SDL_RenderLine(renderer_, rect.x, rect.y + 1.0f,
                            rect.x + rect.w, rect.y + 1.0f);
             setColor(renderer_, makeColor(119, 34, 17, 210));
+            SDL_RenderRect(renderer_, &rect);
+        }
+        else
+        {
+            drawGradientRect(renderer_, rect,
+                makeColor(188, 239, 99, 190),
+                makeColor(47, 104, 47, 225));
+
+            for (int ripple = 0; ripple < 4; ++ripple)
+            {
+                const float y = rect.y + 5.0f +
+                    static_cast<float>(ripple) * std::max(7.0f, rect.h * 0.24f);
+                const float phase = time * 1.8f + ripple * 1.4f;
+                setColor(renderer_, makeColor(218, 255, 147, 155));
+                for (int segment = 0; segment < 14; ++segment)
+                {
+                    const float t1 = static_cast<float>(segment) / 14.0f;
+                    const float t2 = (static_cast<float>(segment) + 0.7f) / 14.0f;
+                    const float x1 = rect.x + rect.w * t1;
+                    const float x2 = rect.x + rect.w * t2;
+                    const float y1 = y + std::sin(phase + segment * 0.62f) * 2.2f;
+                    const float y2 = y + std::sin(phase + (segment + 0.7f) * 0.62f) * 2.2f;
+                    SDL_RenderLine(renderer_, x1, y1, x2, y2);
+                }
+            }
+
+            for (int bubble = 0; bubble < 5; ++bubble)
+            {
+                const float fraction = std::fmod(
+                    time * 0.22f + bubble * 0.19f, 1.0f);
+                const float bx = rect.x + rect.w * (0.12f + 0.76f * fraction);
+                const float by = rect.y + rect.h *
+                    (0.30f + 0.45f * std::abs(std::sin(time * 1.4f + bubble)));
+                drawFilledCircle(renderer_, bx, by, 4.0f,
+                                 makeColor(217, 255, 147, 75));
+                drawFilledCircle(renderer_, bx, by, 1.8f,
+                                 makeColor(245, 255, 205, 215));
+            }
+
+            setColor(renderer_, makeColor(211, 255, 138, 225));
+            SDL_RenderLine(renderer_, rect.x, rect.y + 1.0f,
+                           rect.x + rect.w, rect.y + 1.0f);
+            setColor(renderer_, makeColor(51, 111, 51, 215));
             SDL_RenderRect(renderer_, &rect);
         }
     }
