@@ -52,6 +52,13 @@ bool sameBodyId(b2BodyId a, b2BodyId b)
            a.generation == b.generation;
 }
 
+std::uint64_t bodyIdKey(b2BodyId id)
+{
+    return static_cast<std::uint64_t>(id.index1) |
+           (static_cast<std::uint64_t>(id.world0) << 32) |
+           (static_cast<std::uint64_t>(id.generation) << 48);
+}
+
 struct MaterialProfile
 {
     float density;
@@ -928,88 +935,87 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
 
 void PhysicsWorld::updateMechanisms(float dt)
 {
-    // Build the active electrical graph once per tick. The previous approach
-    // rescanned every body and every link for every node visited by every motor.
-    std::unordered_map<std::uint64_t, std::size_t> recordIndices;
-    recordIndices.reserve(records_.size());
-    for (std::size_t i = 0; i < records_.size(); ++i)
-    {
-        if (b2Body_IsValid(records_[i].id))
-            recordIndices.emplace(
-                static_cast<std::uint64_t>(records_[i].id.index1) |
-                    (static_cast<std::uint64_t>(records_[i].id.world0) << 32) |
-                    (static_cast<std::uint64_t>(records_[i].id.generation) << 48),
-                i);
-    }
-
-    std::vector<std::vector<std::size_t>> conductiveAdjacency(records_.size());
-    for (const MechanismRecord& link : mechanisms_)
-    {
-        if (!link.active ||
-            (link.kind != MechanismKind::Wire &&
-             link.kind != MechanismKind::Switch))
-            continue;
-
-        const auto first = recordIndices.find(
-            static_cast<std::uint64_t>(link.bodyA.index1) |
-            (static_cast<std::uint64_t>(link.bodyA.world0) << 32) |
-            (static_cast<std::uint64_t>(link.bodyA.generation) << 48));
-        const auto second = recordIndices.find(
-            static_cast<std::uint64_t>(link.bodyB.index1) |
-            (static_cast<std::uint64_t>(link.bodyB.world0) << 32) |
-            (static_cast<std::uint64_t>(link.bodyB.generation) << 48));
-        if (first == recordIndices.end() || second == recordIndices.end())
-            continue;
-
-        conductiveAdjacency[first->second].push_back(second->second);
-        conductiveAdjacency[second->second].push_back(first->second);
-    }
-
-    // Resolve connected components once. A component can contain multiple
-    // batteries; motors select the first one that still has charge.
-    std::vector<int> componentForBody(records_.size(), -1);
-    std::vector<std::vector<std::size_t>> componentBatteries;
-    std::vector<std::size_t> pending;
-    pending.reserve(records_.size());
-
-    for (std::size_t start = 0; start < records_.size(); ++start)
-    {
-        if (componentForBody[start] >= 0)
-            continue;
-
-        const int component = static_cast<int>(componentBatteries.size());
-        componentBatteries.emplace_back();
-        pending.clear();
-        pending.push_back(start);
-        componentForBody[start] = component;
-
-        for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
+    const bool hasMotor = std::any_of(
+        mechanisms_.begin(), mechanisms_.end(),
+        [](const MechanismRecord& mechanism)
         {
-            const std::size_t current = pending[cursor];
-            const BodyRecord& body = records_[current];
-            if (body.powerSource && body.batteryCharge > 0.001f)
-                componentBatteries.back().push_back(current);
+            return mechanism.kind == MechanismKind::Motor &&
+                   b2Joint_IsValid(mechanism.joint);
+        });
 
-            for (const std::size_t next : conductiveAdjacency[current])
+    std::unordered_map<std::uint64_t, std::size_t> recordIndices;
+    std::vector<int> componentForBody;
+    std::vector<std::vector<std::size_t>> componentBatteries;
+
+    if (hasMotor)
+    {
+        // Build the active electrical graph once per tick. Avoid all graph
+        // allocations in ordinary scenes that contain no powered motors.
+        recordIndices.reserve(records_.size());
+        for (std::size_t i = 0; i < records_.size(); ++i)
+        {
+            if (b2Body_IsValid(records_[i].id))
+                recordIndices.emplace(bodyIdKey(records_[i].id), i);
+        }
+
+        std::vector<std::vector<std::size_t>> conductiveAdjacency(records_.size());
+        for (const MechanismRecord& link : mechanisms_)
+        {
+            if (!link.active ||
+                (link.kind != MechanismKind::Wire &&
+                 link.kind != MechanismKind::Switch))
+                continue;
+
+            const auto first = recordIndices.find(bodyIdKey(link.bodyA));
+            const auto second = recordIndices.find(bodyIdKey(link.bodyB));
+            if (first == recordIndices.end() || second == recordIndices.end())
+                continue;
+
+            conductiveAdjacency[first->second].push_back(second->second);
+            conductiveAdjacency[second->second].push_back(first->second);
+        }
+
+        // Resolve connected components once. A component can contain multiple
+        // batteries; motors select the first one that still has charge.
+        componentForBody.assign(records_.size(), -1);
+        std::vector<std::size_t> pending;
+        pending.reserve(records_.size());
+
+        for (std::size_t start = 0; start < records_.size(); ++start)
+        {
+            if (componentForBody[start] >= 0)
+                continue;
+
+            const int component = static_cast<int>(componentBatteries.size());
+            componentBatteries.emplace_back();
+            pending.clear();
+            pending.push_back(start);
+            componentForBody[start] = component;
+
+            for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
             {
-                if (componentForBody[next] >= 0)
-                    continue;
-                componentForBody[next] = component;
-                pending.push_back(next);
+                const std::size_t current = pending[cursor];
+                const BodyRecord& body = records_[current];
+                if (body.powerSource && body.batteryCharge > 0.001f)
+                    componentBatteries.back().push_back(current);
+
+                for (const std::size_t next : conductiveAdjacency[current])
+                {
+                    if (componentForBody[next] >= 0)
+                        continue;
+                    componentForBody[next] = component;
+                    pending.push_back(next);
+                }
             }
         }
     }
 
     const auto findPowerSourceIndex = [&](b2BodyId endpoint) -> int
     {
-        if (!b2Body_IsValid(endpoint))
+        if (!hasMotor || !b2Body_IsValid(endpoint))
             return -1;
 
-        const std::uint64_t key =
-            static_cast<std::uint64_t>(endpoint.index1) |
-            (static_cast<std::uint64_t>(endpoint.world0) << 32) |
-            (static_cast<std::uint64_t>(endpoint.generation) << 48);
-        const auto found = recordIndices.find(key);
+        const auto found = recordIndices.find(bodyIdKey(endpoint));
         if (found == recordIndices.end())
             return -1;
 
@@ -1107,7 +1113,19 @@ void PhysicsWorld::step(float dt, int subSteps)
 void PhysicsWorld::processImpactEvents()
 {
     const b2ContactEvents events = b2World_GetContactEvents(world_);
+    if (events.hitCount <= 0)
+        return;
+
+    std::unordered_map<std::uint64_t, std::size_t> recordIndices;
+    recordIndices.reserve(records_.size());
+    for (std::size_t i = 0; i < records_.size(); ++i)
+    {
+        if (b2Body_IsValid(records_[i].id))
+            recordIndices.emplace(bodyIdKey(records_[i].id), i);
+    }
+
     std::vector<b2BodyId> fracturedBodies;
+    std::vector<std::uint8_t> fractureQueued(records_.size(), 0U);
 
     const auto applyImpact = [&](b2ShapeId shapeId, float approachSpeed)
     {
@@ -1115,17 +1133,16 @@ void PhysicsWorld::processImpactEvents()
             return;
 
         const b2BodyId bodyId = b2Shape_GetBody(shapeId);
-        const auto found = std::find_if(records_.begin(), records_.end(),
-            [bodyId](const BodyRecord& record)
-            {
-                return sameBodyId(record.id, bodyId) && b2Body_IsValid(record.id);
-            });
-        if (found == records_.end())
+        const auto found = recordIndices.find(bodyIdKey(bodyId));
+        if (found == recordIndices.end())
             return;
+
+        const std::size_t recordIndex = found->second;
+        BodyRecord& record = records_[recordIndex];
 
         // Character parts accumulate a persistent, non-structural impact mark.
         // Light contacts are ignored; the articulated body and its joints remain intact.
-        if (found->groupId >= 0)
+        if (record.groupId >= 0)
         {
             if (approachSpeed < 4.5f)
                 return;
@@ -1133,15 +1150,15 @@ void PhysicsWorld::processImpactEvents()
             const float severity = (approachSpeed - 4.5f) / 20.0f;
             const float increment = std::clamp(0.06f + severity * 0.30f,
                                                0.06f, 0.36f);
-            found->impactDamage = std::clamp(
-                found->impactDamage + increment, 0.0f, 0.88f);
+            record.impactDamage = std::clamp(
+                record.impactDamage + increment, 0.0f, 0.88f);
             return;
         }
 
-        if (!found->breakable || found->shape != BodyShape::Box || found->frozen)
+        if (!record.breakable || record.shape != BodyShape::Box || record.frozen)
             return;
 
-        const float threshold = materialProfile(found->material).fractureSpeed;
+        const float threshold = materialProfile(record.material).fractureSpeed;
         if (threshold <= 0.0f || approachSpeed < threshold * 0.35f)
             return;
 
@@ -1149,11 +1166,12 @@ void PhysicsWorld::processImpactEvents()
         const float increment = ratio >= 1.35f
             ? 1.0f
             : ratio * ratio * 0.52f;
-        found->impactDamage = std::clamp(found->impactDamage + increment, 0.0f, 1.0f);
-        if (found->impactDamage >= 1.0f &&
-            std::none_of(fracturedBodies.begin(), fracturedBodies.end(),
-                [&](b2BodyId candidate) { return sameBodyId(candidate, bodyId); }))
+        record.impactDamage = std::clamp(record.impactDamage + increment, 0.0f, 1.0f);
+        if (record.impactDamage >= 1.0f && !fractureQueued[recordIndex])
+        {
+            fractureQueued[recordIndex] = 1U;
             fracturedBodies.push_back(bodyId);
+        }
     };
 
     for (int i = 0; i < events.hitCount; ++i)
