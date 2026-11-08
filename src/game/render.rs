@@ -2,7 +2,7 @@ use macroquad::prelude::*;
 use rapier2d::prelude::vector;
 
 use super::physics::{CharacterKind, MapKind, PropKind, Ragdoll};
-use super::state::{GameState, SpawnCategory};
+use super::state::{GameState, SpawnCategory, ToolMode};
 
 pub struct Renderer;
 
@@ -84,6 +84,7 @@ impl Renderer {
         for (ragdoll, character) in &state.physics.spawned_ragdolls {
             self.draw_ragdoll(state, ragdoll, *character);
         }
+        self.draw_frozen_markers(state);
 
         set_default_camera();
         self.draw_top_bar(state);
@@ -95,12 +96,13 @@ impl Renderer {
             self.draw_spawn_menu(state);
         } else {
             self.draw_spawn_toggle();
+            self.draw_tool_buttons(state);
         }
 
         draw_text(
             &format!("Physics time: {:.1}", state.elapsed),
             24.0,
-            height - 28.0,
+            96.0,
             18.0,
             Color::from_rgba(220, 225, 226, 220),
         );
@@ -166,6 +168,59 @@ impl Renderer {
         let label = "FIRE";
         let label_width = measure_text(label, None, 17, 1.0).width;
         draw_text(label, center.x - label_width * 0.5, center.y + 6.0, 17.0, WHITE);
+    }
+
+    fn draw_tool_buttons(&self, state: &GameState) {
+        let buttons = [
+            (ToolMode::Grab, 20.0),
+            (ToolMode::Freeze, 122.0),
+            (ToolMode::Duplicate, 224.0),
+        ];
+        let top = screen_height() - 58.0;
+
+        for (tool, left) in buttons {
+            let active = state.tool_mode == tool;
+            let background = if active {
+                Color::from_rgba(55, 133, 93, 245)
+            } else {
+                Color::from_rgba(42, 52, 66, 235)
+            };
+            draw_rectangle(left, top, 94.0, 42.0, background);
+            draw_rectangle_lines(
+                left,
+                top,
+                94.0,
+                42.0,
+                2.0,
+                Color::from_rgba(220, 230, 236, 105),
+            );
+
+            let label = tool.label();
+            let width = measure_text(label, None, 16, 1.0).width;
+            draw_text(label, left + (94.0 - width) * 0.5, top + 27.0, 16.0, WHITE);
+        }
+    }
+
+    fn draw_frozen_markers(&self, state: &GameState) {
+        for handle in &state.physics.frozen_bodies {
+            if let Some(position) = state.physics.body_position(*handle) {
+                let center = vec2(position.translation.x, position.translation.y);
+                draw_circle_lines(
+                    center.x,
+                    center.y,
+                    40.0,
+                    3.0,
+                    Color::from_rgba(110, 215, 235, 210),
+                );
+                draw_text(
+                    "F",
+                    center.x - 4.0,
+                    center.y - 44.0,
+                    16.0,
+                    Color::from_rgba(150, 230, 245, 240),
+                );
+            }
+        }
     }
 
     fn draw_spawn_toggle(&self) {
