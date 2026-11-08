@@ -246,7 +246,6 @@ int main()
     CHECK(foundPiston);
 
     CHECK(world.interactAt(0.0f, 2.0f));
-    CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
 
     // Version-2 and version-3 scenes remain readable after adding material data in v4.
@@ -432,6 +431,7 @@ int main()
         else if (mechanism.kind == MechanismKind::Toggle)
         {
             foundToggle = true;
+            CHECK(!mechanism.pressed);
         }
     }
     CHECK(foundSpring && foundPiston && foundButton && foundToggle);
