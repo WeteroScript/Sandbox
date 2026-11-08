@@ -85,6 +85,7 @@ public:
     void updateGrab(int index, float targetX, float targetY, float deltaTime);
     void toggleFreeze(int index);
     void cloneAt(int index);
+    void rotateAt(int index, float angleDelta);
     void deleteAt(int index);
     void clearDynamic();
 

@@ -1162,6 +1162,110 @@ void PhysicsWorld::cloneAt(int index)
                   selected.color, false, true, -1, selected.density);
 }
 
+
+void PhysicsWorld::rotateAt(int index, float angleDelta)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= records_.size() ||
+        !std::isfinite(angleDelta) || std::abs(angleDelta) < 0.0001f)
+        return;
+
+    const BodyRecord& selected = records_[static_cast<std::size_t>(index)];
+    if (!selected.selectable || !b2Body_IsValid(selected.id))
+        return;
+
+    const int groupId = selected.groupId;
+    double centerX = 0.0;
+    double centerY = 0.0;
+    std::size_t memberCount = 0;
+    for (const BodyRecord& record : records_)
+    {
+        if (!record.selectable || !b2Body_IsValid(record.id))
+            continue;
+        const bool member = groupId >= 0
+            ? record.groupId == groupId
+            : sameBodyId(record.id, selected.id);
+        if (!member)
+            continue;
+        const b2Pos position = b2Body_GetPosition(record.id);
+        centerX += position.x;
+        centerY += position.y;
+        ++memberCount;
+    }
+    if (memberCount == 0)
+        return;
+
+    const float pivotX = static_cast<float>(centerX / memberCount);
+    const float pivotY = static_cast<float>(centerY / memberCount);
+    const float cosine = std::cos(angleDelta);
+    const float sine = std::sin(angleDelta);
+
+    for (BodyRecord& record : records_)
+    {
+        if (!record.selectable || !b2Body_IsValid(record.id))
+            continue;
+        const bool member = groupId >= 0
+            ? record.groupId == groupId
+            : sameBodyId(record.id, selected.id);
+        if (!member)
+            continue;
+
+        const b2Pos position = b2Body_GetPosition(record.id);
+        const b2Rot rotation = b2Body_GetRotation(record.id);
+        const float offsetX = static_cast<float>(position.x) - pivotX;
+        const float offsetY = static_cast<float>(position.y) - pivotY;
+        const b2Vec2 nextPosition{
+            pivotX + cosine * offsetX - sine * offsetY,
+            pivotY + sine * offsetX + cosine * offsetY
+        };
+        const float currentAngle = std::atan2(
+            static_cast<float>(rotation.s), static_cast<float>(rotation.c));
+        b2Body_SetTransform(
+            record.id, nextPosition, b2MakeRot(currentAngle + angleDelta));
+
+        const b2Vec2 velocity = b2Body_GetLinearVelocity(record.id);
+        const b2Vec2 rotatedVelocity{
+            cosine * velocity.x - sine * velocity.y,
+            sine * velocity.x + cosine * velocity.y
+        };
+        if (record.frozen)
+        {
+            record.savedVelocity = {
+                cosine * record.savedVelocity.x - sine * record.savedVelocity.y,
+                sine * record.savedVelocity.x + cosine * record.savedVelocity.y
+            };
+        }
+        else
+        {
+            b2Body_SetLinearVelocity(record.id, rotatedVelocity);
+        }
+    }
+
+    // Proximity buttons are mounted to their linked body. Keep their
+    // interaction anchor aligned when the body or its complete group rotates.
+    for (MechanismRecord& mechanism : mechanisms_)
+    {
+        if (mechanism.kind != MechanismKind::Button ||
+            !b2Body_IsValid(mechanism.bodyA))
+            continue;
+
+        const bool attached = groupId >= 0
+            ? std::any_of(records_.begin(), records_.end(),
+                [&](const BodyRecord& record)
+                {
+                    return record.groupId == groupId &&
+                           sameBodyId(record.id, mechanism.bodyA);
+                })
+            : sameBodyId(mechanism.bodyA, selected.id);
+        if (!attached)
+            continue;
+
+        const float offsetX = mechanism.anchorX - pivotX;
+        const float offsetY = mechanism.anchorY - pivotY;
+        mechanism.anchorX = pivotX + cosine * offsetX - sine * offsetY;
+        mechanism.anchorY = pivotY + sine * offsetX + cosine * offsetY;
+    }
+}
+
 void PhysicsWorld::removeMechanismsForBody(b2BodyId body)
 {
     std::vector<b2BodyId> pistonAnchors;

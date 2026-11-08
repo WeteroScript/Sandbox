@@ -1,5 +1,8 @@
 #include "PhysicsWorld.hpp"
 
+#include <array>
+#include <cmath>
+#include <numeric>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -341,6 +344,90 @@ int main()
 
     world.step(1.0f / 60.0f, 4);
 
+    // Rotation of a standalone body keeps its centre and rotates velocity.
+    PhysicsWorld rotationWorld;
+    const int rotateBoxIndex = rotationWorld.spawnBox(9.0f, 5.0f);
+    CHECK(rotateBoxIndex >= 0);
+    const b2BodyId rotateBox = rotationWorld.records()[
+        static_cast<std::size_t>(rotateBoxIndex)].id;
+    b2Body_SetLinearVelocity(rotateBox, {2.0f, 0.0f});
+    const b2Pos rotateBoxPosition = b2Body_GetPosition(rotateBox);
+    rotationWorld.rotateAt(rotateBoxIndex, 1.57079632679f);
+    const b2Pos rotatedBoxPosition = b2Body_GetPosition(rotateBox);
+    const b2Rot rotatedBoxRotation = b2Body_GetRotation(rotateBox);
+    const b2Vec2 rotatedBoxVelocity = b2Body_GetLinearVelocity(rotateBox);
+    CHECK(std::abs(static_cast<float>(rotatedBoxPosition.x) -
+                   static_cast<float>(rotateBoxPosition.x)) < 0.001f);
+    CHECK(std::abs(static_cast<float>(rotatedBoxPosition.y) -
+                   static_cast<float>(rotateBoxPosition.y)) < 0.001f);
+    CHECK(std::abs(std::atan2(static_cast<float>(rotatedBoxRotation.s),
+                              static_cast<float>(rotatedBoxRotation.c)) -
+                   1.57079632679f) < 0.001f);
+    CHECK(std::abs(rotatedBoxVelocity.x) < 0.001f);
+    CHECK(std::abs(rotatedBoxVelocity.y - 2.0f) < 0.001f);
+
+    // Selecting any ragdoll part rotates the entire six-body group around
+    // its centroid, preserving relative geometry and every hinge connection.
+    const int rotationGroup = rotationWorld.spawnRagdoll(0.0f, 7.0f);
+    CHECK(rotationGroup >= 0);
+    int rotationRootIndex = -1;
+    std::array<b2BodyId, 6> rotationBodies{};
+    std::array<b2Pos, 6> rotationPositions{};
+    std::array<b2Rot, 6> rotationAngles{};
+    std::array<int, 6> rotationJointCounts{};
+    std::size_t rotationPartCount = 0;
+    double centroidX = 0.0;
+    double centroidY = 0.0;
+    for (std::size_t i = 0; i < rotationWorld.records().size(); ++i)
+    {
+        const BodyRecord& record = rotationWorld.records()[i];
+        if (record.groupId != rotationGroup)
+            continue;
+        CHECK(rotationPartCount < rotationBodies.size());
+        if (record.partIndex == 0)
+            rotationRootIndex = static_cast<int>(i);
+        rotationBodies[rotationPartCount] = record.id;
+        rotationPositions[rotationPartCount] = b2Body_GetPosition(record.id);
+        rotationAngles[rotationPartCount] = b2Body_GetRotation(record.id);
+        rotationJointCounts[rotationPartCount] = b2Body_GetJointCount(record.id);
+        centroidX += rotationPositions[rotationPartCount].x;
+        centroidY += rotationPositions[rotationPartCount].y;
+        ++rotationPartCount;
+    }
+    CHECK(rotationPartCount == 6);
+    CHECK(rotationRootIndex >= 0);
+    centroidX /= static_cast<double>(rotationPartCount);
+    centroidY /= static_cast<double>(rotationPartCount);
+
+    constexpr float rotationDelta = 0.78539816339f;
+    rotationWorld.rotateAt(rotationRootIndex, rotationDelta);
+    for (std::size_t i = 0; i < rotationPartCount; ++i)
+    {
+        CHECK(b2Body_IsValid(rotationBodies[i]));
+        const b2Pos afterPosition = b2Body_GetPosition(rotationBodies[i]);
+        const b2Rot afterRotation = b2Body_GetRotation(rotationBodies[i]);
+        const float dx = static_cast<float>(rotationPositions[i].x - centroidX);
+        const float dy = static_cast<float>(rotationPositions[i].y - centroidY);
+        const float expectedX = static_cast<float>(centroidX) +
+            std::cos(rotationDelta) * dx - std::sin(rotationDelta) * dy;
+        const float expectedY = static_cast<float>(centroidY) +
+            std::sin(rotationDelta) * dx + std::cos(rotationDelta) * dy;
+        CHECK(std::abs(static_cast<float>(afterPosition.x) - expectedX) < 0.002f);
+        CHECK(std::abs(static_cast<float>(afterPosition.y) - expectedY) < 0.002f);
+
+        const float beforeAngle = std::atan2(
+            static_cast<float>(rotationAngles[i].s),
+            static_cast<float>(rotationAngles[i].c));
+        const float afterAngle = std::atan2(
+            static_cast<float>(afterRotation.s),
+            static_cast<float>(afterRotation.c));
+        CHECK(std::abs(std::remainder(
+            afterAngle - beforeAngle - rotationDelta, 6.28318530718f)) < 0.002f);
+        CHECK(b2Body_GetJointCount(rotationBodies[i]) == rotationJointCounts[i]);
+    }
+
+    CHECK(std::accumulate(rotationJointCounts.begin(), rotationJointCounts.end(), 0) == 10);
+
     PhysicsWorld fluidWorld;
     fluidWorld.setMap(MapKind::Laboratory, false);
     const int dryWaterIndex = fluidWorld.spawnBall(-12.0f, -4.28f);
@@ -437,6 +524,6 @@ int main()
 
     std::error_code error;
     std::filesystem::remove(savePath, error);
-    std::cout << "Physics, maps, character persistence, exact fluid immersion, malformed saves, mechanism deletion and piston-anchor cleanup passed.\n";
+    std::cout << "Physics, rotation, maps, character persistence, exact fluid immersion, malformed saves, mechanism deletion and piston-anchor cleanup passed.\n";
     return 0;
 }
