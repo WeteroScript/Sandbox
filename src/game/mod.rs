@@ -46,6 +46,15 @@ impl Game {
 
         self.handle_spawn_dialog();
 
+        if self.state.mode == GameMode::Playing
+            && !self.state.spawn_menu_open
+            && self.state.pending_spawn.is_none()
+        {
+            if let Some(direction) = self.input.speed_adjustment() {
+                self.state.adjust_simulation_speed(direction);
+            }
+        }
+
         if self.state.mode == GameMode::Playing {
             if let Some(tool_mode) = self.input.tool_mode_pressed() {
                 self.state.tool_mode = tool_mode;
@@ -101,7 +110,7 @@ impl Game {
                 }
             }
             GameMode::Playing => {
-                let delta_time = get_frame_time();
+                let delta_time = get_frame_time() * self.state.simulation_speed();
                 self.state.elapsed += delta_time;
 
                 self.state.physics.move_ragdoll(self.input.movement());
@@ -165,6 +174,12 @@ impl Game {
         }
 
         let world_position = self.screen_to_world(pointer);
+
+        if self.state.tool_mode == state::ToolMode::Delete {
+            self.state.physics.delete_prop_at(world_position);
+            return;
+        }
+
         let Some(handle) = self.find_body_at(world_position) else {
             return;
         };
@@ -174,7 +189,7 @@ impl Game {
             state::ToolMode::Duplicate => {
                 self.state.physics.duplicate_body(handle);
             }
-            state::ToolMode::Grab => {}
+            state::ToolMode::Delete | state::ToolMode::Grab => {}
         }
     }
 
