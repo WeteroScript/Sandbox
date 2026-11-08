@@ -885,6 +885,13 @@ int main()
         if (record.selectable && record.material == MaterialKind::Wood &&
             !record.breakable)
             ++woodDebrisCount;
+    std::cerr << "WOOD_DEBRIS_COUNT=" << woodDebrisCount << '\n';
+    for (const BodyRecord& record : strongImpactWorld.records())
+        if (record.material == MaterialKind::Wood)
+            std::cerr << "WOOD_RECORD selectable=" << record.selectable
+                      << " breakable=" << record.breakable
+                      << " shape=" << static_cast<int>(record.shape)
+                      << " group=" << record.groupId << '\n';
     CHECK(woodDebrisCount == 4);
 
     std::error_code error;

@@ -1149,6 +1149,8 @@ int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
     record.groupId = groupId;
     record.partIndex = partIndex;
     record.selectable = selectable;
+    record.material = material;
+    record.breakable = canFracture;
     records_.push_back(record);
     return static_cast<int>(records_.size() - 1);
 }
