@@ -400,10 +400,16 @@ void SandboxGame::handlePointerDown(float x, float y)
     {
         hasPreInteractionSnapshot =
             captureHistorySnapshot(preInteractionSnapshot);
+        const int touchedBody = physics_.pickBody(world.x, world.y);
+        const bool tappedBucket = touchedBody >= 0 &&
+            physics_.records()[static_cast<std::size_t>(touchedBody)].bucketKind !=
+                BucketKind::None;
         if (physics_.interactAt(world.x, world.y))
         {
             if (hasPreInteractionSnapshot)
                 pushUndoSnapshot(std::move(preInteractionSnapshot));
+            notice_ = tappedBucket ? "Liquid poured" : "Mechanism activated";
+            noticeTimer_ = 1.8f;
             return;
         }
     }
@@ -835,6 +841,12 @@ void SandboxGame::placeSelected(float worldX, float worldY)
         notice_ = mechanism
             ? "Mechanism needs nearby movable objects"
             : "Could not create every selected item";
+    }
+    else if (selectedSpawnItem_ == SpawnItem::WaterBucket ||
+             selectedSpawnItem_ == SpawnItem::LavaBucket ||
+             selectedSpawnItem_ == SpawnItem::AcidBucket)
+    {
+        notice_ = "Tap bucket to pour liquid";
     }
     else
     {
