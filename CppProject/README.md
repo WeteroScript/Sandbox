@@ -18,7 +18,8 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Arena floor, side walls, and map-specific static geometry.
 - Dynamic boxes, balls, barrels, and platforms.
 - Six-part Melon and Robot ragdolls with revolute joints; robot geometry and colors survive clone/save/load.
-- Water buoyancy/drag and animated lava-flow forces scale with approximate shape-to-zone overlap, including partial immersion.
+- Water buoyancy/drag and animated lava-flow forces use shape-accurate overlap with liquid zones; circles use circle/rectangle area integration and rotated boxes use polygon clipping.
+- Fluid-overlap calculations use fixed-size geometry buffers to avoid temporary heap allocations during simulation.
 - GRAB, FREEZE, CLONE, and DELETE tools.
 - Group freeze, clone, and delete for ragdolls.
 - Rod and rope distance constraints, spring joints, motorized pistons, proximity buttons, and interactive toggles.
@@ -30,6 +31,8 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Versioned scene save/load with map selection, body transforms, velocities, dimensions, colors, freeze state, ragdoll joint links, and mechanism connections.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
 - Mouse-wheel zoom, pause, and simulation speed controls.
+- Procedural object materials with per-vertex lighting, beveled edges, wood grain, metal panels, fasteners, surface highlights, and contact shadows.
+- Map-specific visual detailing for city facades, laboratory panels, and test-range markings.
 - Physics grid and FPS/object counters.
 - Desktop CMake target and Android Gradle/CMake project for arm64-v8a.
 
@@ -79,4 +82,4 @@ The original Rust project remains in the repository as a reference. The previous
 
 ## Physics regression test
 
-CTest covers Melon and Robot joint graphs, character-preserving clone, grouped freeze, scene persistence, mechanism restoration, and partial water/lava overlap.
+CTest covers Melon and Robot joint graphs, character-preserving clone, grouped freeze, scene persistence, mechanism restoration, partial circle immersion, malformed save rejection, duplicate-constraint rejection, mechanism endpoint deletion, and piston-anchor cleanup.

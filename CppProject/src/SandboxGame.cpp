@@ -47,6 +47,36 @@ SDL_Color shadeColor(SDL_Color tint, float factor, Uint8 alpha = 255)
     return SDL_Color{channel(tint.r), channel(tint.g), channel(tint.b), alpha};
 }
 
+void drawFilledEllipse(SDL_Renderer* renderer, float x, float y,
+                       float radiusX, float radiusY, SDL_Color tint)
+{
+    constexpr int segments = 32;
+    std::array<SDL_Vertex, segments + 1> vertices{};
+    std::array<int, segments * 3> indices{};
+    vertices[0].position = {x, y};
+    vertices[0].color = toFloatColor(tint);
+    vertices[0].tex_coord = {0.0f, 0.0f};
+
+    for (int i = 0; i < segments; ++i)
+    {
+        const float angle = 2.0f * kPi * static_cast<float>(i) / segments;
+        vertices[static_cast<std::size_t>(i + 1)].position = {
+            x + std::cos(angle) * radiusX,
+            y + std::sin(angle) * radiusY
+        };
+        vertices[static_cast<std::size_t>(i + 1)].color = toFloatColor(tint);
+        vertices[static_cast<std::size_t>(i + 1)].tex_coord = {0.0f, 0.0f};
+        const std::size_t base = static_cast<std::size_t>(i) * 3;
+        indices[base] = 0;
+        indices[base + 1] = i + 1;
+        indices[base + 2] = (i + 1) % segments + 1;
+    }
+
+    SDL_RenderGeometry(renderer, nullptr, vertices.data(),
+                       static_cast<int>(vertices.size()),
+                       indices.data(), static_cast<int>(indices.size()));
+}
+
 void drawFilledCircle(SDL_Renderer* renderer, float x, float y,
                       float radius, SDL_Color tint)
 {
@@ -1185,6 +1215,29 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
     const float x = static_cast<float>(position.x);
     const float y = static_cast<float>(position.y);
     const float angle = std::atan2(rotation.s, rotation.c);
+
+    float extentX = body.radius;
+    float extentY = body.radius;
+    if (body.shape == BodyShape::Box)
+    {
+        const float c = std::abs(static_cast<float>(rotation.c));
+        const float s = std::abs(static_cast<float>(rotation.s));
+        extentX = c * body.halfWidth + s * body.halfHeight;
+        extentY = s * body.halfWidth + c * body.halfHeight;
+    }
+
+    // A compact contact shadow ties the object to the ground while keeping
+    // airborne props readable. Two translucent ellipses approximate a soft penumbra.
+    const SDL_FPoint shadow = worldToScreen(x, y - extentY - 0.025f);
+    const float shadowWidth = std::max(3.0f, extentX * pixelsPerMeter_ * 0.90f);
+    const float shadowHeight = std::clamp(
+        extentY * pixelsPerMeter_ * 0.13f, 2.0f, 9.0f);
+    drawFilledEllipse(renderer_, shadow.x, shadow.y,
+        shadowWidth * 1.16f, shadowHeight * 1.55f,
+        SDL_Color{5, 8, 12, 24});
+    drawFilledEllipse(renderer_, shadow.x, shadow.y,
+        shadowWidth, shadowHeight,
+        SDL_Color{3, 5, 8, 48});
 
     if (body.shape == BodyShape::Circle)
         drawCircle(x, y, body.radius, angle, tint, selected);
