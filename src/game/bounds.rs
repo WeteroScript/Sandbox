@@ -4,28 +4,30 @@ use rapier2d::prelude::{ColliderBuilder, RigidBodyBuilder};
 use super::super::physics::{MapKind, PhysicsWorld, Prop, PropKind};
 
 pub fn install_bounds(world: &mut PhysicsWorld) {
+    // A closed 2,400 x 1,250 play area. The side and lower barriers
+    // overlap the floor collider so fast-moving bodies cannot escape.
     create_boundary(
         world,
-        vector![-70.0, 350.0],
-        vector![24.0, 430.0],
+        vector![-55.0, 650.0],
+        vector![35.0, 850.0],
         [72, 82, 94, 255],
     );
     create_boundary(
         world,
-        vector![1350.0, 350.0],
-        vector![24.0, 430.0],
+        vector![2455.0, 650.0],
+        vector![35.0, 850.0],
         [72, 82, 94, 255],
     );
     create_boundary(
         world,
-        vector![640.0, -90.0],
-        vector![710.0, 24.0],
+        vector![1200.0, -95.0],
+        vector![1250.0, 35.0],
         [60, 70, 82, 255],
     );
     create_boundary(
         world,
-        vector![640.0, 700.0],
-        vector![710.0, 28.0],
+        vector![1200.0, 1435.0],
+        vector![1250.0, 35.0],
         [94, 104, 112, 255],
     );
 }
