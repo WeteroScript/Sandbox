@@ -14,7 +14,7 @@ enum class MaterialKind : std::uint8_t { Wood, Metal, Glass, Rubber, Concrete, O
 enum class MapKind : std::uint8_t { TestRange, City, Laboratory };
 enum class SurfaceKind : std::uint8_t { Water, Lava, Acid };
 enum class BucketKind : std::uint8_t { None, Water, Lava, Acid };
-enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle, Chain, ElasticRope, Cable };
+enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle, Chain, ElasticRope, Cable, Wire, Switch, Motor };
 
 struct BodyRecord
 {
@@ -42,6 +42,8 @@ struct BodyRecord
     MaterialKind material = MaterialKind::Wood;
     float impactDamage = 0.0f;
     bool breakable = false;
+    bool powerSource = false;
+    float batteryCharge = 0.0f;
 };
 
 struct SurfaceZone
@@ -87,6 +89,8 @@ public:
     int spawnBarrel(float x, float y);
     int spawnPlatform(float x, float y);
     int spawnMaterialBlock(MaterialKind material, float x, float y);
+    int spawnBattery(float x, float y);
+    int spawnWheel(float x, float y);
     int spawnBucket(BucketKind kind, float x, float y);
     int spawnRagdoll(float x, float y);
     int spawnRobot(float x, float y);
@@ -148,6 +152,7 @@ private:
     bool pourBucket(int index);
     void updateSurfaces(float deltaTime);
     void updateMechanisms(float deltaTime);
+    int findPowerSourceIndex(b2BodyId start) const;
     void processImpactEvents();
     void fractureBody(b2BodyId body);
     void setMechanismsEnabled(bool enabled);

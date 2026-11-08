@@ -283,6 +283,8 @@ struct SavedBody
     MaterialKind material = MaterialKind::Wood;
     float impactDamage = 0.0f;
     bool breakable = false;
+    bool powerSource = false;
+    float batteryCharge = 0.0f;
 };
 
 bool writeSavedBody(std::ostream& out, const SavedBody& b)
@@ -314,7 +316,9 @@ bool writeSavedBody(std::ostream& out, const SavedBody& b)
         writeValue(out, b.acidExposure) &&
         writeValue(out, static_cast<std::uint8_t>(b.material)) &&
         writeValue(out, static_cast<std::uint8_t>(b.breakable ? 1U : 0U)) &&
-        writeValue(out, b.impactDamage);
+        writeValue(out, b.impactDamage) &&
+        writeValue(out, static_cast<std::uint8_t>(b.powerSource ? 1U : 0U)) &&
+        writeValue(out, b.batteryCharge);
 }
 
 bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
@@ -374,6 +378,15 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
             groupId < 0 && b.bucketKind == BucketKind::None;
     }
 
+    if (version >= 5)
+    {
+        std::uint8_t powerSource = 0;
+        if (!readValue(in, powerSource) || !readValue(in, b.batteryCharge) ||
+            powerSource > 1)
+            return false;
+        b.powerSource = powerSource != 0;
+    }
+
     if (shape > static_cast<std::uint8_t>(BodyShape::Circle) || frozen > 1)
         return false;
 
@@ -389,7 +402,7 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         b.parentAnchor.x, b.parentAnchor.y, b.childAnchor.x, b.childAnchor.y,
         b.jointLowerAngle, b.jointUpperAngle,
         b.savedVelocity.x, b.savedVelocity.y, b.savedAngularVelocity,
-        b.bucketVolume, b.acidExposure, b.impactDamage
+        b.bucketVolume, b.acidExposure, b.impactDamage, b.batteryCharge
     };
 
     for (float value : values)
@@ -427,6 +440,9 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         static_cast<std::uint8_t>(b.material) >
             static_cast<std::uint8_t>(MaterialKind::Organic) ||
         b.impactDamage < 0.0f || b.impactDamage > 1.0f ||
+        b.batteryCharge < 0.0f || b.batteryCharge > 100.0f ||
+        (!b.powerSource && b.batteryCharge > 0.0f) ||
+        (b.powerSource && (b.groupId >= 0 || b.bucketKind != BucketKind::None)) ||
         (b.breakable && (b.groupId >= 0 || b.bucketKind != BucketKind::None ||
                          b.shape != BodyShape::Box)))
         return false;
@@ -510,7 +526,7 @@ bool readSavedMechanism(std::istream& in, SavedMechanism& m)
           readValue(in, m.active)))
         return false;
 
-    const auto maxKind = static_cast<std::uint8_t>(MechanismKind::Cable);
+    const auto maxKind = static_cast<std::uint8_t>(MechanismKind::Motor);
     return m.kind <= maxKind &&
         m.firstIndex >= -1 && m.secondIndex >= -1 &&
         finite(m.anchorX) && finite(m.anchorY) &&
@@ -890,7 +906,57 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
             mechanism.active = enabled;
             b2DistanceJoint_EnableMotor(mechanism.joint, enabled);
         }
+        else if (mechanism.kind == MechanismKind::Motor && !enabled)
+        {
+            mechanism.active = false;
+            b2RevoluteJoint_EnableMotor(mechanism.joint, false);
+        }
     }
+}
+
+int PhysicsWorld::findPowerSourceIndex(b2BodyId start) const
+{
+    if (!b2Body_IsValid(start))
+        return -1;
+
+    std::vector<b2BodyId> pending{start};
+    std::vector<b2BodyId> visited;
+    for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
+    {
+        const b2BodyId current = pending[cursor];
+        if (std::any_of(visited.begin(), visited.end(),
+                [current](b2BodyId id) { return sameBodyId(id, current); }))
+            continue;
+        visited.push_back(current);
+
+        for (std::size_t i = 0; i < records_.size(); ++i)
+        {
+            const BodyRecord& record = records_[i];
+            if (record.powerSource && record.batteryCharge > 0.01f &&
+                b2Body_IsValid(record.id) && sameBodyId(record.id, current))
+                return static_cast<int>(i);
+        }
+
+        for (const MechanismRecord& connection : mechanisms_)
+        {
+            if ((connection.kind != MechanismKind::Wire &&
+                 connection.kind != MechanismKind::Switch) ||
+                (connection.kind == MechanismKind::Switch && !connection.active))
+                continue;
+
+            b2BodyId next = b2_nullBodyId;
+            if (sameBodyId(connection.bodyA, current))
+                next = connection.bodyB;
+            else if (sameBodyId(connection.bodyB, current))
+                next = connection.bodyA;
+
+            if (b2Body_IsValid(next) &&
+                !std::any_of(visited.begin(), visited.end(),
+                    [next](b2BodyId id) { return sameBodyId(id, next); }))
+                pending.push_back(next);
+        }
+    }
+    return -1;
 }
 
 void PhysicsWorld::updateMechanisms(float dt)
@@ -898,6 +964,26 @@ void PhysicsWorld::updateMechanisms(float dt)
     for (MechanismRecord& mechanism : mechanisms_)
     {
         mechanism.phase += dt;
+
+        if (mechanism.kind == MechanismKind::Motor &&
+            b2Joint_IsValid(mechanism.joint))
+        {
+            int batteryIndex = findPowerSourceIndex(mechanism.bodyA);
+            if (batteryIndex < 0)
+                batteryIndex = findPowerSourceIndex(mechanism.bodyB);
+
+            const bool powered = mechanismsEnabled_ && batteryIndex >= 0;
+            mechanism.active = powered;
+            b2RevoluteJoint_EnableMotor(mechanism.joint, powered);
+            if (powered)
+            {
+                b2RevoluteJoint_SetTargetMotorSpeed(mechanism.joint, 10.0f);
+                b2RevoluteJoint_SetMaxMotorTorque(mechanism.joint, 36.0f);
+                BodyRecord& battery = records_[static_cast<std::size_t>(batteryIndex)];
+                battery.batteryCharge = std::max(
+                    0.0f, battery.batteryCharge - dt * 1.4f);
+            }
+        }
 
         if (mechanism.kind == MechanismKind::Piston &&
             mechanism.active && b2Joint_IsValid(mechanism.joint))
@@ -1203,6 +1289,30 @@ int PhysicsWorld::spawnMaterialBlock(MaterialKind material, float x, float y)
                      -1, material, material != MaterialKind::Rubber);
 }
 
+int PhysicsWorld::spawnBattery(float x, float y)
+{
+    const int index = createBox(
+        x, y, 0.38f, 0.52f, 0.0f, {112, 154, 177, 255},
+        false, true, -1, 1.4f, -1, MaterialKind::Metal, false);
+    if (index < 0)
+        return -1;
+
+    BodyRecord& battery = records_[static_cast<std::size_t>(index)];
+    battery.powerSource = true;
+    battery.batteryCharge = 100.0f;
+    return index;
+}
+
+int PhysicsWorld::spawnWheel(float x, float y)
+{
+    const int index = createCircle(
+        x, y, 0.62f, {52, 62, 72, 255}, true, -1,
+        1.8f, 0.0f, -1, MaterialKind::Rubber, false);
+    if (index >= 0)
+        b2Body_SetAngularDamping(records_[static_cast<std::size_t>(index)].id, 0.18f);
+    return index;
+}
+
 int PhysicsWorld::nearestDynamicBody(float x, float y, float maxDistance, int excluded) const
 {
     int closestIndex = -1;
@@ -1245,6 +1355,68 @@ bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
         mechanism.anchorY = y;
         mechanism.restLength = kind == MechanismKind::Button ? 0.9f : 0.0f;
         mechanisms_.push_back(mechanism);
+        return true;
+    }
+
+    if (kind == MechanismKind::Wire || kind == MechanismKind::Switch)
+    {
+        if (!b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB) ||
+            sameBodyId(bodyA, bodyB))
+            return false;
+
+        MechanismRecord connection;
+        connection.kind = kind;
+        connection.bodyA = bodyA;
+        connection.bodyB = bodyB;
+        connection.anchorX = x;
+        connection.anchorY = y;
+        connection.active = true;
+        mechanisms_.push_back(connection);
+        return true;
+    }
+
+    if (kind == MechanismKind::Motor)
+    {
+        if (!b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB) ||
+            sameBodyId(bodyA, bodyB))
+            return false;
+
+        const auto localAnchor = [x, y](b2BodyId body)
+        {
+            const b2Pos position = b2Body_GetPosition(body);
+            const b2Rot rotation = b2Body_GetRotation(body);
+            const float dx = x - static_cast<float>(position.x);
+            const float dy = y - static_cast<float>(position.y);
+            return b2Vec2{
+                static_cast<float>(rotation.c) * dx +
+                    static_cast<float>(rotation.s) * dy,
+                -static_cast<float>(rotation.s) * dx +
+                    static_cast<float>(rotation.c) * dy
+            };
+        };
+
+        b2RevoluteJointDef definition = b2DefaultRevoluteJointDef();
+        definition.base.bodyIdA = bodyA;
+        definition.base.bodyIdB = bodyB;
+        definition.base.collideConnected = false;
+        definition.base.localFrameA.p = localAnchor(bodyA);
+        definition.base.localFrameB.p = localAnchor(bodyB);
+        definition.enableMotor = false;
+        definition.motorSpeed = 10.0f;
+        definition.maxMotorTorque = 36.0f;
+        const b2JointId joint = b2CreateRevoluteJoint(world_, &definition);
+        if (!b2Joint_IsValid(joint))
+            return false;
+
+        MechanismRecord motor;
+        motor.kind = kind;
+        motor.bodyA = bodyA;
+        motor.bodyB = bodyB;
+        motor.joint = joint;
+        motor.anchorX = x;
+        motor.anchorY = y;
+        motor.active = false;
+        mechanisms_.push_back(motor);
         return true;
     }
 
@@ -1402,9 +1574,10 @@ bool PhysicsWorld::interactAt(float x, float y)
     for (std::size_t i = 0; i < mechanisms_.size(); ++i)
     {
         const MechanismRecord& mechanism = mechanisms_[i];
-        if (!mechanism.active ||
+        if ((mechanism.kind != MechanismKind::Switch && !mechanism.active) ||
             (mechanism.kind != MechanismKind::Toggle &&
-             mechanism.kind != MechanismKind::Button))
+             mechanism.kind != MechanismKind::Button &&
+             mechanism.kind != MechanismKind::Switch))
             continue;
 
         const float dx = x - mechanism.anchorX;
@@ -1423,8 +1596,8 @@ bool PhysicsWorld::interactAt(float x, float y)
     MechanismRecord& mechanism = mechanisms_[static_cast<std::size_t>(closest)];
     mechanism.pressed = !mechanism.pressed;
 
-    if (mechanism.kind == MechanismKind::Toggle)
-        setMechanismsEnabled(mechanism.pressed);
+    if (mechanism.kind == MechanismKind::Switch)
+        mechanism.active = mechanism.pressed;
     else
         setMechanismsEnabled(mechanism.pressed);
 
@@ -1690,6 +1863,8 @@ void PhysicsWorld::cloneAt(int index)
         BodyRecord& clone = records_[static_cast<std::size_t>(copyIndex)];
         clone.impactDamage = selected.impactDamage;
         clone.breakable = selected.breakable;
+        clone.powerSource = selected.powerSource;
+        clone.batteryCharge = selected.batteryCharge;
     }
 }
 
@@ -1928,7 +2103,7 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
-    constexpr std::uint32_t version = 4;
+    constexpr std::uint32_t version = 5;
     constexpr std::uint32_t endianMarker = 0x01020304U;
     const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
@@ -1975,6 +2150,8 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         body.material = record.material;
         body.impactDamage = record.impactDamage;
         body.breakable = record.breakable;
+        body.powerSource = record.powerSource;
+        body.batteryCharge = record.batteryCharge;
         saved.push_back(body);
         savedBodyIds.push_back(record.id);
     }
@@ -2095,7 +2272,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     if (!readValue(input, version) ||
         !readValue(input, endianMarker) ||
-        (version < 1 || version > 4) ||
+        (version < 1 || version > 5) ||
         endianMarker != 0x01020304U)
         return false;
 
@@ -2134,6 +2311,11 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
                 (mechanism.firstIndex < 0 || mechanism.secondIndex < 0 ||
                  mechanism.firstIndex == mechanism.secondIndex ||
                  mechanism.restLength < 0.45f))
+                return false;
+            if ((kind == MechanismKind::Wire || kind == MechanismKind::Switch ||
+                 kind == MechanismKind::Motor) &&
+                (mechanism.firstIndex < 0 || mechanism.secondIndex < 0 ||
+                 mechanism.firstIndex == mechanism.secondIndex))
                 return false;
             if (kind == MechanismKind::Piston &&
                 (mechanism.firstIndex != -1 || mechanism.secondIndex < 0 ||
@@ -2189,11 +2371,16 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
             float anchorY = mechanism.anchorY;
             if (kind == MechanismKind::Rod || kind == MechanismKind::Rope ||
                 kind == MechanismKind::Spring || kind == MechanismKind::Chain ||
-                kind == MechanismKind::ElasticRope || kind == MechanismKind::Cable)
+                kind == MechanismKind::ElasticRope || kind == MechanismKind::Cable ||
+                kind == MechanismKind::Wire || kind == MechanismKind::Switch ||
+                kind == MechanismKind::Motor)
             {
                 if (first > second) std::swap(first, second);
-                anchorX = 0.0f;
-                anchorY = 0.0f;
+                if (kind != MechanismKind::Motor)
+                {
+                    anchorX = 0.0f;
+                    anchorY = 0.0f;
+                }
             }
             const auto key = std::make_tuple(
                 static_cast<unsigned>(mechanism.kind),
@@ -2271,6 +2458,8 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         record.material = body.material;
         record.impactDamage = body.impactDamage;
         record.breakable = body.breakable;
+        record.powerSource = body.powerSource;
+        record.batteryCharge = body.batteryCharge;
 
         b2Body_SetLinearVelocity(record.id, {body.velocityX, body.velocityY});
         b2Body_SetAngularVelocity(record.id, body.angularVelocity);
@@ -2350,6 +2539,8 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
                 b2DistanceJoint_EnableSpring(restored.joint, restored.active);
             else if (kind == MechanismKind::Piston)
                 b2DistanceJoint_EnableMotor(restored.joint, restored.active);
+            else if (kind == MechanismKind::Motor)
+                b2RevoluteJoint_EnableMotor(restored.joint, false);
         }
     }
 
