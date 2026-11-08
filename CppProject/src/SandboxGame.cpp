@@ -780,8 +780,12 @@ void SandboxGame::handleUiClick(float x, float y)
     {
         if (clearConfirmTimer_ > 0.0f)
         {
+            const bool hasPouredLiquid = std::any_of(
+                physics_.surfaces().begin(), physics_.surfaces().end(),
+                [](const SurfaceZone& zone) { return zone.volume > 0.0f; });
             const bool hadContent = physics_.dynamicCount() > 0 ||
-                                    !physics_.mechanisms().empty();
+                                    !physics_.mechanisms().empty() ||
+                                    hasPouredLiquid;
             std::vector<std::uint8_t> before;
             const bool canUndo = hadContent && captureHistorySnapshot(before);
             physics_.clearDynamic();
