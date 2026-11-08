@@ -249,9 +249,8 @@ int main()
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
 
-    // Version-2 scenes used 94-byte body records and did not store puddles or
-    // bucket state. Rebuild that layout from a version-3 fixture and verify
-    // that the current loader still restores the old scene format.
+    // Version-2 scenes used 94-byte body records and version-3 scenes used
+    // 103-byte records. Rebuild both older layouts from the current v4 snapshot.
     const std::filesystem::path legacyV2Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
     {
@@ -262,7 +261,7 @@ int main()
             std::istreambuf_iterator<char>()
         };
         constexpr std::size_t headerSize = 21;
-        constexpr std::size_t currentBodySize = 103;
+        constexpr std::size_t currentBodySize = 109;
         constexpr std::size_t legacyBodySize = 94;
         constexpr std::size_t mechanismSize = 27;
         CHECK(currentBytes.size() >= headerSize);
@@ -313,14 +312,53 @@ int main()
         CHECK(output.good());
     }
 
+        const std::filesystem::path legacyV3Path =
+            std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v3.scene";
+        {
+            std::vector<char> legacyV3Bytes;
+            constexpr std::size_t legacyV3BodySize = 103;
+            legacyV3Bytes.reserve(
+                headerSize + static_cast<std::size_t>(bodyCount) * legacyV3BodySize +
+                currentBytes.size() - mechanismCountOffset);
+            legacyV3Bytes.insert(legacyV3Bytes.end(),
+                                 currentBytes.begin(), currentBytes.begin() + headerSize);
+            const std::uint32_t legacyVersion3 = 3;
+            std::memcpy(legacyV3Bytes.data() + 8, &legacyVersion3, sizeof(legacyVersion3));
+            for (std::size_t i = 0; i < bodyCount; ++i)
+            {
+                const std::size_t bodyStart = headerSize + i * currentBodySize;
+                legacyV3Bytes.insert(
+                    legacyV3Bytes.end(),
+                    currentBytes.begin() + static_cast<std::ptrdiff_t>(bodyStart),
+                    currentBytes.begin() + static_cast<std::ptrdiff_t>(
+                        bodyStart + legacyV3BodySize));
+            }
+            legacyV3Bytes.insert(
+                legacyV3Bytes.end(),
+                currentBytes.begin() + static_cast<std::ptrdiff_t>(mechanismCountOffset),
+                currentBytes.end());
+            std::ofstream output(legacyV3Path, std::ios::binary | std::ios::trunc);
+            CHECK(output.good());
+            output.write(legacyV3Bytes.data(),
+                         static_cast<std::streamsize>(legacyV3Bytes.size()));
+            CHECK(output.good());
+        }
+
     PhysicsWorld legacyV2World;
     CHECK(legacyV2World.loadFromFile(legacyV2Path.string()));
     CHECK(legacyV2World.map() == MapKind::Laboratory);
     CHECK(legacyV2World.dynamicCount() == world.dynamicCount());
     CHECK(legacyV2World.mechanisms().size() == world.mechanisms().size());
     CHECK(legacyV2World.surfaces().size() == 2);
+    PhysicsWorld legacyV3World;
+    CHECK(legacyV3World.loadFromFile(legacyV3Path.string()));
+    CHECK(legacyV3World.map() == MapKind::Laboratory);
+    CHECK(legacyV3World.dynamicCount() == world.dynamicCount());
+    CHECK(legacyV3World.mechanisms().size() == world.mechanisms().size());
+    CHECK(legacyV3World.surfaces().size() == world.surfaces().size());
     std::error_code legacyCleanupError;
     std::filesystem::remove(legacyV2Path, legacyCleanupError);
+    std::filesystem::remove(legacyV3Path, legacyCleanupError);
 
     const std::filesystem::path duplicateMechanismPath =
         std::filesystem::temp_directory_path() / "sandbox_cpp_duplicate_mechanism.scene";
@@ -333,7 +371,7 @@ int main()
         };
         constexpr std::size_t bodyCountOffset = 17;
         constexpr std::size_t bodyDataOffset = 21;
-        constexpr std::size_t savedBodySize = 103;
+        constexpr std::size_t savedBodySize = 109;
         constexpr std::size_t savedMechanismSize = 27;
         CHECK(bytes.size() >= bodyCountOffset + sizeof(std::uint32_t));
         std::uint32_t bodyCount = 0;
