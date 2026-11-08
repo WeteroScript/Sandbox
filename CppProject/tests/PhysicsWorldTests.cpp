@@ -817,6 +817,41 @@ int main()
     CHECK(restoredBatteryMotor.mechanisms().size() == 3);
     CHECK(!restoredBatteryMotor.mechanisms()[1].active);
 
+    // An exhausted battery must stop the motor and keep its empty charge after reload.
+    PhysicsWorld depletedBatteryWorld;
+    depletedBatteryWorld.setMap(MapKind::Laboratory, false);
+    const int depletedBatteryIndex = depletedBatteryWorld.spawnBattery(-6.0f, 6.0f);
+    CHECK(depletedBatteryIndex >= 0);
+    CHECK(depletedBatteryWorld.spawnBox(-2.0f, 6.0f) >= 0);
+    CHECK(depletedBatteryWorld.spawnBox(2.0f, 6.0f) >= 0);
+    CHECK(depletedBatteryWorld.spawnWheel(6.0f, 6.0f) >= 0);
+    CHECK(depletedBatteryWorld.spawnMechanism(MechanismKind::Wire, -4.0f, 6.0f) == 0);
+    CHECK(depletedBatteryWorld.spawnMechanism(MechanismKind::Switch, 0.0f, 6.0f) == 1);
+    CHECK(depletedBatteryWorld.spawnMechanism(MechanismKind::Motor, 4.0f, 6.0f) == 2);
+    depletedBatteryWorld.step(1.0f / 30.0f, 1);
+    CHECK(depletedBatteryWorld.mechanisms()[2].active);
+    for (int i = 0; i < 2200 && depletedBatteryWorld.mechanisms()[2].active; ++i)
+        depletedBatteryWorld.step(1.0f / 30.0f, 1);
+    CHECK(depletedBatteryWorld.records()[
+        static_cast<std::size_t>(depletedBatteryIndex)].batteryCharge <= 0.001f);
+    CHECK(!depletedBatteryWorld.mechanisms()[2].active);
+
+    std::vector<std::uint8_t> depletedBatterySnapshot;
+    CHECK(depletedBatteryWorld.saveToSnapshot(depletedBatterySnapshot));
+    PhysicsWorld restoredDepletedBattery;
+    CHECK(restoredDepletedBattery.loadFromSnapshot(depletedBatterySnapshot));
+    CHECK(!restoredDepletedBattery.mechanisms()[2].active);
+    restoredDepletedBattery.step(1.0f / 30.0f, 1);
+    CHECK(!restoredDepletedBattery.mechanisms()[2].active);
+    bool foundEmptyBattery = false;
+    for (const BodyRecord& record : restoredDepletedBattery.records())
+        if (record.powerSource)
+        {
+            foundEmptyBattery = true;
+            CHECK(record.batteryCharge <= 0.001f);
+        }
+    CHECK(foundEmptyBattery);
+
     PhysicsWorld ropeVariantWorld;
     ropeVariantWorld.setMap(MapKind::Laboratory, false);
     const int ropeFirst = ropeVariantWorld.spawnBox(-1.0f, 0.0f);
