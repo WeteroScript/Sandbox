@@ -81,6 +81,10 @@ impl InputState {
         self.spawn_item = None;
         self.speed_adjustment = if spawn_menu_open || spawn_dialog_open {
             None
+        } else if is_key_pressed(KeyCode::Comma) {
+            Some(-1)
+        } else if is_key_pressed(KeyCode::Period) {
+            Some(1)
         } else {
             self.started_pointer().and_then(Self::speed_button_at)
         };
