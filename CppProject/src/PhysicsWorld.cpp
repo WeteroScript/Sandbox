@@ -679,14 +679,6 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
 
         b2Body_SetLinearVelocity(record.id, {body.velocityX, body.velocityY});
         b2Body_SetAngularVelocity(record.id, body.angularVelocity);
-        if (body.frozen)
-        {
-            b2Body_SetLinearVelocity(record.id, {0.0f, 0.0f});
-            b2Body_SetAngularVelocity(record.id, 0.0f);
-            b2Body_SetType(record.id, b2_staticBody);
-            record.frozen = true;
-        }
-
         if (body.groupId >= nextGroupId_)
             nextGroupId_ = body.groupId + 1;
         loadedIndices.push_back(index);
@@ -720,6 +712,19 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
             child.jointLowerAngle,
             child.jointUpperAngle
         );
+    }
+
+    // Reapply frozen body types only after the complete ragdoll joint graph exists.
+    for (std::size_t i = 0; i < saved.size(); ++i)
+    {
+        if (!saved[i].frozen)
+            continue;
+
+        BodyRecord& record = records_[static_cast<std::size_t>(loadedIndices[i])];
+        b2Body_SetLinearVelocity(record.id, {0.0f, 0.0f});
+        b2Body_SetAngularVelocity(record.id, 0.0f);
+        b2Body_SetType(record.id, b2_staticBody);
+        record.frozen = true;
     }
 
     return true;
