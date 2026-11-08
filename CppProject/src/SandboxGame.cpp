@@ -1717,6 +1717,102 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint,
                 body.material, drawableImpact, selected);
 
+    // The blue steel mannequin gets a compact mechanical visual language:
+    // a glassy visor, chest module, status lamps and joint-side limb bands.
+    const bool robotPart = body.groupId >= 0 &&
+        tint.b > tint.g * 1.045f && tint.b > tint.r * 1.30f;
+    if (robotPart)
+    {
+        const float cosine = std::cos(angle);
+        const float sine = std::sin(angle);
+        const auto robotPoint = [&](float localX, float localY)
+        {
+            return worldToScreen(
+                x + cosine * localX - sine * localY,
+                y + sine * localX + cosine * localY);
+        };
+        const auto robotLine = [&](float x1, float y1, float x2, float y2,
+                                   SDL_Color color)
+        {
+            const SDL_FPoint a = robotPoint(x1, y1);
+            const SDL_FPoint b = robotPoint(x2, y2);
+            setColor(renderer_, color);
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+        };
+        const auto robotPanel = [&](float left, float bottom,
+                                    float right, float top, SDL_Color color)
+        {
+            const std::array<SDL_FPoint, 4> points{{
+                robotPoint(left, bottom), robotPoint(right, bottom),
+                robotPoint(right, top), robotPoint(left, top)
+            }};
+            std::array<SDL_Vertex, 4> vertices{};
+            for (std::size_t i = 0; i < vertices.size(); ++i)
+            {
+                vertices[i].position = points[i];
+                vertices[i].color = toFloatColor(color);
+                vertices[i].tex_coord = {0.0f, 0.0f};
+            }
+            constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
+            SDL_RenderGeometry(renderer_, nullptr, vertices.data(), 4,
+                               indices.data(), 6);
+        };
+
+        if (body.partIndex == 1 && body.shape == BodyShape::Box)
+        {
+            robotPanel(0.025f, -0.19f, 0.285f, 0.19f,
+                       SDL_Color{25, 44, 57, 238});
+            robotPanel(0.055f, -0.145f, 0.29f, 0.145f,
+                       SDL_Color{57, 119, 143, 245});
+            for (float eyeY : {-0.075f, 0.075f})
+            {
+                const SDL_FPoint eye = robotPoint(0.205f, eyeY);
+                drawFilledEllipse(renderer_, eye.x, eye.y,
+                    std::max(1.7f, pixelsPerMeter_ * 0.040f),
+                    std::max(1.2f, pixelsPerMeter_ * 0.026f),
+                    SDL_Color{174, 239, 248, 245});
+            }
+            robotLine(-0.20f, 0.235f, 0.18f, 0.235f,
+                      SDL_Color{223, 242, 246, 180});
+        }
+        else if (body.partIndex == 0 && body.shape == BodyShape::Box)
+        {
+            robotPanel(-0.235f, -0.34f, 0.235f, 0.34f,
+                       SDL_Color{34, 63, 80, 235});
+            robotPanel(-0.19f, -0.295f, 0.19f, 0.295f,
+                       SDL_Color{80, 145, 169, 235});
+            robotPanel(-0.105f, -0.205f, 0.105f, 0.13f,
+                       SDL_Color{34, 71, 91, 245});
+            robotLine(-0.16f, 0.205f, 0.16f, 0.205f,
+                      SDL_Color{204, 232, 239, 210});
+            robotLine(-0.15f, -0.245f, 0.15f, -0.245f,
+                      SDL_Color{32, 57, 71, 220});
+            for (int lamp = 0; lamp < 3; ++lamp)
+            {
+                const SDL_FPoint indicator = robotPoint(
+                    -0.105f + static_cast<float>(lamp) * 0.105f, 0.015f);
+                drawFilledCircle(renderer_, indicator.x, indicator.y,
+                    std::max(1.4f, pixelsPerMeter_ * 0.032f),
+                    lamp == 1 ? SDL_Color{124, 232, 195, 245}
+                              : SDL_Color{235, 194, 100, 240});
+            }
+        }
+        else if (body.partIndex >= 2 && body.partIndex <= 5 &&
+                 body.shape == BodyShape::Box)
+        {
+            const float band = body.halfHeight * 0.48f;
+            robotPanel(-body.halfWidth * 0.82f, -band - 0.035f,
+                       body.halfWidth * 0.82f, -band + 0.035f,
+                       SDL_Color{35, 63, 78, 220});
+            robotPanel(-body.halfWidth * 0.82f, band - 0.035f,
+                       body.halfWidth * 0.82f, band + 0.035f,
+                       SDL_Color{35, 63, 78, 220});
+            robotLine(-body.halfWidth * 0.55f, 0.0f,
+                      body.halfWidth * 0.55f, 0.0f,
+                      SDL_Color{208, 231, 237, 190});
+        }
+    }
+
     // Soft, stylized impact marks communicate character damage without gore or
     // structural cracks. The mark is attached to the struck ragdoll part.
     if (body.groupId >= 0 && body.impactDamage > 0.025f)

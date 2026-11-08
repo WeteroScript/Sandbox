@@ -805,6 +805,18 @@ int main()
     restoredBatteryMotor.step(1.0f / 60.0f, 4);
     CHECK(restoredBatteryMotor.mechanisms()[2].active);
 
+    // Removing the battery also removes its wire endpoint, so the remaining
+    // switch and motor cannot keep a stale powered state.
+    int restoredBatteryIndex = -1;
+    for (std::size_t i = 0; i < restoredBatteryMotor.records().size(); ++i)
+        if (restoredBatteryMotor.records()[i].powerSource)
+            restoredBatteryIndex = static_cast<int>(i);
+    CHECK(restoredBatteryIndex >= 0);
+    restoredBatteryMotor.deleteAt(restoredBatteryIndex);
+    restoredBatteryMotor.step(1.0f / 60.0f, 4);
+    CHECK(restoredBatteryMotor.mechanisms().size() == 3);
+    CHECK(!restoredBatteryMotor.mechanisms()[1].active);
+
     PhysicsWorld ropeVariantWorld;
     ropeVariantWorld.setMap(MapKind::Laboratory, false);
     const int ropeFirst = ropeVariantWorld.spawnBox(-1.0f, 0.0f);
