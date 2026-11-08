@@ -192,8 +192,8 @@ UiLayout SandboxGame::makeUiLayout() const
     UiLayout layout;
     layout.scale = clampFloat(
         std::min(static_cast<float>(outputWidth_) / 780.0f,
-                 static_cast<float>(outputHeight_) / 430.0f),
-        1.00f,
+                 static_cast<float>(outputHeight_) / 438.0f),
+        0.78f,
         1.45f
     );
 
