@@ -249,6 +249,79 @@ int main()
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
 
+    // Version-2 scenes used 94-byte body records and did not store puddles or
+    // bucket state. Rebuild that layout from a version-3 fixture and verify
+    // that the current loader still restores the old scene format.
+    const std::filesystem::path legacyV2Path =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
+    {
+        std::ifstream input(savePath, std::ios::binary);
+        CHECK(input.good());
+        std::vector<char> currentBytes{
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>()
+        };
+        constexpr std::size_t headerSize = 21;
+        constexpr std::size_t currentBodySize = 103;
+        constexpr std::size_t legacyBodySize = 94;
+        constexpr std::size_t mechanismSize = 27;
+        CHECK(currentBytes.size() >= headerSize);
+
+        std::uint32_t bodyCount = 0;
+        std::memcpy(&bodyCount, currentBytes.data() + 17, sizeof(bodyCount));
+        const std::size_t mechanismCountOffset =
+            headerSize + static_cast<std::size_t>(bodyCount) * currentBodySize;
+        CHECK(currentBytes.size() >= mechanismCountOffset + sizeof(std::uint32_t));
+
+        std::uint32_t mechanismCount = 0;
+        std::memcpy(&mechanismCount,
+                    currentBytes.data() + mechanismCountOffset,
+                    sizeof(mechanismCount));
+        const std::size_t mechanismEnd = mechanismCountOffset +
+            sizeof(std::uint32_t) +
+            static_cast<std::size_t>(mechanismCount) * mechanismSize;
+        CHECK(currentBytes.size() >= mechanismEnd + sizeof(std::uint32_t));
+
+        std::vector<char> legacyBytes;
+        legacyBytes.reserve(
+            21 + static_cast<std::size_t>(bodyCount) * legacyBodySize +
+            sizeof(std::uint32_t) +
+            static_cast<std::size_t>(mechanismCount) * mechanismSize);
+        legacyBytes.insert(legacyBytes.end(),
+                           currentBytes.begin(), currentBytes.begin() + 21);
+        const std::uint32_t legacyVersion = 2;
+        std::memcpy(legacyBytes.data() + 8, &legacyVersion, sizeof(legacyVersion));
+
+        for (std::size_t i = 0; i < bodyCount; ++i)
+        {
+            const std::size_t bodyStart = headerSize + i * currentBodySize;
+            legacyBytes.insert(
+                legacyBytes.end(),
+                currentBytes.begin() + static_cast<std::ptrdiff_t>(bodyStart),
+                currentBytes.begin() + static_cast<std::ptrdiff_t>(
+                    bodyStart + legacyBodySize));
+        }
+        legacyBytes.insert(
+            legacyBytes.end(),
+            currentBytes.begin() + static_cast<std::ptrdiff_t>(mechanismCountOffset),
+            currentBytes.begin() + static_cast<std::ptrdiff_t>(mechanismEnd));
+
+        std::ofstream output(legacyV2Path, std::ios::binary | std::ios::trunc);
+        CHECK(output.good());
+        output.write(legacyBytes.data(),
+                     static_cast<std::streamsize>(legacyBytes.size()));
+        CHECK(output.good());
+    }
+
+    PhysicsWorld legacyV2World;
+    CHECK(legacyV2World.loadFromFile(legacyV2Path.string()));
+    CHECK(legacyV2World.map() == MapKind::Laboratory);
+    CHECK(legacyV2World.dynamicCount() == world.dynamicCount());
+    CHECK(legacyV2World.mechanisms().size() == world.mechanisms().size());
+    CHECK(legacyV2World.surfaces().size() == 2);
+    std::error_code legacyCleanupError;
+    std::filesystem::remove(legacyV2Path, legacyCleanupError);
+
     const std::filesystem::path duplicateMechanismPath =
         std::filesystem::temp_directory_path() / "sandbox_cpp_duplicate_mechanism.scene";
     {
