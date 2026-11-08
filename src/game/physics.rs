@@ -425,6 +425,42 @@ impl PhysicsWorld {
         self.frozen_bodies.contains(&handle)
     }
 
+    pub fn delete_prop_at(&mut self, position: Vec2) -> bool {
+        let selected = self
+            .props
+            .iter()
+            .filter(|prop| prop.active && prop.kind != PropKind::Static)
+            .filter_map(|prop| {
+                let body_position = self.body_position(prop.body)?;
+                let center = Vec2::new(
+                    body_position.translation.x,
+                    body_position.translation.y,
+                );
+                let distance = center.distance(position);
+                let hit_radius = prop.half_width.max(prop.half_height) + 30.0;
+                (distance <= hit_radius).then_some((prop.body, distance))
+            })
+            .min_by(|left, right| left.1.total_cmp(&right.1))
+            .map(|(handle, _)| handle);
+
+        let Some(handle) = selected else {
+            return false;
+        };
+
+        self.bodies.remove(
+            handle,
+            &mut self.islands,
+            &mut self.colliders,
+            &mut self.impulse_joints,
+            &mut self.multibody_joints,
+            true,
+        );
+
+        self.props.retain(|prop| prop.body != handle);
+        self.frozen_bodies.retain(|frozen| *frozen != handle);
+        true
+    }
+
     pub fn toggle_freeze(&mut self, handle: RigidBodyHandle) {
         let was_frozen = self.is_frozen(handle);
         let Some(body) = self.bodies.get_mut(handle) else {
