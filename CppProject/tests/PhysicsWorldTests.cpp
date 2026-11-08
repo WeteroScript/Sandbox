@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 
 #define CHECK(condition) \
     do { \
@@ -179,9 +180,28 @@ int main()
     CHECK(!world.loadFromFile(corruptSavePath.string()));
     CHECK(world.dynamicCount() == beforeRejectedLoad);
     CHECK(world.map() == mapBeforeRejectedLoad);
+
+    const std::filesystem::path invalidNumberPath =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_invalid_number.scene";
+    CHECK(world.saveToFile(invalidNumberPath.string()));
+    {
+        std::fstream file(invalidNumberPath,
+            std::ios::binary | std::ios::in | std::ios::out);
+        CHECK(file.good());
+        constexpr std::streamoff bodyXOffset = 21 + 1 + 4 * 4;
+        const float invalidPosition = std::numeric_limits<float>::quiet_NaN();
+        file.seekp(bodyXOffset);
+        file.write(reinterpret_cast<const char*>(&invalidPosition),
+                   sizeof(invalidPosition));
+        CHECK(file.good());
+    }
+    CHECK(!world.loadFromFile(invalidNumberPath.string()));
+    CHECK(world.dynamicCount() == beforeRejectedLoad);
+    CHECK(world.map() == mapBeforeRejectedLoad);
     std::error_code cleanupError;
     std::filesystem::remove(robotSavePath, cleanupError);
     std::filesystem::remove(corruptSavePath, cleanupError);
+    std::filesystem::remove(invalidNumberPath, cleanupError);
 
     world.setMap(MapKind::Laboratory, true);
     CHECK(world.map() == MapKind::Laboratory);
@@ -266,8 +286,8 @@ int main()
 
     PhysicsWorld fluidWorld;
     fluidWorld.setMap(MapKind::Laboratory, false);
-    const int dryWaterIndex = fluidWorld.spawnBall(-8.2f, -4.0f);
-    const int partialWaterIndex = fluidWorld.spawnBall(-6.9f, -4.0f);
+    const int dryWaterIndex = fluidWorld.spawnBall(-8.2f, -3.2f);
+    const int partialWaterIndex = fluidWorld.spawnBall(-7.2f, -3.2f);
     const int dryLavaIndex = fluidWorld.spawnBall(1.7f, -4.0f);
     const int partialLavaIndex = fluidWorld.spawnBall(3.0f, -4.0f);
     CHECK(dryWaterIndex >= 0 && partialWaterIndex >= 0);
@@ -282,7 +302,10 @@ int main()
         b2Body_GetLinearVelocity(fluidWorld.records()[static_cast<std::size_t>(dryLavaIndex)].id).y;
     const float partialLavaVelocity =
         b2Body_GetLinearVelocity(fluidWorld.records()[static_cast<std::size_t>(partialLavaIndex)].id).y;
-    CHECK(partialWaterVelocity > dryWaterVelocity + 0.001f);
+    CHECK(partialWaterVelocity > dryWaterVelocity + 0.006f);
+    // The circle has only a narrow cap inside the water; the AABB method
+    // overestimated the buoyancy by roughly a factor of two for this case.
+    CHECK(partialWaterVelocity - dryWaterVelocity < 0.015f);
     CHECK(partialLavaVelocity > dryLavaVelocity + 0.001f);
 
     std::error_code error;

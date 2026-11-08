@@ -1367,29 +1367,96 @@ void SandboxGame::drawBackground()
 
     if (physics_.map() == MapKind::City)
     {
-        setColor(renderer_, makeColor(39, 48, 60));
         for (int i = 0; i < 10; ++i)
         {
             const float worldX = -13.0f + static_cast<float>(i) * 2.9f;
             const SDL_FPoint base = worldToScreen(worldX, -4.7f);
-            const SDL_FPoint top = worldToScreen(worldX, 1.8f + static_cast<float>((i * 7) % 5));
+            const SDL_FPoint top = worldToScreen(
+                worldX, 1.8f + static_cast<float>((i * 7) % 5));
             SDL_FRect building{
-                base.x,
-                top.y,
-                2.0f * pixelsPerMeter_,
-                base.y - top.y
+                base.x, top.y, 2.0f * pixelsPerMeter_, base.y - top.y
             };
+            setColor(renderer_, makeColor(
+                static_cast<Uint8>(35 + (i % 3) * 5),
+                static_cast<Uint8>(45 + (i % 4) * 4),
+                static_cast<Uint8>(58 + (i % 2) * 7)));
             SDL_RenderFillRect(renderer_, &building);
+
+            SDL_FRect shade{
+                building.x + building.w - std::max(5.0f, pixelsPerMeter_ * 0.12f),
+                building.y, std::max(5.0f, pixelsPerMeter_ * 0.12f), building.h
+            };
+            setColor(renderer_, makeColor(18, 25, 35, 150));
+            SDL_RenderFillRect(renderer_, &shade);
+
+            // Lit and unlit windows give every facade a visible scale and rhythm.
+            const float ww = std::clamp(pixelsPerMeter_ * 0.20f, 4.0f, 10.0f);
+            const float wh = std::clamp(pixelsPerMeter_ * 0.27f, 5.0f, 13.0f);
+            const float gx = std::max(7.0f, pixelsPerMeter_ * 0.24f);
+            const float gy = std::max(9.0f, pixelsPerMeter_ * 0.28f);
+            for (float wy = building.y + 13.0f;
+                 wy + wh < building.y + building.h - 10.0f; wy += gy + wh)
+            {
+                for (float wx = building.x + 9.0f;
+                     wx + ww < building.x + building.w - 12.0f; wx += gx + ww)
+                {
+                    const bool lit = (static_cast<int>(wx + wy) + i * 3) % 5 != 0;
+                    setColor(renderer_, lit
+                        ? makeColor(224, 181, 105, 105)
+                        : makeColor(21, 33, 47, 190));
+                    const SDL_FRect window{wx, wy, ww, wh};
+                    SDL_RenderFillRect(renderer_, &window);
+                    setColor(renderer_, makeColor(185, 203, 215, 42));
+                    SDL_RenderRect(renderer_, &window);
+                }
+            }
+
+            setColor(renderer_, makeColor(105, 125, 143, 120));
+            SDL_RenderLine(renderer_, building.x, building.y,
+                           building.x + building.w, building.y);
+            SDL_RenderLine(renderer_, building.x, building.y + building.h,
+                           building.x + building.w, building.y + building.h);
         }
-        setColor(renderer_, makeColor(68, 76, 88));
+
         const SDL_FPoint roadA = worldToScreen(-16.0f, -4.0f);
         const SDL_FPoint roadB = worldToScreen(16.0f, -4.0f);
+        setColor(renderer_, makeColor(67, 76, 88));
         SDL_RenderLine(renderer_, roadA.x, roadA.y, roadB.x, roadB.y);
+        setColor(renderer_, makeColor(194, 173, 111, 130));
+        for (int mark = -7; mark <= 7; ++mark)
+        {
+            const SDL_FPoint a = worldToScreen(static_cast<float>(mark) * 2.0f, -4.0f);
+            const SDL_FPoint b = worldToScreen(static_cast<float>(mark) * 2.0f + 0.75f, -4.0f);
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+        }
     }
     else if (physics_.map() == MapKind::Laboratory)
     {
-        setColor(renderer_, makeColor(27, 63, 63));
-        for (int i = -2; i <= 2; ++i)
+        for (int panel = -3; panel <= 3; ++panel)
+        {
+            const SDL_FPoint a = worldToScreen(
+                static_cast<float>(panel) * 4.2f - 1.8f, 5.4f);
+            const SDL_FPoint b = worldToScreen(
+                static_cast<float>(panel) * 4.2f + 1.8f, -4.8f);
+            const SDL_FRect rect{a.x, a.y, b.x-a.x, b.y-a.y};
+            setColor(renderer_, makeColor(24, 55, 59, 95));
+            SDL_RenderFillRect(renderer_, &rect);
+            setColor(renderer_, makeColor(62, 121, 124, 110));
+            SDL_RenderRect(renderer_, &rect);
+
+            for (int light = 0; light < 3; ++light)
+            {
+                const SDL_FPoint q = worldToScreen(
+                    static_cast<float>(panel) * 4.2f - 1.25f + light * 1.1f, 4.65f);
+                drawFilledCircle(renderer_, q.x, q.y, 2.1f,
+                    light == (panel + 3) % 3
+                        ? makeColor(92, 232, 204, 210)
+                        : makeColor(52, 112, 115, 150));
+            }
+        }
+
+        setColor(renderer_, makeColor(27, 85, 85, 140));
+        for (int i = -3; i <= 3; ++i)
         {
             const SDL_FPoint a = worldToScreen(static_cast<float>(i) * 5.0f, -5.0f);
             const SDL_FPoint b = worldToScreen(static_cast<float>(i) * 5.0f, 8.0f);
@@ -1403,6 +1470,36 @@ void SandboxGame::drawBackground()
             const SDL_FPoint b = worldToScreen(x, 4.8f);
             SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
             SDL_RenderLine(renderer_, a.x + 3.0f, a.y, b.x + 3.0f, b.y);
+        }
+
+        setColor(renderer_, makeColor(104, 207, 194, 90));
+        for (int circuit = -2; circuit <= 2; ++circuit)
+        {
+            const SDL_FPoint a = worldToScreen(circuit * 3.5f, 2.8f);
+            const SDL_FPoint b = worldToScreen(circuit * 3.5f + 1.0f, 2.8f);
+            const SDL_FPoint c = worldToScreen(circuit * 3.5f + 1.0f, 1.6f);
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            SDL_RenderLine(renderer_, b.x, b.y, c.x, c.y);
+        }
+    }
+    else
+    {
+        // Concrete range wall panels and faded warning marks along the floor.
+        for (int panel = -7; panel <= 7; ++panel)
+        {
+            const SDL_FPoint a = worldToScreen(static_cast<float>(panel) * 2.0f, -5.0f);
+            const SDL_FPoint b = worldToScreen(static_cast<float>(panel) * 2.0f, 6.5f);
+            setColor(renderer_, makeColor(53, 64, 77, 105));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+        }
+        for (int stripe = -14; stripe < 14; ++stripe)
+        {
+            const SDL_FPoint a = worldToScreen(static_cast<float>(stripe), -4.98f);
+            const SDL_FPoint b = worldToScreen(static_cast<float>(stripe) + 0.48f, -4.98f);
+            setColor(renderer_, stripe % 2 == 0
+                ? makeColor(194, 153, 72, 92)
+                : makeColor(56, 67, 80, 100));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
         }
     }
 }
