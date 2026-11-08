@@ -77,6 +77,21 @@ void drawFilledEllipse(SDL_Renderer* renderer, float x, float y,
                        indices.data(), static_cast<int>(indices.size()));
 }
 
+void drawGradientRect(SDL_Renderer* renderer, const SDL_FRect& rect,
+                      SDL_Color topColor, SDL_Color bottomColor)
+{
+    const std::array<SDL_Vertex, 4> vertices{{
+        {{rect.x, rect.y}, toFloatColor(topColor), {0.0f, 0.0f}},
+        {{rect.x + rect.w, rect.y}, toFloatColor(topColor), {1.0f, 0.0f}},
+        {{rect.x + rect.w, rect.y + rect.h}, toFloatColor(bottomColor), {1.0f, 1.0f}},
+        {{rect.x, rect.y + rect.h}, toFloatColor(bottomColor), {0.0f, 1.0f}}
+    }};
+    constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
+    SDL_RenderGeometry(renderer, nullptr, vertices.data(),
+                       static_cast<int>(vertices.size()),
+                       indices.data(), static_cast<int>(indices.size()));
+}
+
 void drawFilledCircle(SDL_Renderer* renderer, float x, float y,
                       float radius, SDL_Color tint)
 {
@@ -1578,45 +1593,106 @@ void SandboxGame::drawSurfaces()
             std::max(0.0f, bottomRight.x - topLeft.x),
             std::max(0.0f, bottomRight.y - topLeft.y)
         };
+        if (rect.w <= 0.0f || rect.h <= 0.0f)
+            continue;
 
         if (zone.kind == SurfaceKind::Water)
         {
-            setColor(renderer_, makeColor(36, 135, 205, 102));
-            SDL_RenderFillRect(renderer_, &rect);
-            setColor(renderer_, makeColor(91, 193, 235, 205));
-            SDL_RenderRect(renderer_, &rect);
+            drawGradientRect(renderer_, rect,
+                makeColor(83, 192, 235, 178),
+                makeColor(10, 59, 133, 205));
 
-            for (int line = 0; line < 3; ++line)
+            // A bright, moving waterline and deeper translucent ripple bands.
+            for (int line = 0; line < 4; ++line)
             {
-                const float waveY = rect.y + 8.0f +
-                    static_cast<float>(line) * std::max(8.0f, rect.h * 0.28f);
-                const float phase = time * 2.2f + static_cast<float>(line);
-                for (int segment = 0; segment < 12; ++segment)
+                const float waveY = rect.y + 5.0f +
+                    static_cast<float>(line) * std::max(7.0f, rect.h * 0.25f);
+                const float phase = time * (line == 0 ? 2.8f : 1.9f) + line * 1.7f;
+                const float amplitude = line == 0 ? 2.7f : 1.5f;
+                setColor(renderer_, line == 0
+                    ? makeColor(183, 237, 255, 215)
+                    : makeColor(118, 211, 244, 105));
+                for (int segment = 0; segment < 18; ++segment)
                 {
-                    const float x1 = rect.x + rect.w * static_cast<float>(segment) / 12.0f;
-                    const float x2 = rect.x + rect.w * (static_cast<float>(segment) + 0.55f) / 12.0f;
-                    const float y1 = waveY + std::sin(phase + segment * 0.55f) * 2.3f;
-                    const float y2 = waveY + std::sin(phase + (segment + 0.55f) * 0.55f) * 2.3f;
+                    const float t1 = static_cast<float>(segment) / 18.0f;
+                    const float t2 = (static_cast<float>(segment) + 0.62f) / 18.0f;
+                    const float x1 = rect.x + rect.w * t1;
+                    const float x2 = rect.x + rect.w * t2;
+                    const float y1 = waveY + std::sin(phase + segment * 0.48f) * amplitude;
+                    const float y2 = waveY + std::sin(phase + (segment + 0.62f) * 0.48f) * amplitude;
                     SDL_RenderLine(renderer_, x1, y1, x2, y2);
                 }
             }
+
+            // Slow caustic glints drift beneath the surface.
+            for (int glint = 0; glint < 5; ++glint)
+            {
+                const float phase = time * 0.18f + glint * 0.21f;
+                const float x = rect.x + rect.w *
+                    (0.12f + 0.76f * std::fmod(phase, 1.0f));
+                const float y = rect.y + rect.h *
+                    (0.30f + 0.48f * (0.5f + 0.5f * std::sin(time * 0.8f + glint)));
+                const float width = 7.0f + static_cast<float>(glint % 3) * 3.0f;
+                drawFilledEllipse(renderer_, x, y, width, 1.25f,
+                                  makeColor(166, 231, 250, 64));
+            }
+
+            setColor(renderer_, makeColor(166, 231, 250, 220));
+            SDL_RenderLine(renderer_, rect.x, rect.y + 1.0f,
+                           rect.x + rect.w, rect.y + 1.0f);
+            setColor(renderer_, makeColor(12, 60, 111, 185));
+            SDL_RenderRect(renderer_, &rect);
         }
         else
         {
-            setColor(renderer_, makeColor(229, 73, 28, 150));
-            SDL_RenderFillRect(renderer_, &rect);
-            setColor(renderer_, makeColor(255, 169, 65, 235));
-            SDL_RenderRect(renderer_, &rect);
+            drawGradientRect(renderer_, rect,
+                makeColor(255, 143, 48, 195),
+                makeColor(123, 25, 12, 235));
 
+            // Dark cooling crust near the bottom and moving hot channels.
+            for (int band = 0; band < 3; ++band)
+            {
+                const float y = rect.y + rect.h *
+                    (0.38f + static_cast<float>(band) * 0.25f);
+                const float phase = time * 1.45f + band * 2.0f;
+                setColor(renderer_, makeColor(92, 24, 12, 88));
+                for (int segment = 0; segment < 15; ++segment)
+                {
+                    const float t1 = static_cast<float>(segment) / 15.0f;
+                    const float t2 = (static_cast<float>(segment) + 0.7f) / 15.0f;
+                    const float x1 = rect.x + rect.w * t1;
+                    const float x2 = rect.x + rect.w * t2;
+                    const float y1 = y + std::sin(phase + segment * 0.8f) * 2.1f;
+                    const float y2 = y + std::sin(phase + (segment + 0.7f) * 0.8f) * 2.1f;
+                    SDL_RenderLine(renderer_, x1, y1, x2, y2);
+                }
+            }
+
+            // Rising bubbles have a soft halo, hot core and a short tail.
             for (int bubble = 0; bubble < 7; ++bubble)
             {
-                const float fraction = std::fmod(time * 0.3f + bubble * 0.137f, 1.0f);
-                const float x = rect.x + rect.w * fraction;
-                const float y = rect.y + rect.h * (0.25f + 0.55f *
-                    std::abs(std::sin(time * 1.8f + bubble)));
+                const float fraction = std::fmod(
+                    time * 0.3f + bubble * 0.137f, 1.0f);
+                const float x = rect.x + rect.w * (0.08f + 0.84f * fraction);
+                const float vertical = 0.25f + 0.55f *
+                    std::abs(std::sin(time * 1.8f + bubble));
+                const float y = rect.y + rect.h * vertical;
                 const float radius = 2.0f + static_cast<float>(bubble % 3);
-                drawFilledCircle(renderer_, x, y, radius, makeColor(255, 205, 103, 185));
+                drawFilledCircle(renderer_, x, y, radius * 1.8f,
+                                 makeColor(255, 119, 43, 38));
+                drawFilledCircle(renderer_, x, y, radius,
+                                 makeColor(255, 205, 103, 190));
+                drawFilledCircle(renderer_, x - radius * 0.25f,
+                                 y - radius * 0.25f,
+                                 std::max(1.0f, radius * 0.28f),
+                                 makeColor(255, 245, 194, 210));
             }
+
+            setColor(renderer_, makeColor(255, 196, 103, 235));
+            SDL_RenderLine(renderer_, rect.x, rect.y + 1.0f,
+                           rect.x + rect.w, rect.y + 1.0f);
+            setColor(renderer_, makeColor(119, 34, 17, 210));
+            SDL_RenderRect(renderer_, &rect);
         }
     }
 }
