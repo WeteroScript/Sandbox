@@ -1434,6 +1434,8 @@ void SandboxGame::drawCircle(float x, float y, float radius, float angle,
     const bool melon=material == MaterialKind::Organic &&
         tint.g>tint.r*1.18f && tint.g>tint.b*1.08f;
     const bool barrel=material == MaterialKind::Metal;
+    const bool wheel=material == MaterialKind::Rubber &&
+        tint.r<85 && tint.g<100 && tint.b<115 && radius>=0.55f;
     if(melon)
     {
         setColor(renderer_,SDL_Color{42,113,59,175});
@@ -1469,16 +1471,123 @@ void SandboxGame::drawCircle(float x, float y, float radius, float angle,
                 previous=q;
             }
         }
+
+        // Stave seams and raised hoops make the barrel read as a built object.
+        setColor(renderer_,SDL_Color{92,51,28,155});
+        for(float stave:{-0.62f,-0.31f,0.0f,0.31f,0.62f})
+        {
+            const float sx=stave*radius;
+            const float halfHeight=std::sqrt(std::max(
+                0.0f,radius*radius-sx*sx));
+            const SDL_FPoint a=point(sx,-halfHeight*0.72f);
+            const SDL_FPoint b=point(sx,halfHeight*0.72f);
+            SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+        }
+        for(float band:{-0.32f,0.32f})
+        {
+            const float yy=band*radius;
+            const float hh=std::sqrt(std::max(0.0f,
+                radius*radius-yy*yy));
+            for(float offset:{-0.045f,0.045f})
+            {
+                const float railY=yy+offset*radius;
+                const float railHalf=std::sqrt(std::max(0.0f,
+                    radius*radius-railY*railY));
+                const SDL_FPoint a=point(-railHalf,railY);
+                const SDL_FPoint b=point(railHalf,railY);
+                setColor(renderer_,offset<0.0f
+                    ? SDL_Color{232,190,125,175}
+                    : SDL_Color{66,42,30,180});
+                SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+            }
+            for(float side:{-0.76f,0.76f})
+            {
+                const SDL_FPoint rivet=point(side*hh,yy);
+                drawFilledCircle(renderer_,rivet.x,rivet.y,
+                    std::max(1.0f,radius*pixelsPerMeter_*0.035f),
+                    SDL_Color{220,190,145,225});
+            }
+        }
+        const SDL_FPoint bung=point(radius*0.18f,radius*0.08f);
+        drawFilledCircle(renderer_,bung.x,bung.y,
+            std::max(2.0f,radius*pixelsPerMeter_*0.10f),
+            SDL_Color{87,53,30,225});
+        drawFilledCircle(renderer_,bung.x-radius*pixelsPerMeter_*0.018f,
+            bung.y-radius*pixelsPerMeter_*0.018f,
+            std::max(1.0f,radius*pixelsPerMeter_*0.035f),
+            SDL_Color{213,173,119,220});
     }
     else if(material == MaterialKind::Rubber)
     {
-        const SDL_FPoint seamA=point(-radius*0.78f,0.0f);
-        const SDL_FPoint seamB=point(radius*0.78f,0.0f);
-        setColor(renderer_,SDL_Color{21,29,37,170});
-        SDL_RenderLine(renderer_,seamA.x,seamA.y,seamB.x,seamB.y);
-        const SDL_FPoint grooveA=point(-radius*0.34f,-radius*0.62f);
-        const SDL_FPoint grooveB=point(radius*0.34f,radius*0.62f);
-        SDL_RenderLine(renderer_,grooveA.x,grooveA.y,grooveB.x,grooveB.y);
+        if(wheel)
+        {
+            // Fine tread blocks wrap the circumference instead of relying on a
+            // single seam, and a layered rim separates rubber from the hub.
+            for(int tread=0;tread<24;++tread)
+            {
+                const float theta=2.0f*kPi*static_cast<float>(tread)/24.0f;
+                const float nx=std::cos(theta),ny=std::sin(theta);
+                const SDL_FPoint a=point(nx*radius*0.84f,ny*radius*0.84f);
+                const SDL_FPoint b=point(nx*radius*0.98f,ny*radius*0.98f);
+                setColor(renderer_,tread%2==0
+                    ? SDL_Color{18,25,32,210}
+                    : SDL_Color{108,119,128,150});
+                SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+            }
+
+            for(int segment=0;segment<64;++segment)
+            {
+                const float a0=2.0f*kPi*static_cast<float>(segment)/64.0f;
+                const float a1=2.0f*kPi*static_cast<float>(segment+1)/64.0f;
+                for(float ring:{0.57f,0.51f})
+                {
+                    const SDL_FPoint p0=point(std::cos(a0)*radius*ring,
+                                              std::sin(a0)*radius*ring);
+                    const SDL_FPoint p1=point(std::cos(a1)*radius*ring,
+                                              std::sin(a1)*radius*ring);
+                    setColor(renderer_,ring>0.54f
+                        ? SDL_Color{165,181,193,205}
+                        : SDL_Color{24,33,42,235});
+                    SDL_RenderLine(renderer_,p0.x,p0.y,p1.x,p1.y);
+                }
+            }
+
+            const SDL_FPoint center=worldToScreen(x,y);
+            drawFilledCircle(renderer_,center.x,center.y,
+                radius*pixelsPerMeter_*0.48f,SDL_Color{91,109,123,255});
+            drawFilledCircle(renderer_,center.x,center.y,
+                radius*pixelsPerMeter_*0.39f,SDL_Color{35,46,57,255});
+            for(int spoke=0;spoke<6;++spoke)
+            {
+                const float theta=2.0f*kPi*static_cast<float>(spoke)/6.0f;
+                const SDL_FPoint a=point(std::cos(theta)*radius*0.17f,
+                                         std::sin(theta)*radius*0.17f);
+                const SDL_FPoint b=point(std::cos(theta)*radius*0.43f,
+                                         std::sin(theta)*radius*0.43f);
+                setColor(renderer_,SDL_Color{190,205,215,230});
+                SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+                const SDL_FPoint bolt=point(
+                    std::cos(theta)*radius*0.29f,
+                    std::sin(theta)*radius*0.29f);
+                drawFilledCircle(renderer_,bolt.x,bolt.y,
+                    std::max(1.2f,radius*pixelsPerMeter_*0.045f),
+                    SDL_Color{214,224,231,245});
+            }
+            drawFilledCircle(renderer_,center.x,center.y,
+                radius*pixelsPerMeter_*0.17f,SDL_Color{174,190,201,255});
+            drawFilledCircle(renderer_,center.x,center.y,
+                radius*pixelsPerMeter_*0.085f,SDL_Color{48,61,73,255});
+        }
+        else
+        {
+            const SDL_FPoint seamA=point(-radius*0.78f,0.0f);
+            const SDL_FPoint seamB=point(radius*0.78f,0.0f);
+            setColor(renderer_,SDL_Color{21,29,37,170});
+            SDL_RenderLine(renderer_,seamA.x,seamA.y,seamB.x,seamB.y);
+            const SDL_FPoint grooveA=point(-radius*0.34f,-radius*0.62f);
+            const SDL_FPoint grooveB=point(radius*0.34f,radius*0.62f);
+            SDL_RenderLine(renderer_,grooveA.x,grooveA.y,grooveB.x,grooveB.y);
+        }
     }
     else if(material == MaterialKind::Glass)
     {
@@ -1778,6 +1887,19 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
             }
             robotLine(-0.20f, 0.235f, 0.18f, 0.235f,
                       SDL_Color{223, 242, 246, 180});
+            robotLine(-0.12f, 0.30f, -0.12f, 0.43f,
+                      SDL_Color{40, 66, 82, 235});
+            const SDL_FPoint antenna = robotPoint(-0.12f, 0.45f);
+            drawFilledCircle(renderer_, antenna.x, antenna.y,
+                std::max(1.8f, pixelsPerMeter_ * 0.045f),
+                SDL_Color{118, 232, 196, 245});
+            for (float boltX : {-0.25f, 0.25f})
+            {
+                const SDL_FPoint bolt = robotPoint(boltX, -0.22f);
+                drawFilledCircle(renderer_, bolt.x, bolt.y,
+                    std::max(1.2f, pixelsPerMeter_ * 0.032f),
+                    SDL_Color{210, 226, 232, 230});
+            }
         }
         else if (body.partIndex == 0 && body.shape == BodyShape::Box)
         {
@@ -1800,6 +1922,21 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                     lamp == 1 ? SDL_Color{124, 232, 195, 245}
                               : SDL_Color{235, 194, 100, 240});
             }
+            for (int vent = 0; vent < 3; ++vent)
+            {
+                const float ventX = -0.105f +
+                    static_cast<float>(vent) * 0.105f;
+                robotLine(ventX, -0.12f, ventX, -0.23f,
+                          SDL_Color{28, 52, 67, 220});
+                robotLine(ventX + 0.018f, -0.12f,
+                          ventX + 0.018f, -0.23f,
+                          SDL_Color{166, 201, 210, 145});
+            }
+            const SDL_FPoint badge = robotPoint(0.0f, -0.285f);
+            drawFilledEllipse(renderer_, badge.x, badge.y,
+                std::max(2.0f, pixelsPerMeter_ * 0.075f),
+                std::max(1.4f, pixelsPerMeter_ * 0.048f),
+                SDL_Color{34, 69, 87, 245});
         }
         else if (body.partIndex >= 2 && body.partIndex <= 5 &&
                  body.shape == BodyShape::Box)
@@ -1814,6 +1951,19 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
             robotLine(-body.halfWidth * 0.55f, 0.0f,
                       body.halfWidth * 0.55f, 0.0f,
                       SDL_Color{208, 231, 237, 190});
+            for (float jointY : {-body.halfHeight * 0.82f,
+                                  body.halfHeight * 0.82f})
+            {
+                const SDL_FPoint joint = robotPoint(0.0f, jointY);
+                const float jointRadius =
+                    std::max(2.0f, pixelsPerMeter_ * 0.075f);
+                drawFilledCircle(renderer_, joint.x, joint.y,
+                    jointRadius, SDL_Color{31, 54, 69, 245});
+                drawFilledCircle(renderer_, joint.x, joint.y,
+                    jointRadius * 0.56f, SDL_Color{178, 201, 210, 245});
+                drawFilledCircle(renderer_, joint.x, joint.y,
+                    jointRadius * 0.22f, SDL_Color{55, 91, 107, 255});
+            }
         }
     }
 
@@ -1856,29 +2006,75 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
 
     if (body.powerSource)
     {
-        const SDL_FPoint center = worldToScreen(x, y);
-        const SDL_FRect casing{center.x - 7.0f, center.y - 10.0f, 14.0f, 20.0f};
-        const SDL_FRect cap{center.x - 3.5f, center.y - 13.0f, 7.0f, 3.0f};
-        setColor(renderer_, makeColor(37, 47, 59, 245));
-        SDL_RenderFillRect(renderer_, &casing);
-        SDL_RenderFillRect(renderer_, &cap);
-        setColor(renderer_, makeColor(188, 207, 221));
-        SDL_RenderRect(renderer_, &casing);
+        const float cosine = std::cos(angle);
+        const float sine = std::sin(angle);
+        const auto batteryPoint = [&](float localX, float localY)
+        {
+            return worldToScreen(
+                x + cosine * localX - sine * localY,
+                y + sine * localX + cosine * localY);
+        };
+        const auto batteryPanel = [&](float left, float bottom,
+                                      float right, float top, SDL_Color color)
+        {
+            const std::array<SDL_FPoint, 4> points{{
+                batteryPoint(left, bottom), batteryPoint(right, bottom),
+                batteryPoint(right, top), batteryPoint(left, top)
+            }};
+            std::array<SDL_Vertex, 4> vertices{};
+            for (std::size_t i = 0; i < vertices.size(); ++i)
+            {
+                vertices[i].position = points[i];
+                vertices[i].color = toFloatColor(color);
+                vertices[i].tex_coord = {0.0f, 0.0f};
+            }
+            constexpr std::array<int, 6> indices{0, 1, 2, 0, 2, 3};
+            SDL_RenderGeometry(renderer_, nullptr, vertices.data(), 4,
+                               indices.data(), 6);
+        };
+
+        // The inset, terminals and charge cells follow the body's rotation.
+        batteryPanel(-0.255f, -0.31f, 0.255f, 0.30f,
+                     SDL_Color{28, 43, 55, 245});
+        batteryPanel(-0.215f, -0.265f, 0.215f, 0.255f,
+                     SDL_Color{66, 91, 105, 255});
+        batteryPanel(-0.17f, 0.17f, 0.17f, 0.205f,
+                     SDL_Color{179, 200, 209, 225});
+
+        for (float terminalX : {-0.13f, 0.13f})
+        {
+            const SDL_FPoint base = batteryPoint(terminalX, 0.48f);
+            const SDL_FPoint tip = batteryPoint(terminalX, 0.57f);
+            setColor(renderer_, SDL_Color{196, 211, 220, 255});
+            SDL_RenderLine(renderer_, base.x, base.y, tip.x, tip.y);
+            drawFilledCircle(renderer_, tip.x, tip.y,
+                std::max(1.5f, pixelsPerMeter_ * 0.045f),
+                SDL_Color{222, 232, 237, 255});
+        }
+
         const float charge = std::clamp(body.batteryCharge / 100.0f, 0.0f, 1.0f);
         const int bars = static_cast<int>(std::ceil(charge * 3.0f));
         const SDL_Color chargeColor = charge > 0.30f
             ? makeColor(93, 211, 137)
             : charge > 0.0f ? makeColor(229, 175, 79)
                             : makeColor(207, 84, 76);
-        setColor(renderer_, chargeColor);
-        for (int bar = 0; bar < bars; ++bar)
+        for (int bar = 0; bar < 3; ++bar)
         {
-            const SDL_FRect indicator{
-                center.x - 3.5f,
-                center.y + 5.0f - static_cast<float>(bar) * 5.0f,
-                7.0f, 3.5f};
-            SDL_RenderFillRect(renderer_, &indicator);
+            const float cellX = -0.12f + static_cast<float>(bar) * 0.12f;
+            batteryPanel(cellX - 0.035f, -0.17f,
+                         cellX + 0.035f, 0.12f,
+                         bar < bars ? chargeColor
+                                    : SDL_Color{35, 51, 63, 255});
         }
+
+        for (float boltX : {-0.22f, 0.22f})
+            for (float boltY : {-0.25f, 0.25f})
+            {
+                const SDL_FPoint bolt = batteryPoint(boltX, boltY);
+                drawFilledCircle(renderer_, bolt.x, bolt.y,
+                    std::max(1.1f, pixelsPerMeter_ * 0.028f),
+                    SDL_Color{208, 221, 228, 235});
+            }
     }
 }
 
@@ -2625,7 +2821,27 @@ void SandboxGame::drawMechanisms()
             SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
             drawFilledCircle(renderer_, b.x, b.y, 11.0f,
                 active ? makeColor(75, 195, 140) : makeColor(91, 106, 121));
-            drawFilledCircle(renderer_, b.x, b.y, 5.0f, makeColor(210, 222, 231));
+            const float rotorAngle = active
+                ? static_cast<float>(SDL_GetTicks()) * 0.009f : 0.0f;
+            for (int spoke = 0; spoke < 6; ++spoke)
+            {
+                const float theta = rotorAngle +
+                    2.0f * kPi * static_cast<float>(spoke) / 6.0f;
+                const SDL_FPoint inner{
+                    b.x + std::cos(theta) * 3.0f,
+                    b.y + std::sin(theta) * 3.0f
+                };
+                const SDL_FPoint outer{
+                    b.x + std::cos(theta) * 9.0f,
+                    b.y + std::sin(theta) * 9.0f
+                };
+                setColor(renderer_, active
+                    ? makeColor(224, 246, 235)
+                    : makeColor(151, 165, 177));
+                SDL_RenderLine(renderer_, inner.x, inner.y, outer.x, outer.y);
+            }
+            drawFilledCircle(renderer_, b.x, b.y, 4.5f, makeColor(210, 222, 231));
+            drawFilledCircle(renderer_, b.x, b.y, 2.0f, makeColor(55, 75, 88));
             const SDL_FRect motorCase{a.x - 8.0f, a.y - 8.0f, 16.0f, 16.0f};
             setColor(renderer_, active ? makeColor(68, 164, 126)
                                        : makeColor(67, 81, 97));
