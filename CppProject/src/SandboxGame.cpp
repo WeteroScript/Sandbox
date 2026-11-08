@@ -1487,7 +1487,11 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
             SDL_RenderLine(renderer_,crack0.x,crack0.y,crack1.x,crack1.y);
             SDL_RenderLine(renderer_,crack1.x,crack1.y,crack2.x,crack2.y);
             SDL_RenderLine(renderer_,crack2.x,crack2.y,crack3.x,crack3.y);
-            const SDL_FPoint branch=point(-halfWidth*0.34f,halfHeight*0.24f);
+            const SDL_FPoint branch=point(
+                std::clamp(impactX - halfWidth * 0.34f,
+                           -halfWidth * 0.82f, halfWidth * 0.82f),
+                std::clamp(impactY + halfHeight * 0.24f,
+                           -halfHeight * 0.82f, halfHeight * 0.82f));
             SDL_RenderLine(renderer_,crack1.x,crack1.y,branch.x,branch.y);
         }
     }
@@ -1805,8 +1809,35 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
 
     const b2Pos position = b2Body_GetPosition(body.id);
     const b2Rot rotation = b2Body_GetRotation(body.id);
-    SDL_Color tint = body.color;
+    const float x = static_cast<float>(position.x);
+    const float y = static_cast<float>(position.y);
+    const float angle = std::atan2(rotation.s, rotation.c);
 
+    float extentX = body.radius;
+    float extentY = body.radius;
+    if (body.shape == BodyShape::Box)
+    {
+        const float c = std::abs(static_cast<float>(rotation.c));
+        const float s = std::abs(static_cast<float>(rotation.s));
+        extentX = c * body.halfWidth + s * body.halfHeight;
+        extentY = s * body.halfWidth + c * body.halfHeight;
+    }
+
+    // Skip geometry generation for bodies that cannot reach the viewport.
+    // The generous padding includes contact shadows and decorative details.
+    if (outputWidth_ > 0 && outputHeight_ > 0)
+    {
+        const SDL_FPoint screenCenter = worldToScreen(x, y);
+        const float cullPadding = std::max(
+            24.0f, pixelsPerMeter_ * std::max(extentX, extentY) * 1.35f + 18.0f);
+        if (screenCenter.x + cullPadding < 0.0f ||
+            screenCenter.x - cullPadding > static_cast<float>(outputWidth_) ||
+            screenCenter.y + cullPadding < 0.0f ||
+            screenCenter.y - cullPadding > static_cast<float>(outputHeight_))
+            return;
+    }
+
+    SDL_Color tint = body.color;
     if (body.frozen)
     {
         tint.r = static_cast<Uint8>(tint.r * 0.78f);
@@ -1822,20 +1853,7 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         tint.b = static_cast<Uint8>(tint.b * (1.0f - corrosion * 0.30f));
     }
 
-    const float x = static_cast<float>(position.x);
-    const float y = static_cast<float>(position.y);
-    const float angle = std::atan2(rotation.s, rotation.c);
     const float drawableImpact = body.groupId >= 0 ? 0.0f : body.impactDamage;
-
-    float extentX = body.radius;
-    float extentY = body.radius;
-    if (body.shape == BodyShape::Box)
-    {
-        const float c = std::abs(static_cast<float>(rotation.c));
-        const float s = std::abs(static_cast<float>(rotation.s));
-        extentX = c * body.halfWidth + s * body.halfHeight;
-        extentY = s * body.halfWidth + c * body.halfHeight;
-    }
 
     // A compact contact shadow ties the object to the ground while keeping
     // airborne props readable. Two translucent ellipses approximate a soft penumbra.
