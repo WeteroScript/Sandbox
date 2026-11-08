@@ -947,11 +947,13 @@ void PhysicsWorld::updateMechanisms(float dt)
     std::unordered_map<std::uint64_t, std::size_t> recordIndices;
     std::vector<int> componentForBody;
     std::vector<std::vector<std::size_t>> componentBatteries;
+    std::vector<float> pendingBatteryDrain;
 
     if (hasMotor)
     {
         // Build the active electrical graph once per tick. Avoid all graph
         // allocations in ordinary scenes that contain no powered motors.
+        pendingBatteryDrain.assign(records_.size(), 0.0f);
         recordIndices.reserve(records_.size());
         for (std::size_t i = 0; i < records_.size(); ++i)
         {
@@ -1010,8 +1012,6 @@ void PhysicsWorld::updateMechanisms(float dt)
             }
         }
     }
-
-    std::vector<float> pendingBatteryDrain(records_.size(), 0.0f);
 
     const auto findPowerSourceIndex = [&](b2BodyId endpoint) -> int
     {
