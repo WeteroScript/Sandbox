@@ -333,6 +333,17 @@ impl PhysicsWorld {
         self.ragdoll = player_ragdoll;
     }
 
+    pub fn spawn_melon_head(&mut self, position: Vector<Real>) {
+        self.spawn_special(
+            position,
+            vector![27.0, 27.0],
+            PropKind::Character,
+            [106, 175, 92, 255],
+            -1.0,
+            1.5,
+        );
+    }
+
     pub fn spawn_platform(&mut self, position: Vector<Real>) {
         self.spawn_special(
             position,

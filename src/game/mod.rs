@@ -34,8 +34,12 @@ impl Game {
     }
 
     pub fn update(&mut self) {
-        self.input
-            .update(self.state.spawn_menu_open, self.drag_body.is_some());
+        let spawn_dialog_was_open = self.state.pending_spawn.is_some();
+        self.input.update(
+            self.state.spawn_menu_open,
+            self.drag_body.is_some(),
+            spawn_dialog_was_open,
+        );
 
         self.handle_spawn_dialog();
 
@@ -100,7 +104,7 @@ impl Game {
                 self.state.physics.step(delta_time);
                 self.mechanisms.step(&mut self.state.physics, delta_time);
 
-                if self.input.pause_pressed() {
+                if self.input.pause_pressed() && !spawn_dialog_was_open {
                     self.state.mode = GameMode::Paused;
                 }
             }
@@ -120,9 +124,18 @@ impl Game {
     }
 
     fn handle_spawn_dialog(&mut self) {
-        let Some(item) = self.state.pending_spawn else {
+        if self.state.pending_spawn.is_none() {
+            if let Some(index) = self.input.spawn_item() {
+                if let Some(selected) = self.state.spawn_category.item(index) {
+                    self.state.pending_spawn = Some(selected);
+                    self.state.spawn_count = 1;
+                    self.state.spawn_placing = false;
+                }
+            }
             return;
-        };
+        }
+
+        let item = self.state.pending_spawn.expect("checked above");
 
         if self.input.back_pressed() {
             self.state.pending_spawn = None;
@@ -167,7 +180,7 @@ impl Game {
             && pointer.y >= top + 106.0
             && pointer.y <= top + 158.0
         {
-            self.state.spawn_count = self.state.spawn_count.saturating_add(1);
+            self.state.spawn_count = self.state.spawn_count.saturating_add(1).min(100);
         } else if pointer.x >= left + 94.0
             && pointer.x <= left + 286.0
             && pointer.y >= top + 106.0
@@ -179,20 +192,29 @@ impl Game {
 
     fn spawn_many(&mut self, item: SpawnItem, count: u32, position: Vec2) {
         let total = count.max(1);
-        let spacing = if matches!(
-            item,
-            SpawnItem::Melon | SpawnItem::MelonHead | SpawnItem::Robot
-        ) {
-            150.0
+        let spacing = if matches!(item, SpawnItem::Melon | SpawnItem::Robot) {
+            120.0
+        } else if matches!(item, SpawnItem::MelonHead) {
+            64.0
+        } else if matches!(item, SpawnItem::Pistol | SpawnItem::SilencedPistol
+            | SpawnItem::HeavyPistol | SpawnItem::Rifle | SpawnItem::Shotgun
+            | SpawnItem::Bat | SpawnItem::Katana)
+        {
+            78.0
         } else {
-            18.0
+            68.0
         };
+        let columns = (total as f32).sqrt().ceil().max(1.0) as u32;
+        let rows = (total + columns - 1) / columns;
 
         for index in 0..total {
-            let offset = index as f32 * spacing;
+            let column = index % columns;
+            let row = index / columns;
+            let offset_x = (column as f32 - (columns - 1) as f32 * 0.5) * spacing;
+            let offset_y = (row as f32 - (rows - 1) as f32 * 0.5) * spacing;
             let spawn_position = rapier2d::prelude::Vector::new(
-                position.x + offset,
-                position.y - offset,
+                (position.x + offset_x).clamp(75.0, 2325.0),
+                (position.y + offset_y).clamp(45.0, 1355.0),
             );
             self.spawn_menu_item_at(item, spawn_position);
         }
@@ -211,9 +233,10 @@ impl Game {
             SpawnItem::Shotgun => self.state.physics.spawn_weapon(position, WeaponKind::Shotgun),
             SpawnItem::Bat => self.state.physics.spawn_weapon(position, WeaponKind::Bat),
             SpawnItem::Katana => self.state.physics.spawn_weapon(position, WeaponKind::Katana),
-            SpawnItem::Melon | SpawnItem::MelonHead => {
+            SpawnItem::Melon => {
                 self.state.physics.spawn_character_prop(position, CharacterKind::Melon)
             }
+            SpawnItem::MelonHead => self.state.physics.spawn_melon_head(position),
             SpawnItem::Robot => {
                 self.state.physics.spawn_character_prop(position, CharacterKind::Robot)
             }

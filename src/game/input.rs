@@ -47,7 +47,12 @@ impl InputState {
         }
     }
 
-    pub fn update(&mut self, spawn_menu_open: bool, dragging: bool) {
+    pub fn update(
+        &mut self,
+        spawn_menu_open: bool,
+        dragging: bool,
+        spawn_dialog_open: bool,
+    ) {
         self.play = is_key_pressed(KeyCode::Enter)
             || is_key_pressed(KeyCode::Space)
             || (is_mouse_button_pressed(MouseButton::Left)
@@ -76,7 +81,8 @@ impl InputState {
                         let tab_width = 75.0;
                         self.spawn_tab = Some(((position.x - panel_x) / tab_width) as usize);
                     } else if position.y >= 126.0 {
-                        let item = ((position.y - 126.0) / 58.0) as usize;
+                        let row_height = ((screen_height() - 136.0) / 10.0).clamp(16.0, 58.0);
+                        let item = ((position.y - 126.0) / row_height) as usize;
                         if item < 16 {
                             self.spawn_item = Some(item);
                         }
@@ -85,10 +91,11 @@ impl InputState {
             }
         }
 
-        self.action = if is_key_pressed(KeyCode::F)
-            || (is_mouse_button_pressed(MouseButton::Left)
-                && !self.in_spawn_panel(mouse_position().into(), spawn_menu_open))
-            || (self.touch_action_pressed() && !spawn_menu_open)
+        self.action = if !spawn_dialog_open
+            && (is_key_pressed(KeyCode::F)
+                || (is_mouse_button_pressed(MouseButton::Left)
+                    && !self.in_spawn_panel(mouse_position().into(), spawn_menu_open))
+                || (self.touch_action_pressed() && !spawn_menu_open))
         {
             Action::Fire
         } else {
@@ -260,6 +267,9 @@ impl InputState {
 
         touches()
             .into_iter()
-            .any(|touch| touch.position.distance(center) <= 48.0)
+            .any(|touch| {
+                touch.phase == TouchPhase::Started
+                    && touch.position.distance(center) <= 48.0
+            })
     }
 }

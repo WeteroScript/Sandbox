@@ -58,7 +58,6 @@ impl Renderer {
     }
 
     pub fn draw_playing(&self, state: &GameState) {
-        let width = screen_width();
         let height = screen_height();
 
         set_camera(&state.camera.macroquad_camera());
@@ -89,6 +88,9 @@ impl Renderer {
         set_default_camera();
         self.draw_top_bar(state);
         self.draw_joint_health(state);
+        if !state.spawn_menu_open {
+            self.draw_fire_button();
+        }
         if state.spawn_menu_open {
             self.draw_spawn_menu(state);
         } else {
@@ -149,6 +151,21 @@ impl Renderer {
             "RESUME",
             Color::from_rgba(52, 168, 99, 255),
         );
+    }
+
+    fn draw_fire_button(&self) {
+        let center = vec2(screen_width() - 100.0, screen_height() - 118.0);
+        draw_circle(
+            center.x,
+            center.y,
+            47.0,
+            Color::from_rgba(181, 54, 48, 185),
+        );
+        draw_circle_lines(center.x, center.y, 47.0, 3.0, Color::from_rgba(250, 210, 198, 230));
+        draw_circle(center.x, center.y, 35.0, Color::from_rgba(205, 67, 58, 220));
+        let label = "FIRE";
+        let label_width = measure_text(label, None, 17, 1.0).width;
+        draw_text(label, center.x - label_width * 0.5, center.y + 6.0, 17.0, WHITE);
     }
 
     fn draw_spawn_toggle(&self) {
@@ -232,24 +249,33 @@ impl Renderer {
             );
         }
 
-        for (index, item) in state.spawn_category.items().iter().enumerate() {
-            let y = 126.0 + index as f32 * 58.0;
+        let row_height = ((screen_height() - 136.0) / 10.0).clamp(16.0, 58.0);
+        let icon_size = (row_height - 12.0).max(8.0);
+        let font_size = if row_height < 30.0 { 12.0 } else { 17.0 };
 
+        for (index, item) in state.spawn_category.items().iter().enumerate() {
+            let y = 126.0 + index as f32 * row_height;
             draw_rectangle(
                 panel_x + 12.0,
-                y,
+                y + 2.0,
                 276.0,
-                48.0,
+                (row_height - 4.0).max(12.0),
                 Color::from_rgba(48, 59, 72, 255),
             );
             draw_rectangle(
                 panel_x + 22.0,
-                y + 8.0,
-                32.0,
-                32.0,
+                y + (row_height - icon_size) * 0.5,
+                icon_size,
+                icon_size,
                 self.item_color(state.spawn_category, index),
             );
-            draw_text(item, panel_x + 70.0, y + 31.0, 17.0, WHITE);
+            draw_text(
+                item,
+                panel_x + 70.0,
+                y + row_height * 0.68,
+                font_size,
+                WHITE,
+            );
         }
     }
 
