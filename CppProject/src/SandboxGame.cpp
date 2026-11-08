@@ -1476,7 +1476,9 @@ void SandboxGame::drawButton(const SDL_FRect& rect, const char* label, bool acti
 
     setColor(renderer_, makeColor(240, 244, 248));
     const float textWidth = static_cast<float>(std::strlen(label)) * 8.0f;
-    const float textScale = std::clamp(rect.h / 38.0f, 1.0f, 1.65f);
+    const float widthScale = (rect.w - 12.0f) / std::max(8.0f, textWidth);
+    const float textScale = std::clamp(
+        std::min(rect.h / 38.0f, widthScale), 0.62f, 1.65f);
     SDL_SetRenderScale(renderer_, textScale, textScale);
     SDL_RenderDebugText(
         renderer_,
@@ -1513,7 +1515,7 @@ void SandboxGame::drawUi()
         case MapKind::City: mapLabel = "CITY"; break;
         case MapKind::Laboratory: mapLabel = "LAB"; break;
     }
-    drawButton(layout.mapButton, mapLabel, false);
+    drawButton(layout.mapButton, "MAP", false);
 
     drawButton(layout.speedLabel,
                kSpeedLabels[static_cast<std::size_t>(speedIndex_)], false);
