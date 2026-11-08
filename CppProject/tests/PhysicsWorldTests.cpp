@@ -612,6 +612,8 @@ int main()
     CHECK(bucketWorld.surfaces()[1].kind == SurfaceKind::Lava);
     CHECK(bucketWorld.surfaces()[2].kind == SurfaceKind::Acid);
     CHECK(bucketWorld.surfaces()[0].volume > 4.0f);
+    const SurfaceZone& groundedWater = bucketWorld.surfaces()[0];
+    CHECK(std::abs(groundedWater.y - groundedWater.halfHeight + 4.8f) < 0.02f);
 
     std::vector<std::uint8_t> bucketSnapshot;
     CHECK(bucketWorld.saveToSnapshot(bucketSnapshot));
@@ -635,7 +637,7 @@ int main()
     const int dragBucket = waterDragWorld.spawnBucket(BucketKind::Water, -5.0f, 5.0f);
     CHECK(dragBucket >= 0);
     CHECK(waterDragWorld.interactAt(-5.0f, 5.0f));
-    const int wetBall = waterDragWorld.spawnBall(-4.0f, 4.3f);
+    const int wetBall = waterDragWorld.spawnBall(-4.0f, -4.2f);
     CHECK(wetBall >= 0);
     const b2BodyId wetBallId =
         waterDragWorld.records()[static_cast<std::size_t>(wetBall)].id;
@@ -643,7 +645,7 @@ int main()
 
     PhysicsWorld airDragWorld;
     airDragWorld.setMap(MapKind::TestRange, false);
-    const int dryBall = airDragWorld.spawnBall(-4.0f, 4.3f);
+    const int dryBall = airDragWorld.spawnBall(-4.0f, -4.2f);
     CHECK(dryBall >= 0);
     const b2BodyId dryBallId =
         airDragWorld.records()[static_cast<std::size_t>(dryBall)].id;
@@ -663,7 +665,7 @@ int main()
     const int acidBucket = acidWorld.spawnBucket(BucketKind::Acid, -5.0f, 5.0f);
     CHECK(acidBucket >= 0);
     CHECK(acidWorld.interactAt(-5.0f, 5.0f));
-    const int acidTarget = acidWorld.spawnBox(-4.2f, 4.3f);
+    const int acidTarget = acidWorld.spawnBox(-4.2f, -4.2f);
     CHECK(acidTarget >= 0);
     const b2BodyId acidTargetId =
         acidWorld.records()[static_cast<std::size_t>(acidTarget)].id;
