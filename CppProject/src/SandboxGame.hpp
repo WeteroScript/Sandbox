@@ -137,7 +137,8 @@ private:
     void drawBucket(const BodyRecord& body, float x, float y, float angle);
     void drawBox(float x, float y, float halfWidth, float halfHeight,
                  float angle, SDL_Color tint, MaterialKind material,
-                 float impactDamage, bool outline);
+                 float impactDamage, float impactLocalX,
+                 float impactLocalY, bool outline);
     void drawCircle(float x, float y, float radius, float angle,
                     SDL_Color tint, MaterialKind material,
                     float impactDamage, bool outline);

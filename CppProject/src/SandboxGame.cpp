@@ -1237,7 +1237,8 @@ void SandboxGame::drawGrid()
 
 void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                           float angle, SDL_Color tint, MaterialKind material,
-                          float impactDamage, bool outline)
+                          float impactDamage, float impactLocalX,
+                          float impactLocalY, bool outline)
 {
     const float c = std::cos(angle), s = std::sin(angle);
     const auto point = [&](float lx, float ly)
@@ -2003,7 +2004,8 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                    drawableImpact, selected);
     else
         drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint,
-                body.material, drawableImpact, selected);
+                body.material, drawableImpact, body.impactLocalX,
+                body.impactLocalY, selected);
 
     // The blue steel mannequin gets a compact mechanical visual language:
     // a glassy visor, chest module, status lamps and joint-side limb bands.
