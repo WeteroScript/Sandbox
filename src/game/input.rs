@@ -77,7 +77,9 @@ impl InputState {
 
         self.spawn_tab = None;
         self.spawn_item = None;
-        self.tool_mode_pressed = if is_key_pressed(KeyCode::G) {
+        self.tool_mode_pressed = if spawn_menu_open || spawn_dialog_open {
+            None
+        } else if is_key_pressed(KeyCode::G) {
             Some(ToolMode::Grab)
         } else if is_key_pressed(KeyCode::V) {
             Some(ToolMode::Freeze)
