@@ -195,7 +195,12 @@ impl Game {
             && pointer.y >= top + 106.0
             && pointer.y <= top + 158.0
         {
-            self.state.spawn_count = self.state.spawn_count.saturating_add(1).min(100);
+            let limit = if matches!(item, SpawnItem::Melon | SpawnItem::Robot) {
+                16
+            } else {
+                100
+            };
+            self.state.spawn_count = self.state.spawn_count.saturating_add(1).min(limit);
         } else if pointer.x >= left + 94.0
             && pointer.x <= left + 286.0
             && pointer.y >= top + 106.0
@@ -219,14 +224,17 @@ impl Game {
         } else {
             68.0
         };
+        let character_batch = matches!(item, SpawnItem::Melon | SpawnItem::Robot);
+        let spacing_x = if character_batch { 170.0 } else { spacing };
+        let spacing_y = if character_batch { 250.0 } else { spacing };
         let columns = (total as f32).sqrt().ceil().max(1.0) as u32;
         let rows = (total + columns - 1) / columns;
 
         for index in 0..total {
             let column = index % columns;
             let row = index / columns;
-            let offset_x = (column as f32 - (columns - 1) as f32 * 0.5) * spacing;
-            let offset_y = (row as f32 - (rows - 1) as f32 * 0.5) * spacing;
+            let offset_x = (column as f32 - (columns - 1) as f32 * 0.5) * spacing_x;
+            let offset_y = (row as f32 - (rows - 1) as f32 * 0.5) * spacing_y;
             let spawn_position = rapier2d::prelude::Vector::new(
                 (position.x + offset_x).clamp(75.0, 2325.0),
                 (position.y + offset_y).clamp(45.0, 1355.0),
