@@ -90,6 +90,7 @@ public:
     int spawnPlatform(float x, float y);
     int spawnMaterialBlock(MaterialKind material, float x, float y);
     int spawnBattery(float x, float y);
+    bool setBatteryCharge(int index, float charge);
     int spawnWheel(float x, float y);
     int spawnBucket(BucketKind kind, float x, float y);
     int spawnRagdoll(float x, float y);

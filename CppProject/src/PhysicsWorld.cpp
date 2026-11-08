@@ -1404,6 +1404,20 @@ int PhysicsWorld::spawnBattery(float x, float y)
     return index;
 }
 
+bool PhysicsWorld::setBatteryCharge(int index, float charge)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= records_.size() ||
+        !std::isfinite(charge))
+        return false;
+
+    BodyRecord& battery = records_[static_cast<std::size_t>(index)];
+    if (!battery.powerSource)
+        return false;
+
+    battery.batteryCharge = std::clamp(charge, 0.0f, 100.0f);
+    return true;
+}
+
 int PhysicsWorld::spawnWheel(float x, float y)
 {
     const int index = createCircle(

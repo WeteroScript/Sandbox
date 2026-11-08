@@ -830,8 +830,9 @@ int main()
     CHECK(depletedBatteryWorld.spawnMechanism(MechanismKind::Motor, 4.0f, 6.0f) == 2);
     depletedBatteryWorld.step(1.0f / 30.0f, 1);
     CHECK(depletedBatteryWorld.mechanisms()[2].active);
-    depletedBatteryWorld.records()[
-        static_cast<std::size_t>(depletedBatteryIndex)].batteryCharge = 0.02f;
+    CHECK(!depletedBatteryWorld.setBatteryCharge(-1, 0.02f));
+    CHECK(!depletedBatteryWorld.setBatteryCharge(1, 0.02f));
+    CHECK(depletedBatteryWorld.setBatteryCharge(depletedBatteryIndex, 0.02f));
     depletedBatteryWorld.step(1.0f / 30.0f, 1);
     CHECK(depletedBatteryWorld.records()[
         static_cast<std::size_t>(depletedBatteryIndex)].batteryCharge <= 0.001f);
