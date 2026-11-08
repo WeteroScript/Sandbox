@@ -82,7 +82,7 @@ namespace Sandbox.UnityPort
                 Vector2 world = GetWorldPointer();
                 var hit = Physics2D.OverlapPoint(world);
                 var selected = hit != null ? hit.GetComponentInParent<SandboxBody>() : null;
-                if (selected == null)
+                if (selected == null || selected.Kind == SandboxBodyKind.Static)
                     return;
 
                 switch (tool)
