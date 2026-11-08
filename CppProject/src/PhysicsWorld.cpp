@@ -52,6 +52,42 @@ bool sameBodyId(b2BodyId a, b2BodyId b)
            a.generation == b.generation;
 }
 
+struct MaterialProfile
+{
+    float density;
+    float friction;
+    float restitution;
+    float fractureSpeed;
+    SDL_Color tint;
+};
+
+const MaterialProfile& materialProfile(MaterialKind material)
+{
+    static const MaterialProfile wood{
+        0.95f, 0.82f, 0.035f, 14.0f, {174, 121, 68, 255}};
+    static const MaterialProfile metal{
+        2.80f, 0.46f, 0.11f, 30.0f, {137, 155, 173, 255}};
+    static const MaterialProfile glass{
+        1.35f, 0.32f, 0.12f, 9.0f, {126, 190, 211, 220}};
+    static const MaterialProfile rubber{
+        1.15f, 0.98f, 0.58f, 0.0f, {55, 67, 78, 255}};
+    static const MaterialProfile concrete{
+        2.25f, 0.84f, 0.015f, 24.0f, {139, 147, 155, 255}};
+    static const MaterialProfile organic{
+        1.0f, 0.68f, 0.02f, 0.0f, {128, 190, 135, 255}};
+
+    switch (material)
+    {
+        case MaterialKind::Wood: return wood;
+        case MaterialKind::Metal: return metal;
+        case MaterialKind::Glass: return glass;
+        case MaterialKind::Rubber: return rubber;
+        case MaterialKind::Concrete: return concrete;
+        case MaterialKind::Organic: return organic;
+    }
+    return wood;
+}
+
 struct Point2 { float x = 0.0f; float y = 0.0f; };
 
 struct Polygon2
@@ -244,6 +280,9 @@ struct SavedBody
     BucketKind bucketKind = BucketKind::None;
     float bucketVolume = 0.0f;
     float acidExposure = 0.0f;
+    MaterialKind material = MaterialKind::Wood;
+    float impactDamage = 0.0f;
+    bool breakable = false;
 };
 
 bool writeSavedBody(std::ostream& out, const SavedBody& b)
@@ -272,7 +311,10 @@ bool writeSavedBody(std::ostream& out, const SavedBody& b)
         writeValue(out, b.savedAngularVelocity) &&
         writeValue(out, static_cast<std::uint8_t>(b.bucketKind)) &&
         writeValue(out, b.bucketVolume) &&
-        writeValue(out, b.acidExposure);
+        writeValue(out, b.acidExposure) &&
+        writeValue(out, static_cast<std::uint8_t>(b.material)) &&
+        writeValue(out, static_cast<std::uint8_t>(b.breakable ? 1U : 0U)) &&
+        writeValue(out, b.impactDamage);
 }
 
 bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
@@ -312,6 +354,26 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         b.bucketKind = static_cast<BucketKind>(bucketKind);
     }
 
+    if (version >= 4)
+    {
+        std::uint8_t material = 0;
+        std::uint8_t breakable = 0;
+        if (!readValue(in, material) || !readValue(in, breakable) ||
+            !readValue(in, b.impactDamage) ||
+            material > static_cast<std::uint8_t>(MaterialKind::Organic) ||
+            breakable > 1)
+            return false;
+        b.material = static_cast<MaterialKind>(material);
+        b.breakable = breakable != 0;
+    }
+    else
+    {
+        b.material = shape == static_cast<std::uint8_t>(BodyShape::Circle)
+            ? MaterialKind::Rubber : MaterialKind::Wood;
+        b.breakable = shape == static_cast<std::uint8_t>(BodyShape::Box) &&
+            groupId < 0 && b.bucketKind == BucketKind::None;
+    }
+
     if (shape > static_cast<std::uint8_t>(BodyShape::Circle) || frozen > 1)
         return false;
 
@@ -327,7 +389,7 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         b.parentAnchor.x, b.parentAnchor.y, b.childAnchor.x, b.childAnchor.y,
         b.jointLowerAngle, b.jointUpperAngle,
         b.savedVelocity.x, b.savedVelocity.y, b.savedAngularVelocity,
-        b.bucketVolume, b.acidExposure
+        b.bucketVolume, b.acidExposure, b.impactDamage
     };
 
     for (float value : values)
@@ -361,7 +423,12 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         b.bucketVolume < 0.0f || b.bucketVolume > 100.0f ||
         b.acidExposure < 0.0f || b.acidExposure > 100000.0f ||
         (b.bucketKind == BucketKind::None && b.bucketVolume > 0.0f) ||
-        (b.bucketKind != BucketKind::None && b.groupId >= 0))
+        (b.bucketKind != BucketKind::None && b.groupId >= 0) ||
+        static_cast<std::uint8_t>(b.material) >
+            static_cast<std::uint8_t>(MaterialKind::Organic) ||
+        b.impactDamage < 0.0f || b.impactDamage > 1.0f ||
+        (b.breakable && (b.groupId >= 0 || b.bucketKind != BucketKind::None ||
+                         b.shape != BodyShape::Box)))
         return false;
 
     return true;
@@ -652,7 +719,8 @@ int PhysicsWorld::spawnBucket(BucketKind kind, float x, float y)
 
     const int index = createBox(
         x, y, 0.43f, 0.52f, 0.0f,
-        {135, 151, 164, 255}, false, true, -1, 0.95f);
+        {135, 151, 164, 255}, false, true, -1, 1.05f,
+        -1, MaterialKind::Metal, false);
     if (index < 0)
         return -1;
 
@@ -869,6 +937,7 @@ void PhysicsWorld::step(float dt, int subSteps)
     updateSurfaces(dt);
     updateMechanisms(dt);
     b2World_Step(world_, dt, subSteps);
+    processImpactEvents();
 
     // Keep articulated characters stable under small incidental impacts.
     // This motion envelope applies only to character groups, not scene props.
@@ -883,9 +952,128 @@ void PhysicsWorld::step(float dt, int subSteps)
     }
 }
 
+void PhysicsWorld::processImpactEvents()
+{
+    const b2ContactEvents events = b2World_GetContactEvents(world_);
+    std::vector<b2BodyId> fracturedBodies;
+
+    const auto applyImpact = [&](b2ShapeId shapeId, float approachSpeed)
+    {
+        if (!b2Shape_IsValid(shapeId))
+            return;
+
+        const b2BodyId bodyId = b2Shape_GetBody(shapeId);
+        const auto found = std::find_if(records_.begin(), records_.end(),
+            [bodyId](const BodyRecord& record)
+            {
+                return record.breakable && record.shape == BodyShape::Box &&
+                       !record.frozen && sameBodyId(record.id, bodyId) &&
+                       b2Body_IsValid(record.id);
+            });
+        if (found == records_.end())
+            return;
+
+        const float threshold = materialProfile(found->material).fractureSpeed;
+        if (threshold <= 0.0f || approachSpeed < threshold * 0.35f)
+            return;
+
+        const float ratio = approachSpeed / threshold;
+        const float increment = ratio >= 1.35f
+            ? 1.0f
+            : ratio * ratio * 0.52f;
+        found->impactDamage = std::clamp(found->impactDamage + increment, 0.0f, 1.0f);
+        if (found->impactDamage >= 1.0f &&
+            std::none_of(fracturedBodies.begin(), fracturedBodies.end(),
+                [&](b2BodyId candidate) { return sameBodyId(candidate, bodyId); }))
+            fracturedBodies.push_back(bodyId);
+    };
+
+    for (int i = 0; i < events.hitCount; ++i)
+    {
+        const b2ContactHitEvent& hit = events.hitEvents[i];
+        applyImpact(hit.shapeIdA, hit.approachSpeed);
+        applyImpact(hit.shapeIdB, hit.approachSpeed);
+    }
+
+    for (b2BodyId body : fracturedBodies)
+        fractureBody(body);
+}
+
+void PhysicsWorld::fractureBody(b2BodyId bodyId)
+{
+    const auto found = std::find_if(records_.begin(), records_.end(),
+        [bodyId](const BodyRecord& record)
+        {
+            return record.breakable && record.shape == BodyShape::Box &&
+                   sameBodyId(record.id, bodyId) && b2Body_IsValid(record.id);
+        });
+    if (found == records_.end())
+        return;
+
+    const int originalIndex = static_cast<int>(found - records_.begin());
+    const BodyRecord original = *found;
+    const b2Pos position = b2Body_GetPosition(original.id);
+    const b2Rot rotation = b2Body_GetRotation(original.id);
+    const b2Vec2 velocity = b2Body_GetLinearVelocity(original.id);
+    const float angularVelocity = b2Body_GetAngularVelocity(original.id);
+    const float cosine = static_cast<float>(rotation.c);
+    const float sine = static_cast<float>(rotation.s);
+
+    // Split a broken panel into four independent, non-fracturing debris pieces.
+    const float fragmentHalfWidth = std::max(0.12f, original.halfWidth * 0.46f);
+    const float fragmentHalfHeight = std::max(0.12f, original.halfHeight * 0.46f);
+    const float offsetX = original.halfWidth * 0.50f;
+    const float offsetY = original.halfHeight * 0.50f;
+
+    for (int i = 0; i < 4; ++i)
+    {
+        const float signX = (i % 2 == 0) ? -1.0f : 1.0f;
+        const float signY = (i < 2) ? -1.0f : 1.0f;
+        const float localX = signX * offsetX;
+        const float localY = signY * offsetY;
+        const float worldX = static_cast<float>(position.x) +
+            cosine * localX - sine * localY;
+        const float worldY = static_cast<float>(position.y) +
+            sine * localX + cosine * localY;
+
+        SDL_Color fragmentColor = original.color;
+        const float shade = 0.91f + static_cast<float>(i) * 0.035f;
+        fragmentColor.r = static_cast<Uint8>(std::clamp(
+            static_cast<float>(fragmentColor.r) * shade, 0.0f, 255.0f));
+        fragmentColor.g = static_cast<Uint8>(std::clamp(
+            static_cast<float>(fragmentColor.g) * shade, 0.0f, 255.0f));
+        fragmentColor.b = static_cast<Uint8>(std::clamp(
+            static_cast<float>(fragmentColor.b) * shade, 0.0f, 255.0f));
+
+        const int shardIndex = createBox(
+            worldX, worldY, fragmentHalfWidth, fragmentHalfHeight,
+            std::atan2(sine, cosine) + signX * signY * 0.035f,
+            fragmentColor, false, true, -1, original.density, -1,
+            original.material, false);
+        if (shardIndex < 0)
+            continue;
+
+        BodyRecord& shard = records_[static_cast<std::size_t>(shardIndex)];
+        shard.breakable = false;
+        shard.impactDamage = 0.0f;
+        const float directionLength = std::max(
+            0.001f, std::sqrt(localX * localX + localY * localY));
+        const float kick = 1.15f + static_cast<float>(i % 2) * 0.35f;
+        b2Body_SetLinearVelocity(shard.id, {
+            velocity.x + (cosine * localX - sine * localY) / directionLength * kick,
+            velocity.y + (sine * localX + cosine * localY) / directionLength * kick
+        });
+        b2Body_SetAngularVelocity(shard.id,
+            angularVelocity + signX * signY * 1.6f);
+    }
+
+    deleteAt(originalIndex);
+}
+
 int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
                             SDL_Color tint, bool isStatic, bool selectable,
-                            int groupId, float density, int partIndex)
+                            int groupId, float density, int partIndex,
+                            MaterialKind material, bool allowFracture)
 {
     b2BodyDef bd = b2DefaultBodyDef();
     bd.type = isStatic ? b2_staticBody : b2_dynamicBody;
@@ -900,8 +1088,12 @@ int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
 
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = isStatic ? 0.0f : density;
-    sd.material.friction = 0.72f;
-    sd.material.restitution = 0.035f;
+    const MaterialProfile& profile = materialProfile(material);
+    sd.material.friction = profile.friction;
+    sd.material.restitution = profile.restitution;
+    const bool canFracture = !isStatic && selectable && groupId < 0 &&
+        allowFracture && profile.fractureSpeed > 0.0f;
+    sd.enableHitEvents = canFracture;
     const b2Polygon polygon = b2MakeBox(hw, hh);
     b2CreatePolygonShape(body, &sd, &polygon);
 
@@ -915,13 +1107,16 @@ int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
     record.groupId = groupId;
     record.partIndex = partIndex;
     record.selectable = selectable;
+    record.material = material;
+    record.breakable = canFracture;
     records_.push_back(record);
     return static_cast<int>(records_.size() - 1);
 }
 
 int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
                                bool selectable, int groupId, float density,
-                               float angle, int partIndex)
+                               float angle, int partIndex,
+                               MaterialKind material, bool allowFracture)
 {
     b2BodyDef bd = b2DefaultBodyDef();
     bd.type = b2_dynamicBody;
@@ -936,8 +1131,12 @@ int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
 
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = density;
-    sd.material.friction = 0.62f;
-    sd.material.restitution = 0.08f;
+    const MaterialProfile& profile = materialProfile(material);
+    sd.material.friction = profile.friction;
+    sd.material.restitution = profile.restitution;
+    const bool canFracture = selectable && groupId < 0 && allowFracture &&
+        profile.fractureSpeed > 0.0f;
+    sd.enableHitEvents = canFracture;
     const b2Circle circle{{0.0f, 0.0f}, radius};
     b2CreateCircleShape(body, &sd, &circle);
 
@@ -956,18 +1155,25 @@ int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
 
 int PhysicsWorld::spawnBox(float x, float y)
 {
+    const MaterialProfile& profile = materialProfile(MaterialKind::Wood);
     return createBox(x, y, 0.55f, 0.55f, 0.0f,
-                     {196,135,77,255}, false, true);
+                     profile.tint, false, true, -1, profile.density,
+                     -1, MaterialKind::Wood);
 }
 
 int PhysicsWorld::spawnBall(float x, float y)
 {
-    return createCircle(x, y, 0.48f, {88,174,220,255}, true);
+    const MaterialProfile& profile = materialProfile(MaterialKind::Rubber);
+    return createCircle(x, y, 0.48f, {88,174,220,255}, true, -1,
+                        profile.density, 0.0f, -1, MaterialKind::Rubber, false);
 }
 
 int PhysicsWorld::spawnBarrel(float x, float y)
 {
-    const int index = createCircle(x, y, 0.58f, {177,111,56,255}, true, -1, 1.8f);
+    const MaterialProfile& profile = materialProfile(MaterialKind::Metal);
+    const int index = createCircle(x, y, 0.58f, {177,111,56,255}, true, -1,
+                                   profile.density, 0.0f, -1,
+                                   MaterialKind::Metal, false);
     if (index >= 0)
     {
         BodyRecord& barrel = records_[static_cast<std::size_t>(index)];
@@ -980,7 +1186,19 @@ int PhysicsWorld::spawnBarrel(float x, float y)
 int PhysicsWorld::spawnPlatform(float x, float y)
 {
     return createBox(x, y, 1.65f, 0.18f, 0.0f,
-                     {126,143,157,255}, false, true, -1, 1.4f);
+                     {126,143,157,255}, false, true, -1, 1.4f,
+                     -1, MaterialKind::Concrete, true);
+}
+
+int PhysicsWorld::spawnMaterialBlock(MaterialKind material, float x, float y)
+{
+    if (material == MaterialKind::Organic)
+        return -1;
+
+    const MaterialProfile& profile = materialProfile(material);
+    return createBox(x, y, 0.58f, 0.58f, 0.0f,
+                     profile.tint, false, true, -1, profile.density,
+                     -1, material, material != MaterialKind::Rubber);
 }
 
 int PhysicsWorld::nearestDynamicBody(float x, float y, float maxDistance, int excluded) const
@@ -1277,20 +1495,27 @@ int PhysicsWorld::spawnCharacter(float x, float y, bool robot)
         : SDL_Color{128,213,130,255};
 
     const int torso = createBox(x, y+0.75f, 0.34f, 0.55f, 0.0f,
-                                torsoColor, false, true, group, 2.0f, 0);
+                                torsoColor, false, true, group, 2.0f, 0,
+                                MaterialKind::Organic, false);
     const int head = robot
         ? createBox(x, y+1.58f, 0.32f, 0.32f, 0.0f,
-                    headColor, false, true, group, 1.35f, 1)
+                    headColor, false, true, group, 1.35f, 1,
+                    MaterialKind::Organic, false)
         : createCircle(x, y+1.58f, 0.38f, headColor,
-                       true, group, 1.35f, 0.0f, 1);
+                       true, group, 1.35f, 0.0f, 1,
+                       MaterialKind::Organic, false);
     const int armL = createBox(x-0.54f, y+0.75f, 0.15f, 0.43f, -0.1f,
-                               limbColor, false, true, group, 1.15f, 2);
+                               limbColor, false, true, group, 1.15f, 2,
+                               MaterialKind::Organic, false);
     const int armR = createBox(x+0.54f, y+0.75f, 0.15f, 0.43f, 0.1f,
-                               limbColor, false, true, group, 1.15f, 3);
+                               limbColor, false, true, group, 1.15f, 3,
+                               MaterialKind::Organic, false);
     const int legL = createBox(x-0.20f, y-0.20f, 0.17f, 0.48f, -0.05f,
-                               limbColor, false, true, group, 1.3f, 4);
+                               limbColor, false, true, group, 1.3f, 4,
+                               MaterialKind::Organic, false);
     const int legR = createBox(x+0.20f, y-0.20f, 0.17f, 0.48f, 0.05f,
-                               limbColor, false, true, group, 1.3f, 5);
+                               limbColor, false, true, group, 1.3f, 5,
+                               MaterialKind::Organic, false);
 
     if (torso < 0 || head < 0 || armL < 0 || armR < 0 || legL < 0 || legR < 0)
         return group;
@@ -1448,14 +1673,22 @@ void PhysicsWorld::cloneAt(int index)
         return;
     }
 
+    int copyIndex = -1;
     if (selected.shape == BodyShape::Circle)
-        createCircle(static_cast<float>(p.x)+1.0f, static_cast<float>(p.y)+0.8f,
+        copyIndex = createCircle(static_cast<float>(p.x)+1.0f, static_cast<float>(p.y)+0.8f,
                      selected.radius, selected.color, true, -1,
-                     selected.density, angle);
+                     selected.density, angle, -1, selected.material, selected.breakable);
     else
-        createBox(static_cast<float>(p.x)+1.0f, static_cast<float>(p.y)+0.8f,
+        copyIndex = createBox(static_cast<float>(p.x)+1.0f, static_cast<float>(p.y)+0.8f,
                   selected.halfWidth, selected.halfHeight, angle,
-                  selected.color, false, true, -1, selected.density);
+                  selected.color, false, true, -1, selected.density, -1,
+                  selected.material, selected.breakable);
+    if (copyIndex >= 0)
+    {
+        BodyRecord& clone = records_[static_cast<std::size_t>(copyIndex)];
+        clone.impactDamage = selected.impactDamage;
+        clone.breakable = selected.breakable;
+    }
 }
 
 
@@ -1693,7 +1926,7 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
-    constexpr std::uint32_t version = 3;
+    constexpr std::uint32_t version = 4;
     constexpr std::uint32_t endianMarker = 0x01020304U;
     const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
@@ -1737,6 +1970,9 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         body.bucketKind = record.bucketKind;
         body.bucketVolume = record.bucketVolume;
         body.acidExposure = record.acidExposure;
+        body.material = record.material;
+        body.impactDamage = record.impactDamage;
+        body.breakable = record.breakable;
         saved.push_back(body);
         savedBodyIds.push_back(record.id);
     }
@@ -1857,7 +2093,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     if (!readValue(input, version) ||
         !readValue(input, endianMarker) ||
-        (version < 1 || version > 3) ||
+        (version < 1 || version > 4) ||
         endianMarker != 0x01020304U)
         return false;
 
@@ -2000,14 +2236,16 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
             index = createBox(
                 body.x, body.y, body.halfWidth, body.halfHeight,
                 body.angle, body.color, false, true,
-                body.groupId, body.density, body.partIndex
+                body.groupId, body.density, body.partIndex,
+                body.material, body.breakable
             );
         }
         else
         {
             index = createCircle(
                 body.x, body.y, body.radius, body.color, true,
-                body.groupId, body.density, body.angle, body.partIndex
+                body.groupId, body.density, body.angle, body.partIndex,
+                body.material, body.breakable
             );
         }
 
@@ -2028,6 +2266,9 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         record.bucketKind = body.bucketKind;
         record.bucketVolume = body.bucketVolume;
         record.acidExposure = body.acidExposure;
+        record.material = body.material;
+        record.impactDamage = body.impactDamage;
+        record.breakable = body.breakable;
 
         b2Body_SetLinearVelocity(record.id, {body.velocityX, body.velocityY});
         b2Body_SetAngularVelocity(record.id, body.angularVelocity);

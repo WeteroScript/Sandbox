@@ -10,6 +10,7 @@
 #include <vector>
 
 enum class BodyShape : std::uint8_t { Box, Circle };
+enum class MaterialKind : std::uint8_t { Wood, Metal, Glass, Rubber, Concrete, Organic };
 enum class MapKind : std::uint8_t { TestRange, City, Laboratory };
 enum class SurfaceKind : std::uint8_t { Water, Lava, Acid };
 enum class BucketKind : std::uint8_t { None, Water, Lava, Acid };
@@ -38,6 +39,9 @@ struct BodyRecord
     BucketKind bucketKind = BucketKind::None;
     float bucketVolume = 0.0f;
     float acidExposure = 0.0f;
+    MaterialKind material = MaterialKind::Wood;
+    float impactDamage = 0.0f;
+    bool breakable = false;
 };
 
 struct SurfaceZone
@@ -82,6 +86,7 @@ public:
     int spawnBall(float x, float y);
     int spawnBarrel(float x, float y);
     int spawnPlatform(float x, float y);
+    int spawnMaterialBlock(MaterialKind material, float x, float y);
     int spawnBucket(BucketKind kind, float x, float y);
     int spawnRagdoll(float x, float y);
     int spawnRobot(float x, float y);
@@ -119,10 +124,14 @@ private:
     int createBox(float x, float y, float halfWidth, float halfHeight, float angle,
                   SDL_Color color, bool isStatic, bool selectable,
                   int groupId = -1, float density = 1.0f,
-                  int partIndex = -1);
+                  int partIndex = -1,
+                  MaterialKind material = MaterialKind::Concrete,
+                  bool allowFracture = true);
     int createCircle(float x, float y, float radius, SDL_Color color,
                      bool selectable, int groupId = -1, float density = 1.0f,
-                     float angle = 0.0f, int partIndex = -1);
+                     float angle = 0.0f, int partIndex = -1,
+                     MaterialKind material = MaterialKind::Rubber,
+                     bool allowFracture = false);
     void connectHinge(int parentIndex, int childIndex, float x, float y,
                       float lowerAngle, float upperAngle);
     void connectHingeLocal(b2BodyId bodyA, b2BodyId bodyB,
@@ -139,6 +148,8 @@ private:
     bool pourBucket(int index);
     void updateSurfaces(float deltaTime);
     void updateMechanisms(float deltaTime);
+    void processImpactEvents();
+    void fractureBody(b2BodyId body);
     void setMechanismsEnabled(bool enabled);
     int nearestDynamicBody(float x, float y, float maxDistance, int excluded = -1) const;
     bool createMechanism(MechanismKind kind, float x, float y,
