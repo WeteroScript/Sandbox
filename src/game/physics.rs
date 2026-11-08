@@ -31,15 +31,15 @@ impl CharacterKind {
 
     fn joint_strength(self) -> f32 {
         match self {
-            Self::Melon => 150.0,
-            Self::Robot => 240.0,
+            Self::Melon => 700.0,
+            Self::Robot => 950.0,
         }
     }
 
     fn part_density(self) -> f32 {
         match self {
-            Self::Melon => 1.65,
-            Self::Robot => 2.8,
+            Self::Melon => 3.6,
+            Self::Robot => 5.2,
         }
     }
 }
@@ -106,6 +106,7 @@ impl WeaponKind {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Ragdoll {
     pub head: RigidBodyHandle,
     pub torso: RigidBodyHandle,
@@ -170,6 +171,7 @@ pub struct PhysicsWorld {
     pub ccd_solver: CCDSolver,
     pub query_pipeline: QueryPipeline,
     pub ragdoll: Ragdoll,
+    pub spawned_ragdolls: Vec<(Ragdoll, CharacterKind)>,
     pub props: Vec<Prop>,
     pub explosions: Vec<Explosion>,
     pub character: CharacterKind,
@@ -199,6 +201,7 @@ impl PhysicsWorld {
             ccd_solver: CCDSolver::new(),
             query_pipeline: QueryPipeline::new(),
             ragdoll: Self::empty_ragdoll(),
+            spawned_ragdolls: Vec::new(),
             props: Vec::new(),
             explosions: Vec::new(),
             character,
@@ -211,8 +214,7 @@ impl PhysicsWorld {
 
         world.create_floor();
         world.create_map_geometry();
-        world.create_ragdoll(vector![640.0, 230.0]);
-        world.spawn_box(vector![360.0, 470.0], vector![70.0, 70.0]);
+        world.create_ragdoll(vector![1200.0, 380.0]);
         world
     }
 
@@ -319,19 +321,16 @@ impl PhysicsWorld {
         position: Vector<Real>,
         character: CharacterKind,
     ) {
-        let (half_size, color) = match character {
-            CharacterKind::Melon => (vector![28.0, 28.0], [106, 175, 92, 255]),
-            CharacterKind::Robot => (vector![27.0, 34.0], [156, 166, 176, 255]),
-        };
+        let player_character = self.character;
+        let player_ragdoll = self.ragdoll;
 
-        self.spawn_special(
-            position,
-            half_size,
-            PropKind::Character,
-            color,
-            -1.0,
-            90.0,
-        );
+        self.character = character;
+        self.create_ragdoll(position);
+        let spawned = self.ragdoll;
+        self.spawned_ragdolls.push((spawned, character));
+
+        self.character = player_character;
+        self.ragdoll = player_ragdoll;
     }
 
     pub fn spawn_platform(&mut self, position: Vector<Real>) {
@@ -345,9 +344,9 @@ impl PhysicsWorld {
         );
     }
 
-    pub fn spawn_grenade(&mut self) {
+    pub fn spawn_grenade(&mut self, position: Vector<Real>) {
         self.spawn_special(
-            vector![720.0, 180.0],
+            position,
             vector![14.0, 14.0],
             PropKind::Grenade,
             [65, 175, 85, 255],
@@ -356,9 +355,9 @@ impl PhysicsWorld {
         );
     }
 
-    pub fn spawn_barrel(&mut self) {
+    pub fn spawn_barrel(&mut self, position: Vector<Real>) {
         self.spawn_special(
-            vector![790.0, 180.0],
+            position,
             vector![28.0, 38.0],
             PropKind::Barrel,
             [170, 74, 48, 255],
@@ -766,9 +765,9 @@ impl PhysicsWorld {
 
             let relative_speed = (parent_velocity - child_velocity).norm();
 
-            if relative_speed > 300.0 {
-                let impact = relative_speed - 300.0;
-                joint.health -= impact * delta_time * 0.18;
+            if relative_speed > 900.0 {
+                let impact = relative_speed - 900.0;
+                joint.health -= impact * delta_time * 0.025;
             }
 
             if joint.health <= 0.0 {
@@ -823,11 +822,11 @@ impl PhysicsWorld {
     fn create_floor(&mut self) {
         let body = self.bodies.insert(
             RigidBodyBuilder::fixed()
-                .translation(vector![640.0, 650.0])
+                .translation(vector![1200.0, 1250.0])
                 .build(),
         );
 
-        let collider = ColliderBuilder::cuboid(640.0, 25.0)
+        let collider = ColliderBuilder::cuboid(1200.0, 35.0)
             .friction(0.9)
             .restitution(0.03)
             .build();
@@ -839,18 +838,18 @@ impl PhysicsWorld {
     fn create_map_geometry(&mut self) {
         match self.map {
             MapKind::TestRange => {
-                self.create_static_box(vector![1030.0, 550.0], vector![80.0, 100.0]);
-                self.create_static_box(vector![180.0, 570.0], vector![100.0, 80.0]);
+                self.create_static_box(vector![1930.0, 1050.0], vector![150.0, 160.0]);
+                self.create_static_box(vector![300.0, 1080.0], vector![190.0, 130.0]);
             }
             MapKind::City => {
-                self.create_static_box(vector![180.0, 555.0], vector![120.0, 95.0]);
-                self.create_static_box(vector![980.0, 570.0], vector![150.0, 80.0]);
-                self.create_static_box(vector![680.0, 590.0], vector![90.0, 60.0]);
+                self.create_static_box(vector![340.0, 1040.0], vector![220.0, 175.0]);
+                self.create_static_box(vector![1840.0, 1060.0], vector![260.0, 155.0]);
+                self.create_static_box(vector![1220.0, 1100.0], vector![155.0, 115.0]);
             }
             MapKind::Laboratory => {
-                self.create_static_box(vector![180.0, 520.0], vector![30.0, 130.0]);
-                self.create_static_box(vector![1100.0, 520.0], vector![30.0, 130.0]);
-                self.create_static_box(vector![640.0, 490.0], vector![170.0, 25.0]);
+                self.create_static_box(vector![340.0, 980.0], vector![42.0, 220.0]);
+                self.create_static_box(vector![2060.0, 980.0], vector![42.0, 220.0]);
+                self.create_static_box(vector![1200.0, 920.0], vector![300.0, 38.0]);
             }
         }
     }
