@@ -321,6 +321,18 @@ void SandboxGame::processEvents()
                 running_ = false;
                 break;
 
+            case SDL_EVENT_KEY_DOWN:
+                if (!event.key.repeat && event.key.key == SDLK_AC_BACK)
+                {
+                    if (spawnPlacementActive_)
+                        spawnPlacementActive_ = false;
+                    else if (spawnPanelOpen_)
+                        spawnPanelOpen_ = false;
+                    else
+                        running_ = false;
+                }
+                break;
+
             case SDL_EVENT_FINGER_DOWN:
                 SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
                 handleFingerDown(
