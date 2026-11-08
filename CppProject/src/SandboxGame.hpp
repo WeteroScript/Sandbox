@@ -51,6 +51,17 @@ private:
     bool spawnPanelOpen_ = true;
     bool pointerDown_ = false;
     bool panning_ = false;
+    bool hasPrimaryFinger_ = false;
+    bool hasSecondaryFinger_ = false;
+    SDL_FingerID primaryFingerId_ = 0;
+    SDL_FingerID secondaryFingerId_ = 0;
+    float primaryTouchX_ = 0.0f;
+    float primaryTouchY_ = 0.0f;
+    float secondaryTouchX_ = 0.0f;
+    float secondaryTouchY_ = 0.0f;
+    float pinchDistance_ = 0.0f;
+    float pinchMidX_ = 0.0f;
+    float pinchMidY_ = 0.0f;
 
     SandboxTool tool_ = SandboxTool::Grab;
     SpawnKind spawnKind_ = SpawnKind::None;
@@ -82,6 +93,9 @@ private:
     void handlePointerDown(float x, float y);
     void handlePointerMove(float x, float y);
     void handlePointerUp();
+    void handleFingerDown(SDL_FingerID fingerId, float x, float y);
+    void handleFingerMove(SDL_FingerID fingerId, float x, float y);
+    void handleFingerUp(SDL_FingerID fingerId);
     void handleUiClick(float x, float y);
     void placeSelected(float worldX, float worldY);
     void saveScene();

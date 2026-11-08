@@ -226,21 +226,23 @@ void SandboxGame::processEvents()
 
             case SDL_EVENT_FINGER_DOWN:
                 SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
-                handlePointerDown(
+                handleFingerDown(
+                    event.tfinger.fingerID,
                     event.tfinger.x * static_cast<float>(outputWidth_),
                     event.tfinger.y * static_cast<float>(outputHeight_)
                 );
                 break;
 
             case SDL_EVENT_FINGER_MOTION:
-                handlePointerMove(
+                handleFingerMove(
+                    event.tfinger.fingerID,
                     event.tfinger.x * static_cast<float>(outputWidth_),
                     event.tfinger.y * static_cast<float>(outputHeight_)
                 );
                 break;
 
             case SDL_EVENT_FINGER_UP:
-                handlePointerUp();
+                handleFingerUp(event.tfinger.fingerID);
                 break;
 
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -392,6 +394,123 @@ void SandboxGame::handlePointerUp()
     pointerDown_ = false;
     panning_ = false;
     grabbedIndex_ = -1;
+}
+
+void SandboxGame::handleFingerDown(SDL_FingerID fingerId, float x, float y)
+{
+    if (!hasPrimaryFinger_)
+    {
+        hasPrimaryFinger_ = true;
+        primaryFingerId_ = fingerId;
+        primaryTouchX_ = x;
+        primaryTouchY_ = y;
+        handlePointerDown(x, y);
+        return;
+    }
+
+    if (fingerId == primaryFingerId_ || hasSecondaryFinger_)
+        return;
+
+    hasSecondaryFinger_ = true;
+    secondaryFingerId_ = fingerId;
+    secondaryTouchX_ = x;
+    secondaryTouchY_ = y;
+
+    // A second finger switches from object manipulation to camera gestures.
+    handlePointerUp();
+    pinchDistance_ = std::hypot(
+        secondaryTouchX_ - primaryTouchX_,
+        secondaryTouchY_ - primaryTouchY_
+    );
+    pinchMidX_ = (secondaryTouchX_ + primaryTouchX_) * 0.5f;
+    pinchMidY_ = (secondaryTouchY_ + primaryTouchY_) * 0.5f;
+}
+
+void SandboxGame::handleFingerMove(SDL_FingerID fingerId, float x, float y)
+{
+    if (hasPrimaryFinger_ && fingerId == primaryFingerId_)
+    {
+        primaryTouchX_ = x;
+        primaryTouchY_ = y;
+    }
+    else if (hasSecondaryFinger_ && fingerId == secondaryFingerId_)
+    {
+        secondaryTouchX_ = x;
+        secondaryTouchY_ = y;
+    }
+    else
+    {
+        return;
+    }
+
+    if (hasPrimaryFinger_ && hasSecondaryFinger_)
+    {
+        const float dx = secondaryTouchX_ - primaryTouchX_;
+        const float dy = secondaryTouchY_ - primaryTouchY_;
+        const float newDistance = std::max(1.0f, std::hypot(dx, dy));
+        const float midX = (secondaryTouchX_ + primaryTouchX_) * 0.5f;
+        const float midY = (secondaryTouchY_ + primaryTouchY_) * 0.5f;
+        const float oldScale = pixelsPerMeter_;
+        const float newScale = pinchDistance_ > 1.0f
+            ? clampFloat(oldScale * newDistance / pinchDistance_, 24.0f, 100.0f)
+            : oldScale;
+
+        // Keep the world point under the pinch midpoint stable while zooming.
+        const float anchorX = midX - static_cast<float>(outputWidth_) * 0.5f;
+        const float anchorY = midY - static_cast<float>(outputHeight_) * 0.5f;
+        cameraX_ += anchorX * (1.0f / oldScale - 1.0f / newScale);
+        cameraY_ += anchorY * (1.0f / newScale - 1.0f / oldScale);
+
+        cameraX_ -= (midX - pinchMidX_) / newScale;
+        cameraY_ += (midY - pinchMidY_) / newScale;
+        pixelsPerMeter_ = newScale;
+        pinchDistance_ = newDistance;
+        pinchMidX_ = midX;
+        pinchMidY_ = midY;
+        return;
+    }
+
+    handlePointerMove(primaryTouchX_, primaryTouchY_);
+}
+
+void SandboxGame::handleFingerUp(SDL_FingerID fingerId)
+{
+    if (hasPrimaryFinger_ && fingerId == primaryFingerId_)
+    {
+        if (hasSecondaryFinger_)
+        {
+            primaryFingerId_ = secondaryFingerId_;
+            primaryTouchX_ = secondaryTouchX_;
+            primaryTouchY_ = secondaryTouchY_;
+            hasSecondaryFinger_ = false;
+            pinchDistance_ = 0.0f;
+            handlePointerUp();
+            pointerDown_ = true;
+            panning_ = true;
+            lastPanX_ = primaryTouchX_;
+            lastPanY_ = primaryTouchY_;
+        }
+        else
+        {
+            hasPrimaryFinger_ = false;
+            handlePointerUp();
+        }
+        return;
+    }
+
+    if (hasSecondaryFinger_ && fingerId == secondaryFingerId_)
+    {
+        hasSecondaryFinger_ = false;
+        pinchDistance_ = 0.0f;
+        if (hasPrimaryFinger_)
+        {
+            handlePointerUp();
+            pointerDown_ = true;
+            panning_ = true;
+            lastPanX_ = primaryTouchX_;
+            lastPanY_ = primaryTouchY_;
+        }
+    }
 }
 
 void SandboxGame::handleUiClick(float x, float y)
