@@ -246,7 +246,7 @@ UiLayout SandboxGame::makeUiLayout() const
     const float innerWidth = layout.spawnPanel.w - 20.0f * scale;
     const float categoryY = layout.spawnPanel.y + 30.0f * scale;
     const float categoryGap = 5.0f * scale;
-    const float categoryWidth = (innerWidth - categoryGap * 3.0f) / 4.0f;
+    const float categoryWidth = (innerWidth - categoryGap * 4.0f) / 5.0f;
     for (std::size_t i = 0; i < layout.categoryButtons.size(); ++i)
     {
         layout.categoryButtons[i] = {
@@ -735,12 +735,17 @@ void SandboxGame::handleUiClick(float x, float y)
         SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
         SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::Empty
     };
+    static constexpr std::array<SpawnItem, 6> powerItems{
+        SpawnItem::Battery, SpawnItem::Wheel, SpawnItem::Motor,
+        SpawnItem::Wire, SpawnItem::Switch, SpawnItem::Empty
+    };
 
     const auto& items = spawnCategory_ == SpawnCategory::Props
         ? propItems
         : spawnCategory_ == SpawnCategory::Mechanisms
             ? mechanismItems
-            : spawnCategory_ == SpawnCategory::Misc ? miscItems : materialItems;
+            : spawnCategory_ == SpawnCategory::Misc ? miscItems
+            : spawnCategory_ == SpawnCategory::Materials ? materialItems : powerItems;
 
     for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
     {
@@ -798,7 +803,10 @@ void SandboxGame::placeSelected(float worldX, float worldY)
     const bool ropeConnection = selectedSpawnItem_ == SpawnItem::Chain ||
         selectedSpawnItem_ == SpawnItem::ElasticRope ||
         selectedSpawnItem_ == SpawnItem::Cable;
-    const bool mechanism = spawnCategory_ == SpawnCategory::Mechanisms || ropeConnection;
+    const bool powerLink = selectedSpawnItem_ == SpawnItem::Wire ||
+        selectedSpawnItem_ == SpawnItem::Switch || selectedSpawnItem_ == SpawnItem::Motor;
+    const bool mechanism = spawnCategory_ == SpawnCategory::Mechanisms ||
+        ropeConnection || powerLink;
     const bool character = selectedSpawnItem_ == SpawnItem::Ragdoll ||
                            selectedSpawnItem_ == SpawnItem::Robot;
     const float spacing = mechanism ? 1.25f : character ? 2.6f : 1.45f;
@@ -893,6 +901,21 @@ void SandboxGame::placeSelected(float worldX, float worldY)
                 result = physics_.spawnMaterialBlock(MaterialKind::Concrete, x, y);
                 break;
             case SpawnItem::Empty:
+                break;
+            case SpawnItem::Battery:
+                result = physics_.spawnBattery(x, y);
+                break;
+            case SpawnItem::Wheel:
+                result = physics_.spawnWheel(x, y);
+                break;
+            case SpawnItem::Wire:
+                result = physics_.spawnMechanism(MechanismKind::Wire, x, y);
+                break;
+            case SpawnItem::Switch:
+                result = physics_.spawnMechanism(MechanismKind::Switch, x, y);
+                break;
+            case SpawnItem::Motor:
+                result = physics_.spawnMechanism(MechanismKind::Motor, x, y);
                 break;
         }
 
@@ -1818,6 +1841,10 @@ void SandboxGame::drawUi()
             layout.categoryButtons[3], "MAT",
             spawnCategory_ == SpawnCategory::Materials
         );
+        drawButton(
+            layout.categoryButtons[4], "POWER",
+            spawnCategory_ == SpawnCategory::Power
+        );
 
         static constexpr std::array<const char*, 6> propLabels{
             "BOX", "BALL", "BARREL", "PLATFORM", "MELON", "ROBOT"
@@ -1830,6 +1857,9 @@ void SandboxGame::drawUi()
         };
         static constexpr std::array<const char*, 6> materialLabels{
             "WOOD", "METAL", "GLASS", "RUBBER", "CONCRETE", ""
+        };
+        static constexpr std::array<const char*, 6> powerLabels{
+            "BATTERY", "WHEEL", "MOTOR", "WIRE", "SWITCH", ""
         };
         static constexpr std::array<SpawnItem, 6> propItems{
             SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
@@ -1847,17 +1877,23 @@ void SandboxGame::drawUi()
             SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
             SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::Empty
         };
+        static constexpr std::array<SpawnItem, 6> powerItems{
+            SpawnItem::Battery, SpawnItem::Wheel, SpawnItem::Motor,
+            SpawnItem::Wire, SpawnItem::Switch, SpawnItem::Empty
+        };
 
         const auto& labels = spawnCategory_ == SpawnCategory::Props
             ? propLabels
             : spawnCategory_ == SpawnCategory::Mechanisms
                 ? mechanismLabels
-                : spawnCategory_ == SpawnCategory::Misc ? miscLabels : materialLabels;
+                : spawnCategory_ == SpawnCategory::Misc ? miscLabels
+                : spawnCategory_ == SpawnCategory::Materials ? materialLabels : powerLabels;
         const auto& items = spawnCategory_ == SpawnCategory::Props
             ? propItems
             : spawnCategory_ == SpawnCategory::Mechanisms
                 ? mechanismItems
-                : spawnCategory_ == SpawnCategory::Misc ? miscItems : materialItems;
+                : spawnCategory_ == SpawnCategory::Misc ? miscItems
+                : spawnCategory_ == SpawnCategory::Materials ? materialItems : powerItems;
 
         for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
         {

@@ -9,12 +9,13 @@
 #include <vector>
 
 enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
-enum class SpawnCategory { Props, Mechanisms, Misc, Materials };
+enum class SpawnCategory { Props, Mechanisms, Misc, Materials, Power };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
     WaterBucket, LavaBucket, AcidBucket, Chain, ElasticRope, Cable,
-    WoodBlock, MetalBlock, GlassBlock, RubberBlock, ConcreteBlock, Empty
+    WoodBlock, MetalBlock, GlassBlock, RubberBlock, ConcreteBlock, Empty,
+    Battery, Wheel, Wire, Switch, Motor
 };
 
 struct UiLayout
@@ -25,7 +26,7 @@ struct UiLayout
     SDL_FRect pauseButton{};
     SDL_FRect mapButton{};
     SDL_FRect spawnPanel{};
-    std::array<SDL_FRect, 4> categoryButtons{};
+    std::array<SDL_FRect, 5> categoryButtons{};
     std::array<SDL_FRect, 6> spawnItems{};
     SDL_FRect quantityDown{};
     SDL_FRect quantityLabel{};
