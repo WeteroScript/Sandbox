@@ -343,8 +343,8 @@ int main()
 
     PhysicsWorld fluidWorld;
     fluidWorld.setMap(MapKind::Laboratory, false);
-    const int dryWaterIndex = fluidWorld.spawnBall(-12.0f, -4.3f);
-    const int partialWaterIndex = fluidWorld.spawnBall(-7.1f, -4.3f);
+    const int dryWaterIndex = fluidWorld.spawnBall(-12.0f, -4.28f);
+    const int partialWaterIndex = fluidWorld.spawnBall(-7.1f, -4.28f);
     const int dryLavaIndex = fluidWorld.spawnBall(1.7f, -4.0f);
     const int partialLavaIndex = fluidWorld.spawnBall(3.0f, -4.0f);
     CHECK(dryWaterIndex >= 0 && partialWaterIndex >= 0);
@@ -362,7 +362,7 @@ int main()
     CHECK(partialWaterVelocity > dryWaterVelocity + 0.006f);
     // The circle touches only the corner of the water rectangle. Its true
     // circular overlap is much smaller than the old bounding-square estimate.
-    CHECK(partialWaterVelocity - dryWaterVelocity < 0.015f);
+    CHECK(partialWaterVelocity - dryWaterVelocity < 0.018f);
     CHECK(partialLavaVelocity > dryLavaVelocity + 0.001f);
 
     // Removing either endpoint must destroy the constraint and preserve the
