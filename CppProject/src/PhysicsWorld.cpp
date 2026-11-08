@@ -81,6 +81,8 @@ const MaterialProfile& materialProfile(MaterialKind material)
         1.15f, 0.98f, 0.58f, 0.0f, {55, 67, 78, 255}};
     static const MaterialProfile concrete{
         2.25f, 0.84f, 0.015f, 24.0f, {139, 147, 155, 255}};
+    static const MaterialProfile ice{
+        0.92f, 0.045f, 0.025f, 11.5f, {151, 205, 228, 255}};
     static const MaterialProfile organic{
         1.0f, 0.68f, 0.02f, 0.0f, {128, 190, 135, 255}};
 
@@ -92,6 +94,7 @@ const MaterialProfile& materialProfile(MaterialKind material)
         case MaterialKind::Rubber: return rubber;
         case MaterialKind::Concrete: return concrete;
         case MaterialKind::Organic: return organic;
+        case MaterialKind::Ice: return ice;
     }
     return wood;
 }
@@ -384,7 +387,7 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         std::uint8_t breakable = 0;
         if (!readValue(in, material) || !readValue(in, breakable) ||
             !readValue(in, b.impactDamage) ||
-            material > static_cast<std::uint8_t>(MaterialKind::Organic) ||
+            material > static_cast<std::uint8_t>(MaterialKind::Ice) ||
             breakable > 1)
             return false;
         b.material = static_cast<MaterialKind>(material);
@@ -458,7 +461,7 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         (b.bucketKind == BucketKind::None && b.bucketVolume > 0.0f) ||
         (b.bucketKind != BucketKind::None && b.groupId >= 0) ||
         static_cast<std::uint8_t>(b.material) >
-            static_cast<std::uint8_t>(MaterialKind::Organic) ||
+            static_cast<std::uint8_t>(MaterialKind::Ice) ||
         b.impactDamage < 0.0f || b.impactDamage > 1.0f ||
         b.batteryCharge < 0.0f || b.batteryCharge > 100.0f ||
         (!b.powerSource && b.batteryCharge > 0.0f) ||
@@ -2259,7 +2262,7 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
-    constexpr std::uint32_t version = 5;
+    constexpr std::uint32_t version = 6;
     constexpr std::uint32_t endianMarker = 0x01020304U;
     const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
@@ -2426,7 +2429,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     if (!readValue(input, version) ||
         !readValue(input, endianMarker) ||
-        (version < 1 || version > 5) ||
+        (version < 1 || version > 6) ||
         endianMarker != 0x01020304U)
         return false;
 

@@ -248,7 +248,8 @@ int main()
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
 
-    // Older scene formats remain readable after material data (v4) and battery data (v5).
+    // Older scene formats remain readable after material data (v4), batteries (v5),
+    // and the extended material catalogue (v6).
     const std::filesystem::path legacyV2Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
     const std::filesystem::path legacyV3Path =
@@ -1081,8 +1082,9 @@ int main()
     const int glassBlock = materialWorld.spawnMaterialBlock(MaterialKind::Glass, -2.0f, 5.0f);
     const int rubberBlock = materialWorld.spawnMaterialBlock(MaterialKind::Rubber, 1.0f, 5.0f);
     const int concreteBlock = materialWorld.spawnMaterialBlock(MaterialKind::Concrete, 4.0f, 5.0f);
+    const int iceBlock = materialWorld.spawnMaterialBlock(MaterialKind::Ice, 7.0f, 5.0f);
     CHECK(woodBlock >= 0 && metalBlock >= 0 && glassBlock >= 0 &&
-          rubberBlock >= 0 && concreteBlock >= 0);
+          rubberBlock >= 0 && concreteBlock >= 0 && iceBlock >= 0);
     CHECK(materialWorld.records()[static_cast<std::size_t>(woodBlock)].material ==
           MaterialKind::Wood);
     CHECK(materialWorld.records()[static_cast<std::size_t>(metalBlock)].material ==
@@ -1093,6 +1095,11 @@ int main()
           MaterialKind::Rubber);
     CHECK(materialWorld.records()[static_cast<std::size_t>(concreteBlock)].material ==
           MaterialKind::Concrete);
+    CHECK(materialWorld.records()[static_cast<std::size_t>(iceBlock)].material ==
+          MaterialKind::Ice);
+    CHECK(materialWorld.records()[static_cast<std::size_t>(iceBlock)].breakable);
+    CHECK(b2Body_GetMass(materialWorld.records()[static_cast<std::size_t>(iceBlock)].id) <
+          b2Body_GetMass(materialWorld.records()[static_cast<std::size_t>(woodBlock)].id));
     CHECK(b2Body_GetMass(materialWorld.records()[static_cast<std::size_t>(metalBlock)].id) >
           b2Body_GetMass(materialWorld.records()[static_cast<std::size_t>(woodBlock)].id));
     CHECK(!materialWorld.records()[static_cast<std::size_t>(rubberBlock)].breakable);
@@ -1101,17 +1108,18 @@ int main()
     CHECK(materialWorld.saveToSnapshot(materialSnapshot));
     PhysicsWorld restoredMaterials;
     CHECK(restoredMaterials.loadFromSnapshot(materialSnapshot));
-    std::array<bool, 5> restoredMaterialKinds{};
+    std::array<bool, 7> restoredMaterialKinds{};
     for (const BodyRecord& record : restoredMaterials.records())
     {
         if (!record.selectable)
             continue;
         const auto material = static_cast<std::size_t>(record.material);
-        if (material < 5)
+        if (material < restoredMaterialKinds.size())
             restoredMaterialKinds[material] = true;
     }
-    for (bool restored : restoredMaterialKinds)
-        CHECK(restored);
+    for (std::size_t material = 0; material < 5; ++material)
+        CHECK(restoredMaterialKinds[material]);
+    CHECK(restoredMaterialKinds[static_cast<std::size_t>(MaterialKind::Ice)]);
 
     // A light collision creates no breakage; a high-speed hit fractures wood into four pieces.
     PhysicsWorld lightImpactWorld;

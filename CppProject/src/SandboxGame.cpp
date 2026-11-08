@@ -733,7 +733,7 @@ void SandboxGame::handleUiClick(float x, float y)
     };
     static constexpr std::array<SpawnItem, 6> materialItems{
         SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
-        SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::Empty
+        SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::IceBlock
     };
     static constexpr std::array<SpawnItem, 6> powerItems{
         SpawnItem::Battery, SpawnItem::Wheel, SpawnItem::Motor,
@@ -903,6 +903,9 @@ void SandboxGame::placeSelected(float worldX, float worldY)
                 break;
             case SpawnItem::ConcreteBlock:
                 result = physics_.spawnMaterialBlock(MaterialKind::Concrete, x, y);
+                break;
+            case SpawnItem::IceBlock:
+                result = physics_.spawnMaterialBlock(MaterialKind::Ice, x, y);
                 break;
             case SpawnItem::Empty:
                 break;
@@ -1330,6 +1333,41 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
             const SDL_FPoint midB=point(halfWidth*0.54f,0.0f);
             setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,100});
             SDL_RenderLine(renderer_,midA.x,midA.y,midB.x,midB.y);
+        }
+        else if (material == MaterialKind::Ice)
+        {
+            const SDL_FPoint facetA = point(-halfWidth * 0.72f,
+                                             halfHeight * 0.54f);
+            const SDL_FPoint facetB = point(halfWidth * 0.56f,
+                                             -halfHeight * 0.58f);
+            const SDL_FPoint facetC = point(halfWidth * 0.10f,
+                                             halfHeight * 0.68f);
+            const SDL_FPoint facetD = point(halfWidth * 0.72f,
+                                             halfHeight * 0.12f);
+            setColor(renderer_, SDL_Color{224, 248, 255, 205});
+            SDL_RenderLine(renderer_, facetA.x, facetA.y, facetB.x, facetB.y);
+            SDL_RenderLine(renderer_, facetC.x, facetC.y, facetD.x, facetD.y);
+
+            const SDL_FPoint veinA = point(-halfWidth * 0.48f,
+                                            -halfHeight * 0.62f);
+            const SDL_FPoint veinB = point(-halfWidth * 0.10f,
+                                            halfHeight * 0.02f);
+            const SDL_FPoint veinC = point(halfWidth * 0.42f,
+                                            halfHeight * 0.48f);
+            setColor(renderer_, SDL_Color{111, 174, 205, 185});
+            SDL_RenderLine(renderer_, veinA.x, veinA.y, veinB.x, veinB.y);
+            SDL_RenderLine(renderer_, veinB.x, veinB.y, veinC.x, veinC.y);
+
+            const SDL_FPoint glintA = point(-halfWidth * 0.42f,
+                                             halfHeight * 0.46f);
+            const SDL_FPoint glintB = point(-halfWidth * 0.12f,
+                                             halfHeight * 0.16f);
+            setColor(renderer_, SDL_Color{245, 253, 255, 220});
+            SDL_RenderLine(renderer_, glintA.x, glintA.y,
+                           glintB.x, glintB.y);
+            drawFilledCircle(renderer_, glintA.x, glintA.y,
+                std::max(1.4f, pixelsPerMeter_ * 0.035f),
+                SDL_Color{255, 255, 255, 220});
         }
         else if (material == MaterialKind::Concrete)
         {
@@ -2179,7 +2217,7 @@ void SandboxGame::drawUi()
             "WATER", "LAVA", "ACID", "CHAIN", "ELASTIC", "CABLE"
         };
         static constexpr std::array<const char*, 6> materialLabels{
-            "WOOD", "METAL", "GLASS", "RUBBER", "CONCRETE", ""
+            "WOOD", "METAL", "GLASS", "RUBBER", "CONCRETE", "ICE"
         };
         static constexpr std::array<const char*, 6> powerLabels{
             "BATTERY", "WHEEL", "MOTOR", "WIRE", "SWITCH", ""
@@ -2198,7 +2236,7 @@ void SandboxGame::drawUi()
         };
         static constexpr std::array<SpawnItem, 6> materialItems{
             SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
-            SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::Empty
+            SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::IceBlock
         };
         static constexpr std::array<SpawnItem, 6> powerItems{
             SpawnItem::Battery, SpawnItem::Wheel, SpawnItem::Motor,

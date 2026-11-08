@@ -14,7 +14,7 @@ enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
     WaterBucket, LavaBucket, AcidBucket, Chain, ElasticRope, Cable,
-    WoodBlock, MetalBlock, GlassBlock, RubberBlock, ConcreteBlock, Empty,
+    WoodBlock, MetalBlock, GlassBlock, RubberBlock, ConcreteBlock, IceBlock, Empty,
     Battery, Wheel, Wire, Switch, Motor
 };
 
