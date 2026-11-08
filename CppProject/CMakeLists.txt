@@ -40,9 +40,14 @@ if(ANDROID)
   target_include_directories(main PRIVATE src)
   target_link_libraries(main PRIVATE SDL3::SDL3 box2d)
 else()
-  add_executable(sandbox src/main.cpp src/SandboxGame.cpp src/PhysicsWorld.cpp)
-  target_include_directories(sandbox PRIVATE src)
-  target_link_libraries(sandbox PRIVATE SDL3::SDL3 box2d)
+  # Compile the Android game sources on CI without producing a desktop game.
+  add_library(sandbox_mobile_source_check OBJECT
+    src/main.cpp
+    src/SandboxGame.cpp
+    src/PhysicsWorld.cpp
+  )
+  target_include_directories(sandbox_mobile_source_check PRIVATE src)
+  target_link_libraries(sandbox_mobile_source_check PRIVATE SDL3::SDL3 box2d)
 endif()
 
 include(CTest)
