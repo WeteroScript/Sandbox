@@ -73,6 +73,7 @@ bool SandboxGame::initialize()
         return false;
 
     SDL_SetRenderVSync(renderer_, 1);
+    SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
     SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
     loadScene(true);
     return true;
@@ -136,6 +137,13 @@ UiLayout SandboxGame::makeUiLayout() const
         };
     }
 
+    layout.mapButton = {
+        static_cast<float>(outputWidth_) * 0.5f - 48.0f * scale,
+        top,
+        96.0f * scale,
+        buttonHeight
+    };
+
     const float speedWidth = 44.0f * scale;
     const float speedGroupWidth = speedWidth * 4.0f + gap * 3.0f;
     float speedX = static_cast<float>(outputWidth_) - speedGroupWidth - margin;
@@ -151,34 +159,60 @@ UiLayout SandboxGame::makeUiLayout() const
     layout.spawnPanel = {
         margin,
         top + buttonHeight + 10.0f * scale,
-        250.0f * scale,
-        194.0f * scale
+        252.0f * scale,
+        286.0f * scale
     };
 
     const float innerX = layout.spawnPanel.x + 10.0f * scale;
-    const float rowY = layout.spawnPanel.y + 43.0f * scale;
-    const float optionWidth = 68.0f * scale;
-    const float optionHeight = 34.0f * scale;
+    const float innerWidth = layout.spawnPanel.w - 20.0f * scale;
+    const float categoryY = layout.spawnPanel.y + 37.0f * scale;
+    const float categoryGap = 6.0f * scale;
+    const float categoryWidth = (innerWidth - categoryGap) * 0.5f;
+    layout.categoryButtons[0] = {
+        innerX, categoryY, categoryWidth, 31.0f * scale
+    };
+    layout.categoryButtons[1] = {
+        innerX + categoryWidth + categoryGap,
+        categoryY,
+        categoryWidth,
+        31.0f * scale
+    };
 
-    layout.spawnBox = {innerX, rowY, optionWidth, optionHeight};
-    layout.spawnBall = {innerX + optionWidth + 5.0f * scale,
-                        rowY, optionWidth, optionHeight};
-    layout.spawnRagdoll = {innerX + 2.0f * (optionWidth + 5.0f * scale),
-                           rowY, optionWidth, optionHeight};
+    const float itemY = categoryY + 39.0f * scale;
+    const float itemGapX = 6.0f * scale;
+    const float itemGapY = 5.0f * scale;
+    const float itemWidth = (innerWidth - itemGapX) * 0.5f;
+    const float itemHeight = 32.0f * scale;
 
-    const float controlsY = rowY + 43.0f * scale;
-    layout.quantityDown = {innerX, controlsY, 34.0f * scale, optionHeight};
-    layout.quantityLabel = {innerX + 37.0f * scale, controlsY, 34.0f * scale, optionHeight};
-    layout.quantityUp = {innerX + 74.0f * scale, controlsY, 34.0f * scale, optionHeight};
+    for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
+    {
+        const std::size_t row = i / 2;
+        const std::size_t column = i % 2;
+        layout.spawnItems[i] = {
+            innerX + static_cast<float>(column) * (itemWidth + itemGapX),
+            itemY + static_cast<float>(row) * (itemHeight + itemGapY),
+            itemWidth,
+            itemHeight
+        };
+    }
 
-    const float actionsY = controlsY + 38.0f * scale;
-    layout.saveButton = {innerX, actionsY, 67.0f * scale, optionHeight};
-    layout.loadButton = {innerX + 72.0f * scale, actionsY, 67.0f * scale, optionHeight};
-    layout.clearButton = {innerX + 144.0f * scale, actionsY, 80.0f * scale, optionHeight};
+    const float quantityY = itemY + 3.0f * (itemHeight + itemGapY) + 2.0f * scale;
+    layout.quantityDown = {innerX, quantityY, 42.0f * scale, itemHeight};
+    layout.quantityLabel = {innerX + 48.0f * scale, quantityY, 58.0f * scale, itemHeight};
+    layout.quantityUp = {innerX + 112.0f * scale, quantityY, 42.0f * scale, itemHeight};
+
+    const float actionsY = quantityY + itemHeight + 7.0f * scale;
+    layout.saveButton = {innerX, actionsY, 68.0f * scale, itemHeight};
+    layout.loadButton = {innerX + 74.0f * scale, actionsY, 68.0f * scale, itemHeight};
+    layout.clearButton = {
+        innerX + 148.0f * scale,
+        actionsY,
+        innerWidth - 148.0f * scale,
+        itemHeight
+    };
 
     return layout;
 }
-
 void SandboxGame::processEvents()
 {
     SDL_Event event;
@@ -290,6 +324,9 @@ void SandboxGame::handleKey(SDL_Keycode key)
         case SDLK_TAB:
             spawnPanelOpen_ = !spawnPanelOpen_;
             break;
+        case SDLK_M:
+            cycleMap();
+            break;
         case SDLK_F5:
             saveScene();
             break;
@@ -335,7 +372,8 @@ void SandboxGame::handlePointerDown(float x, float y)
         }
     }
 
-    if (pointInRect(x, y, layout.speedDown) ||
+    if (pointInRect(x, y, layout.mapButton) ||
+        pointInRect(x, y, layout.speedDown) ||
         pointInRect(x, y, layout.speedLabel) ||
         pointInRect(x, y, layout.speedUp) ||
         pointInRect(x, y, layout.pauseButton) ||
@@ -346,11 +384,14 @@ void SandboxGame::handlePointerDown(float x, float y)
     }
 
     const b2Vec2 world = screenToWorld(x, y);
-    if (spawnKind_ != SpawnKind::None)
+    if (spawnPlacementActive_)
     {
         placeSelected(world.x, world.y);
         return;
     }
+
+    if (tool_ == SandboxTool::Grab && physics_.interactAt(world.x, world.y))
+        return;
 
     grabbedIndex_ = physics_.pickBody(world.x, world.y);
     if (grabbedIndex_ < 0)
@@ -467,14 +508,13 @@ void SandboxGame::handleFingerMove(SDL_FingerID fingerId, float x, float y)
             ? clampFloat(oldScale * newDistance / pinchDistance_, 24.0f, 100.0f)
             : oldScale;
 
-        // Keep the world point under the pinch midpoint stable while zooming.
-        const float anchorX = midX - static_cast<float>(outputWidth_) * 0.5f;
-        const float anchorY = midY - static_cast<float>(outputHeight_) * 0.5f;
-        cameraX_ += anchorX * (1.0f / oldScale - 1.0f / newScale);
-        cameraY_ += anchorY * (1.0f / newScale - 1.0f / oldScale);
-
-        cameraX_ -= (midX - pinchMidX_) / newScale;
-        cameraY_ += (midY - pinchMidY_) / newScale;
+        // Preserve the world point under the previous pinch midpoint while it moves.
+        const float previousAnchorX = pinchMidX_ - static_cast<float>(outputWidth_) * 0.5f;
+        const float previousAnchorY = pinchMidY_ - static_cast<float>(outputHeight_) * 0.5f;
+        const float nextAnchorX = midX - static_cast<float>(outputWidth_) * 0.5f;
+        const float nextAnchorY = midY - static_cast<float>(outputHeight_) * 0.5f;
+        cameraX_ += previousAnchorX / oldScale - nextAnchorX / newScale;
+        cameraY_ += -previousAnchorY / oldScale + nextAnchorY / newScale;
         pixelsPerMeter_ = newScale;
         pinchDistance_ = newDistance;
         pinchMidX_ = midX;
@@ -528,7 +568,6 @@ void SandboxGame::handleFingerUp(SDL_FingerID fingerId)
 void SandboxGame::handleUiClick(float x, float y)
 {
     const UiLayout layout = makeUiLayout();
-
     const std::array<SandboxTool, 4> tools{
         SandboxTool::Grab,
         SandboxTool::Freeze,
@@ -541,7 +580,7 @@ void SandboxGame::handleUiClick(float x, float y)
         if (pointInRect(x, y, layout.toolButtons[i]))
         {
             tool_ = tools[i];
-            spawnKind_ = SpawnKind::None;
+            spawnPlacementActive_ = false;
             return;
         }
     }
@@ -549,6 +588,12 @@ void SandboxGame::handleUiClick(float x, float y)
     if (pointInRect(x, y, layout.toolButtons[4]))
     {
         spawnPanelOpen_ = !spawnPanelOpen_;
+        return;
+    }
+
+    if (pointInRect(x, y, layout.mapButton))
+    {
+        cycleMap();
         return;
     }
 
@@ -572,71 +617,156 @@ void SandboxGame::handleUiClick(float x, float y)
         return;
     }
 
-    if (!spawnPanelOpen_)
+    if (!spawnPanelOpen_ || !pointInRect(x, y, layout.spawnPanel))
         return;
 
-    if (pointInRect(x, y, layout.spawnBox))
+    for (std::size_t i = 0; i < layout.categoryButtons.size(); ++i)
     {
-        spawnKind_ = spawnKind_ == SpawnKind::Box ? SpawnKind::None : SpawnKind::Box;
-        tool_ = SandboxTool::Grab;
+        if (!pointInRect(x, y, layout.categoryButtons[i]))
+            continue;
+
+        spawnCategory_ = i == 0 ? SpawnCategory::Props : SpawnCategory::Mechanisms;
+        spawnPlacementActive_ = false;
+        return;
     }
-    else if (pointInRect(x, y, layout.spawnBall))
+
+    static constexpr std::array<SpawnItem, 6> propItems{
+        SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
+        SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Box
+    };
+    static constexpr std::array<SpawnItem, 6> mechanismItems{
+        SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
+        SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle
+    };
+
+    const auto& items = spawnCategory_ == SpawnCategory::Props
+        ? propItems : mechanismItems;
+    const std::array<const char*, 6> ignoredLabels{}; // Keeps the category selection table type-stable.
+    (void)ignoredLabels;
+
+    for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
     {
-        spawnKind_ = spawnKind_ == SpawnKind::Ball ? SpawnKind::None : SpawnKind::Ball;
-        tool_ = SandboxTool::Grab;
+        if (!pointInRect(x, y, layout.spawnItems[i]))
+            continue;
+
+        if (spawnCategory_ == SpawnCategory::Props && i == 5)
+            return;
+
+        const SpawnItem clickedItem = items[i];
+        if (spawnPlacementActive_ && selectedSpawnItem_ == clickedItem)
+            spawnPlacementActive_ = false;
+        else
+        {
+            selectedSpawnItem_ = clickedItem;
+            spawnPlacementActive_ = true;
+            tool_ = SandboxTool::Grab;
+        }
+        return;
     }
-    else if (pointInRect(x, y, layout.spawnRagdoll))
-    {
-        spawnKind_ = spawnKind_ == SpawnKind::Ragdoll ? SpawnKind::None : SpawnKind::Ragdoll;
-        tool_ = SandboxTool::Grab;
-    }
-    else if (pointInRect(x, y, layout.quantityDown))
-    {
+
+    if (pointInRect(x, y, layout.quantityDown))
         spawnQuantity_ = std::max(1, spawnQuantity_ - 1);
-    }
     else if (pointInRect(x, y, layout.quantityUp))
-    {
         spawnQuantity_ = std::min(10, spawnQuantity_ + 1);
-    }
     else if (pointInRect(x, y, layout.saveButton))
-    {
         saveScene();
-    }
     else if (pointInRect(x, y, layout.loadButton))
-    {
         loadScene();
-    }
     else if (pointInRect(x, y, layout.clearButton))
     {
         physics_.clearDynamic();
         grabbedIndex_ = -1;
     }
 }
-
 void SandboxGame::placeSelected(float worldX, float worldY)
 {
+    const bool mechanism = spawnCategory_ == SpawnCategory::Mechanisms;
+    const float spacing = mechanism ? 1.25f :
+        selectedSpawnItem_ == SpawnItem::Ragdoll ? 2.6f : 1.45f;
+    const int columns = std::max(1, static_cast<int>(std::ceil(std::sqrt(
+        static_cast<float>(spawnQuantity_)
+    ))));
+    const int rows = (spawnQuantity_ + columns - 1) / columns;
+
     for (int i = 0; i < spawnQuantity_; ++i)
     {
-        const float x = worldX + static_cast<float>(i % 5) * 0.85f;
-        const float y = worldY + static_cast<float>(i / 5) * 0.90f;
+        const int column = i % columns;
+        const int row = i / columns;
+        const float x = worldX +
+            (static_cast<float>(column) - static_cast<float>(columns - 1) * 0.5f) * spacing;
+        const float y = worldY +
+            (static_cast<float>(row) - static_cast<float>(rows - 1) * 0.5f) * spacing;
 
-        switch (spawnKind_)
+        switch (selectedSpawnItem_)
         {
-            case SpawnKind::Box:
+            case SpawnItem::Box:
                 physics_.spawnBox(x, y);
                 break;
-            case SpawnKind::Ball:
+            case SpawnItem::Ball:
                 physics_.spawnBall(x, y);
                 break;
-            case SpawnKind::Ragdoll:
+            case SpawnItem::Barrel:
+                physics_.spawnBarrel(x, y);
+                break;
+            case SpawnItem::Platform:
+                physics_.spawnPlatform(x, y);
+                break;
+            case SpawnItem::Ragdoll:
                 physics_.spawnRagdoll(x, y);
                 break;
-            case SpawnKind::None:
+            case SpawnItem::Rod:
+                physics_.spawnMechanism(MechanismKind::Rod, x, y);
+                break;
+            case SpawnItem::Rope:
+                physics_.spawnMechanism(MechanismKind::Rope, x, y);
+                break;
+            case SpawnItem::Spring:
+                physics_.spawnMechanism(MechanismKind::Spring, x, y);
+                break;
+            case SpawnItem::Piston:
+                physics_.spawnMechanism(MechanismKind::Piston, x, y);
+                break;
+            case SpawnItem::Button:
+                physics_.spawnMechanism(MechanismKind::Button, x, y);
+                break;
+            case SpawnItem::Toggle:
+                physics_.spawnMechanism(MechanismKind::Toggle, x, y);
                 break;
         }
     }
 }
 
+void SandboxGame::cycleMap()
+{
+    MapKind next = MapKind::TestRange;
+    switch (physics_.map())
+    {
+        case MapKind::TestRange:
+            next = MapKind::City;
+            break;
+        case MapKind::City:
+            next = MapKind::Laboratory;
+            break;
+        case MapKind::Laboratory:
+            next = MapKind::TestRange;
+            break;
+    }
+
+    physics_.setMap(next, true);
+    cameraX_ = 0.0f;
+    cameraY_ = 0.0f;
+    pixelsPerMeter_ = 44.0f;
+    grabbedIndex_ = -1;
+    spawnPlacementActive_ = false;
+
+    switch (next)
+    {
+        case MapKind::TestRange: notice_ = "MAP: TEST RANGE"; break;
+        case MapKind::City: notice_ = "MAP: CITY"; break;
+        case MapKind::Laboratory: notice_ = "MAP: LABORATORY"; break;
+    }
+    noticeTimer_ = 2.5f;
+}
 void SandboxGame::saveScene()
 {
     char* prefPath = SDL_GetPrefPath("WeteroScript", "Sandbox");
@@ -895,17 +1025,30 @@ void SandboxGame::drawButton(const SDL_FRect& rect, const char* label, bool acti
 void SandboxGame::drawUi()
 {
     const UiLayout layout = makeUiLayout();
-    const std::array<const char*, 5> labels{"GRAB", "FREEZE", "CLONE", "DELETE", "SPAWN"};
+    const std::array<const char*, 5> toolLabels{
+        "GRAB", "FREEZE", "CLONE", "DELETE", "SPAWN"
+    };
     const std::array<SandboxTool, 4> tools{
-        SandboxTool::Grab,
-        SandboxTool::Freeze,
-        SandboxTool::Clone,
-        SandboxTool::Delete
+        SandboxTool::Grab, SandboxTool::Freeze,
+        SandboxTool::Clone, SandboxTool::Delete
     };
 
     for (std::size_t i = 0; i < 5; ++i)
-        drawButton(layout.toolButtons[i], labels[i],
-                   i < 4 ? tool_ == tools[i] : spawnPanelOpen_);
+    {
+        const bool active = i < 4
+            ? tool_ == tools[i]
+            : spawnPanelOpen_;
+        drawButton(layout.toolButtons[i], toolLabels[i], active);
+    }
+
+    const char* mapLabel = "TEST RANGE";
+    switch (physics_.map())
+    {
+        case MapKind::TestRange: mapLabel = "TEST RANGE"; break;
+        case MapKind::City: mapLabel = "CITY"; break;
+        case MapKind::Laboratory: mapLabel = "LAB"; break;
+    }
+    drawButton(layout.mapButton, mapLabel, false);
 
     drawButton(layout.speedDown, "-", false);
     drawButton(layout.speedLabel, kSpeedLabels[static_cast<std::size_t>(speedIndex_)], false);
@@ -914,7 +1057,7 @@ void SandboxGame::drawUi()
 
     if (spawnPanelOpen_)
     {
-        setColor(renderer_, makeColor(22, 29, 38, 238));
+        setColor(renderer_, makeColor(22, 29, 38, 245));
         SDL_RenderFillRect(renderer_, &layout.spawnPanel);
         setColor(renderer_, makeColor(75, 92, 110));
         SDL_RenderRect(renderer_, &layout.spawnPanel);
@@ -924,51 +1067,88 @@ void SandboxGame::drawUi()
             renderer_,
             layout.spawnPanel.x + 10.0f * layout.scale,
             layout.spawnPanel.y + 12.0f * layout.scale,
-            "SPAWN OBJECTS"
+            "OBJECT CATALOGUE"
         );
 
-        drawButton(layout.spawnBox, "BOX", spawnKind_ == SpawnKind::Box);
-        drawButton(layout.spawnBall, "BALL", spawnKind_ == SpawnKind::Ball);
-        drawButton(layout.spawnRagdoll, "MELON", spawnKind_ == SpawnKind::Ragdoll);
+        drawButton(
+            layout.categoryButtons[0], "PROPS",
+            spawnCategory_ == SpawnCategory::Props
+        );
+        drawButton(
+            layout.categoryButtons[1], "MECHANISMS",
+            spawnCategory_ == SpawnCategory::Mechanisms
+        );
+
+        static constexpr std::array<const char*, 6> propLabels{
+            "BOX", "BALL", "BARREL", "PLATFORM", "MELON", ""
+        };
+        static constexpr std::array<SpawnItem, 6> propItems{
+            SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
+            SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Box
+        };
+        static constexpr std::array<const char*, 6> mechanismLabels{
+            "ROD", "ROPE", "SPRING", "PISTON", "BUTTON", "TOGGLE"
+        };
+        static constexpr std::array<SpawnItem, 6> mechanismItems{
+            SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
+            SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle
+        };
+
+        const auto& labels = spawnCategory_ == SpawnCategory::Props
+            ? propLabels : mechanismLabels;
+        const auto& items = spawnCategory_ == SpawnCategory::Props
+            ? propItems : mechanismItems;
+
+        for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
+        {
+            if (labels[i][0] == '\0')
+                continue;
+            const bool active = spawnPlacementActive_ &&
+                                selectedSpawnItem_ == items[i];
+            drawButton(layout.spawnItems[i], labels[i], active);
+        }
+
         drawButton(layout.quantityDown, "-", false);
         drawButton(layout.quantityUp, "+", false);
         drawButton(layout.saveButton, "SAVE", false);
         drawButton(layout.loadButton, "LOAD", false);
         drawButton(layout.clearButton, "CLEAR", false);
 
-        char quantity[8];
+        char quantity[12];
         std::snprintf(quantity, sizeof(quantity), "x%d", spawnQuantity_);
         setColor(renderer_, makeColor(236, 241, 247));
         SDL_RenderDebugText(
             renderer_,
-            layout.quantityLabel.x + 8.0f * layout.scale,
+            layout.quantityLabel.x + 14.0f * layout.scale,
             layout.quantityLabel.y + 12.0f * layout.scale,
             quantity
         );
 
         setColor(renderer_, makeColor(173, 185, 198));
-        const char* hint = spawnKind_ == SpawnKind::None
-            ? "Choose item, then tap arena"
-            : "Tap arena to place selected item";
+        const char* hint = spawnPlacementActive_
+            ? "Tap scene to place selected item"
+            : "Choose an item to enter placement mode";
         SDL_RenderDebugText(
             renderer_,
             layout.spawnPanel.x + 10.0f * layout.scale,
-            layout.spawnPanel.y + 174.0f * layout.scale,
+            layout.spawnPanel.y + layout.spawnPanel.h - 19.0f * layout.scale,
             hint
         );
     }
 
-    char status[160];
+    char status[180];
     std::snprintf(
         status,
         sizeof(status),
-        "OBJECTS %zu  AWAKE %d  FPS %.0f  |  1-4 TOOLS  SPACE PAUSE  WHEEL ZOOM",
+        "%s   OBJECTS %zu   AWAKE %d   FPS %.0f   |   M MAP   1-4 TOOLS   SPACE PAUSE",
+        mapLabel,
         physics_.dynamicCount(),
         physics_.awakeBodyCount(),
         fps_
     );
     setColor(renderer_, makeColor(218, 226, 235));
-    SDL_RenderDebugText(renderer_, 14.0f, static_cast<float>(outputHeight_) - 22.0f, status);
+    SDL_RenderDebugText(renderer_, 14.0f,
+                        static_cast<float>(outputHeight_) - 22.0f, status);
 
     if (noticeTimer_ > 0.0f && !notice_.empty())
     {
@@ -978,19 +1158,272 @@ void SandboxGame::drawUi()
         SDL_RenderDebugText(renderer_, textX, 58.0f, notice_.c_str());
     }
 }
+void SandboxGame::drawBackground()
+{
+    SDL_Color background = makeColor(18, 23, 31);
+    switch (physics_.map())
+    {
+        case MapKind::TestRange:
+            background = makeColor(18, 23, 31);
+            break;
+        case MapKind::City:
+            background = makeColor(28, 34, 44);
+            break;
+        case MapKind::Laboratory:
+            background = makeColor(16, 37, 40);
+            break;
+    }
+
+    setColor(renderer_, background);
+    SDL_RenderClear(renderer_);
+
+    if (physics_.map() == MapKind::City)
+    {
+        setColor(renderer_, makeColor(39, 48, 60));
+        for (int i = 0; i < 10; ++i)
+        {
+            const float worldX = -13.0f + static_cast<float>(i) * 2.9f;
+            const SDL_FPoint base = worldToScreen(worldX, -4.7f);
+            const SDL_FPoint top = worldToScreen(worldX, 1.8f + static_cast<float>((i * 7) % 5));
+            SDL_FRect building{
+                base.x,
+                top.y,
+                2.0f * pixelsPerMeter_,
+                base.y - top.y
+            };
+            SDL_RenderFillRect(renderer_, &building);
+        }
+        setColor(renderer_, makeColor(68, 76, 88));
+        const SDL_FPoint roadA = worldToScreen(-16.0f, -4.0f);
+        const SDL_FPoint roadB = worldToScreen(16.0f, -4.0f);
+        SDL_RenderLine(renderer_, roadA.x, roadA.y, roadB.x, roadB.y);
+    }
+    else if (physics_.map() == MapKind::Laboratory)
+    {
+        setColor(renderer_, makeColor(27, 63, 63));
+        for (int i = -2; i <= 2; ++i)
+        {
+            const SDL_FPoint a = worldToScreen(static_cast<float>(i) * 5.0f, -5.0f);
+            const SDL_FPoint b = worldToScreen(static_cast<float>(i) * 5.0f, 8.0f);
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+        }
+
+        setColor(renderer_, makeColor(180, 56, 58, 170));
+        for (float x : {-7.2f, 7.2f})
+        {
+            const SDL_FPoint a = worldToScreen(x, -4.8f);
+            const SDL_FPoint b = worldToScreen(x, 4.8f);
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            SDL_RenderLine(renderer_, a.x + 3.0f, a.y, b.x + 3.0f, b.y);
+        }
+    }
+}
+
+void SandboxGame::drawSurfaces()
+{
+    const float time = static_cast<float>(SDL_GetTicks()) * 0.001f;
+
+    for (const SurfaceZone& zone : physics_.surfaces())
+    {
+        const SDL_FPoint topLeft = worldToScreen(
+            zone.x - zone.halfWidth,
+            zone.y + zone.halfHeight
+        );
+        const SDL_FPoint bottomRight = worldToScreen(
+            zone.x + zone.halfWidth,
+            zone.y - zone.halfHeight
+        );
+
+        const SDL_FRect rect{
+            topLeft.x,
+            topLeft.y,
+            std::max(0.0f, bottomRight.x - topLeft.x),
+            std::max(0.0f, bottomRight.y - topLeft.y)
+        };
+
+        if (zone.kind == SurfaceKind::Water)
+        {
+            setColor(renderer_, makeColor(36, 135, 205, 102));
+            SDL_RenderFillRect(renderer_, &rect);
+            setColor(renderer_, makeColor(91, 193, 235, 205));
+            SDL_RenderRect(renderer_, &rect);
+
+            for (int line = 0; line < 3; ++line)
+            {
+                const float waveY = rect.y + 8.0f +
+                    static_cast<float>(line) * std::max(8.0f, rect.h * 0.28f);
+                const float phase = time * 2.2f + static_cast<float>(line);
+                for (int segment = 0; segment < 12; ++segment)
+                {
+                    const float x1 = rect.x + rect.w * static_cast<float>(segment) / 12.0f;
+                    const float x2 = rect.x + rect.w * (static_cast<float>(segment) + 0.55f) / 12.0f;
+                    const float y1 = waveY + std::sin(phase + segment * 0.55f) * 2.3f;
+                    const float y2 = waveY + std::sin(phase + (segment + 0.55f) * 0.55f) * 2.3f;
+                    SDL_RenderLine(renderer_, x1, y1, x2, y2);
+                }
+            }
+        }
+        else
+        {
+            setColor(renderer_, makeColor(229, 73, 28, 150));
+            SDL_RenderFillRect(renderer_, &rect);
+            setColor(renderer_, makeColor(255, 169, 65, 235));
+            SDL_RenderRect(renderer_, &rect);
+
+            for (int bubble = 0; bubble < 7; ++bubble)
+            {
+                const float fraction = std::fmod(time * 0.3f + bubble * 0.137f, 1.0f);
+                const float x = rect.x + rect.w * fraction;
+                const float y = rect.y + rect.h * (0.25f + 0.55f *
+                    std::abs(std::sin(time * 1.8f + bubble)));
+                const float radius = 2.0f + static_cast<float>(bubble % 3);
+                setColor(renderer_, makeColor(255, 205, 103, 185));
+                SDL_RenderCircle(renderer_, x, y, radius);
+            }
+        }
+    }
+}
+
+void SandboxGame::drawMechanisms()
+{
+    for (const MechanismRecord& mechanism : physics_.mechanisms())
+    {
+        const SDL_FPoint anchor = worldToScreen(mechanism.anchorX, mechanism.anchorY);
+        const bool active = mechanism.active;
+
+        if (mechanism.kind == MechanismKind::Toggle)
+        {
+            const SDL_FRect body{anchor.x - 19.0f, anchor.y - 14.0f, 38.0f, 28.0f};
+            setColor(renderer_, makeColor(51, 62, 75, 245));
+            SDL_RenderFillRect(renderer_, &body);
+            setColor(renderer_, makeColor(220, 230, 238));
+            SDL_RenderRect(renderer_, &body);
+
+            const float leverY = anchor.y + (mechanism.pressed ? -7.0f : 7.0f);
+            setColor(renderer_, mechanism.pressed
+                ? makeColor(79, 206, 123)
+                : makeColor(207, 84, 72));
+            SDL_RenderLine(renderer_, anchor.x, anchor.y, anchor.x, leverY);
+            SDL_RenderFillCircle(renderer_, anchor.x, leverY, 6.0f);
+            continue;
+        }
+
+        if (mechanism.kind == MechanismKind::Button)
+        {
+            const SDL_FRect base{anchor.x - 16.0f, anchor.y - 4.0f, 32.0f, 23.0f};
+            setColor(renderer_, makeColor(53, 65, 79));
+            SDL_RenderFillRect(renderer_, &base);
+            setColor(renderer_, makeColor(165, 180, 192));
+            SDL_RenderRect(renderer_, &base);
+
+            const float offset = mechanism.pressed ? 6.0f : 0.0f;
+            const float headY = anchor.y - 10.0f + offset;
+            setColor(renderer_, mechanism.pressed
+                ? makeColor(226, 83, 67)
+                : makeColor(82, 194, 111));
+            SDL_RenderFillCircle(renderer_, anchor.x, headY, 10.0f);
+            continue;
+        }
+
+        if (!b2Body_IsValid(mechanism.bodyB))
+            continue;
+
+        b2Pos start{};
+        b2Pos finish{};
+        if (mechanism.kind == MechanismKind::Piston)
+        {
+            start = {mechanism.anchorX, mechanism.anchorY};
+            finish = b2Body_GetPosition(mechanism.bodyB);
+        }
+        else
+        {
+            if (!b2Body_IsValid(mechanism.bodyA))
+                continue;
+            start = b2Body_GetPosition(mechanism.bodyA);
+            finish = b2Body_GetPosition(mechanism.bodyB);
+        }
+
+        const SDL_FPoint a = worldToScreen(static_cast<float>(start.x), static_cast<float>(start.y));
+        const SDL_FPoint b = worldToScreen(static_cast<float>(finish.x), static_cast<float>(finish.y));
+        const float dx = b.x - a.x;
+        const float dy = b.y - a.y;
+        const float length = std::max(1.0f, std::sqrt(dx * dx + dy * dy));
+        const float nx = -dy / length;
+        const float ny = dx / length;
+
+        if (mechanism.kind == MechanismKind::Rod)
+        {
+            setColor(renderer_, makeColor(178, 190, 201));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            SDL_RenderLine(renderer_, a.x + nx * 2.0f, a.y + ny * 2.0f,
+                           b.x + nx * 2.0f, b.y + ny * 2.0f);
+            SDL_RenderFillCircle(renderer_, a.x, a.y, 4.0f);
+            SDL_RenderFillCircle(renderer_, b.x, b.y, 4.0f);
+        }
+        else if (mechanism.kind == MechanismKind::Rope)
+        {
+            setColor(renderer_, makeColor(192, 147, 86));
+            const int segments = std::max(2, static_cast<int>(length / 12.0f));
+            for (int i = 0; i < segments; ++i)
+            {
+                if (i % 2 != 0)
+                    continue;
+                const float t1 = static_cast<float>(i) / segments;
+                const float t2 = std::min(1.0f, t1 + 0.13f);
+                SDL_RenderLine(renderer_,
+                    a.x + dx * t1, a.y + dy * t1,
+                    a.x + dx * t2, a.y + dy * t2);
+            }
+            SDL_RenderFillCircle(renderer_, a.x, a.y, 4.0f);
+            SDL_RenderFillCircle(renderer_, b.x, b.y, 4.0f);
+        }
+        else if (mechanism.kind == MechanismKind::Spring)
+        {
+            setColor(renderer_, active
+                ? makeColor(239, 198, 81)
+                : makeColor(113, 117, 122));
+            const int segments = std::clamp(static_cast<int>(length / 9.0f), 5, 28);
+            SDL_FPoint previous = a;
+            for (int i = 1; i <= segments; ++i)
+            {
+                const float t = static_cast<float>(i) / segments;
+                const float wave = i == segments ? 0.0f : (i % 2 == 0 ? 5.0f : -5.0f);
+                const SDL_FPoint point{
+                    a.x + dx * t + nx * wave,
+                    a.y + dy * t + ny * wave
+                };
+                SDL_RenderLine(renderer_, previous.x, previous.y, point.x, point.y);
+                previous = point;
+            }
+        }
+        else if (mechanism.kind == MechanismKind::Piston)
+        {
+            setColor(renderer_, makeColor(64, 76, 91));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            SDL_RenderLine(renderer_, a.x + nx * 4.0f, a.y + ny * 4.0f,
+                           b.x + nx * 4.0f, b.y + ny * 4.0f);
+            setColor(renderer_, makeColor(205, 132, 57));
+            SDL_RenderFillCircle(renderer_, a.x, a.y, 9.0f);
+            setColor(renderer_, active
+                ? makeColor(109, 190, 208)
+                : makeColor(116, 122, 130));
+            SDL_RenderFillCircle(renderer_, b.x, b.y, 6.0f);
+        }
+    }
+}
 
 void SandboxGame::render()
 {
     SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
-    setColor(renderer_, makeColor(18, 23, 31));
-    SDL_RenderClear(renderer_);
-
+    drawBackground();
     drawGrid();
+    drawSurfaces();
 
     const auto& records = physics_.records();
     for (std::size_t i = 0; i < records.size(); ++i)
         drawBody(records[i], static_cast<int>(i) == grabbedIndex_);
 
+    drawMechanisms();
     drawUi();
     SDL_RenderPresent(renderer_);
 }
