@@ -366,6 +366,32 @@ int main()
     CHECK(std::abs(rotatedBoxVelocity.x) < 0.001f);
     CHECK(std::abs(rotatedBoxVelocity.y - 2.0f) < 0.001f);
 
+    // A frozen body's stored momentum is rotated and restored on unfreeze.
+    const int frozenRotateIndex = rotationWorld.spawnBox(12.0f, 5.0f);
+    CHECK(frozenRotateIndex >= 0);
+    const b2BodyId frozenRotateBody = rotationWorld.records()[
+        static_cast<std::size_t>(frozenRotateIndex)].id;
+    b2Body_SetLinearVelocity(frozenRotateBody, {3.0f, 4.0f});
+    rotationWorld.toggleFreeze(frozenRotateIndex);
+    CHECK(rotationWorld.records()[static_cast<std::size_t>(frozenRotateIndex)].frozen);
+    rotationWorld.rotateAt(frozenRotateIndex, 1.57079632679f);
+    rotationWorld.toggleFreeze(frozenRotateIndex);
+    const b2Vec2 restoredRotatedVelocity =
+        b2Body_GetLinearVelocity(frozenRotateBody);
+    CHECK(std::abs(restoredRotatedVelocity.x + 4.0f) < 0.001f);
+    CHECK(std::abs(restoredRotatedVelocity.y - 3.0f) < 0.001f);
+
+    // Button interaction anchors follow the body when it is rotated.
+    PhysicsWorld buttonRotationWorld;
+    const int buttonTargetIndex = buttonRotationWorld.spawnBox(0.0f, 0.0f);
+    CHECK(buttonTargetIndex >= 0);
+    CHECK(buttonRotationWorld.spawnMechanism(
+        MechanismKind::Button, 1.0f, 0.0f) == 0);
+    CHECK(buttonRotationWorld.mechanisms().size() == 1);
+    buttonRotationWorld.rotateAt(buttonTargetIndex, 1.57079632679f);
+    CHECK(std::abs(buttonRotationWorld.mechanisms()[0].anchorX) < 0.001f);
+    CHECK(std::abs(buttonRotationWorld.mechanisms()[0].anchorY - 1.0f) < 0.001f);
+
     // Selecting any ragdoll part rotates the entire six-body group around
     // its centroid, preserving relative geometry and every hinge connection.
     const int rotationGroup = rotationWorld.spawnRagdoll(0.0f, 7.0f);
