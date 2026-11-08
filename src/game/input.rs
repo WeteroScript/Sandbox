@@ -92,6 +92,8 @@ impl InputState {
             Some(ToolMode::Freeze)
         } else if is_key_pressed(KeyCode::B) {
             Some(ToolMode::Duplicate)
+        } else if is_key_pressed(KeyCode::J) {
+            Some(ToolMode::Delete)
         } else {
             self.started_pointer().and_then(Self::tool_button_at)
         };
