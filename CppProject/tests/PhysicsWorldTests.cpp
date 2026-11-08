@@ -789,6 +789,83 @@ int main()
     CHECK(cleanupWorld.records().size() == mapBodyCount);
     CHECK(cleanupWorld.dynamicCount() == 0);
 
+    // Material blocks carry distinct physical profiles and persist their material identity.
+    PhysicsWorld materialWorld;
+    materialWorld.setMap(MapKind::Laboratory, false);
+    const int woodBlock = materialWorld.spawnMaterialBlock(MaterialKind::Wood, -8.0f, 5.0f);
+    const int metalBlock = materialWorld.spawnMaterialBlock(MaterialKind::Metal, -5.0f, 5.0f);
+    const int glassBlock = materialWorld.spawnMaterialBlock(MaterialKind::Glass, -2.0f, 5.0f);
+    const int rubberBlock = materialWorld.spawnMaterialBlock(MaterialKind::Rubber, 1.0f, 5.0f);
+    const int concreteBlock = materialWorld.spawnMaterialBlock(MaterialKind::Concrete, 4.0f, 5.0f);
+    CHECK(woodBlock >= 0 && metalBlock >= 0 && glassBlock >= 0 &&
+          rubberBlock >= 0 && concreteBlock >= 0);
+    CHECK(materialWorld.records()[static_cast<std::size_t>(woodBlock)].material ==
+          MaterialKind::Wood);
+    CHECK(materialWorld.records()[static_cast<std::size_t>(metalBlock)].material ==
+          MaterialKind::Metal);
+    CHECK(materialWorld.records()[static_cast<std::size_t>(glassBlock)].material ==
+          MaterialKind::Glass);
+    CHECK(materialWorld.records()[static_cast<std::size_t>(rubberBlock)].material ==
+          MaterialKind::Rubber);
+    CHECK(materialWorld.records()[static_cast<std::size_t>(concreteBlock)].material ==
+          MaterialKind::Concrete);
+    CHECK(b2Body_GetMass(materialWorld.records()[static_cast<std::size_t>(metalBlock)].id) >
+          b2Body_GetMass(materialWorld.records()[static_cast<std::size_t>(woodBlock)].id));
+    CHECK(!materialWorld.records()[static_cast<std::size_t>(rubberBlock)].breakable);
+
+    std::vector<std::uint8_t> materialSnapshot;
+    CHECK(materialWorld.saveToSnapshot(materialSnapshot));
+    PhysicsWorld restoredMaterials;
+    CHECK(restoredMaterials.loadFromSnapshot(materialSnapshot));
+    std::array<bool, 5> restoredMaterialKinds{};
+    for (const BodyRecord& record : restoredMaterials.records())
+    {
+        if (!record.selectable)
+            continue;
+        const auto material = static_cast<std::size_t>(record.material);
+        if (material < 5)
+            restoredMaterialKinds[material] = true;
+    }
+    for (bool restored : restoredMaterialKinds)
+        CHECK(restored);
+
+    // A light collision creates no breakage; a high-speed hit fractures wood into four pieces.
+    PhysicsWorld lightImpactWorld;
+    lightImpactWorld.setMap(MapKind::Laboratory, false);
+    const int lightWoodIndex =
+        lightImpactWorld.spawnMaterialBlock(MaterialKind::Wood, 0.0f, 5.0f);
+    const int lightBallIndex = lightImpactWorld.spawnBall(-1.75f, 5.0f);
+    CHECK(lightWoodIndex >= 0 && lightBallIndex >= 0);
+    const b2BodyId lightWoodId =
+        lightImpactWorld.records()[static_cast<std::size_t>(lightWoodIndex)].id;
+    b2Body_SetLinearVelocity(
+        lightImpactWorld.records()[static_cast<std::size_t>(lightBallIndex)].id,
+        {2.0f, 0.0f});
+    for (int i = 0; i < 50; ++i)
+        lightImpactWorld.step(1.0f / 60.0f, 4);
+    CHECK(b2Body_IsValid(lightWoodId));
+
+    PhysicsWorld strongImpactWorld;
+    strongImpactWorld.setMap(MapKind::Laboratory, false);
+    const int strongWoodIndex =
+        strongImpactWorld.spawnMaterialBlock(MaterialKind::Wood, 0.0f, 5.0f);
+    const int strongBallIndex = strongImpactWorld.spawnBall(-2.5f, 5.0f);
+    CHECK(strongWoodIndex >= 0 && strongBallIndex >= 0);
+    const b2BodyId strongWoodId =
+        strongImpactWorld.records()[static_cast<std::size_t>(strongWoodIndex)].id;
+    b2Body_SetLinearVelocity(
+        strongImpactWorld.records()[static_cast<std::size_t>(strongBallIndex)].id,
+        {35.0f, 0.0f});
+    for (int i = 0; i < 12 && b2Body_IsValid(strongWoodId); ++i)
+        strongImpactWorld.step(1.0f / 60.0f, 4);
+    CHECK(!b2Body_IsValid(strongWoodId));
+    int woodDebrisCount = 0;
+    for (const BodyRecord& record : strongImpactWorld.records())
+        if (record.selectable && record.material == MaterialKind::Wood &&
+            !record.breakable)
+            ++woodDebrisCount;
+    CHECK(woodDebrisCount == 4);
+
     std::error_code error;
     std::filesystem::remove(savePath, error);
     std::cout << "Physics, rotation, maps, character persistence, exact fluid immersion, malformed saves, mechanism deletion and piston-anchor cleanup passed.\n";

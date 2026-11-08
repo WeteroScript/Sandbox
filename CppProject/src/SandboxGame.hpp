@@ -9,11 +9,12 @@
 #include <vector>
 
 enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
-enum class SpawnCategory { Props, Mechanisms, Misc };
+enum class SpawnCategory { Props, Mechanisms, Misc, Materials };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
-    WaterBucket, LavaBucket, AcidBucket, Chain, ElasticRope, Cable
+    WaterBucket, LavaBucket, AcidBucket, Chain, ElasticRope, Cable,
+    WoodBlock, MetalBlock, GlassBlock, RubberBlock, ConcreteBlock, Empty
 };
 
 struct UiLayout
@@ -24,7 +25,7 @@ struct UiLayout
     SDL_FRect pauseButton{};
     SDL_FRect mapButton{};
     SDL_FRect spawnPanel{};
-    std::array<SDL_FRect, 3> categoryButtons{};
+    std::array<SDL_FRect, 4> categoryButtons{};
     std::array<SDL_FRect, 6> spawnItems{};
     SDL_FRect quantityDown{};
     SDL_FRect quantityLabel{};
@@ -134,9 +135,11 @@ private:
     void drawBody(const BodyRecord& body, bool selected);
     void drawBucket(const BodyRecord& body, float x, float y, float angle);
     void drawBox(float x, float y, float halfWidth, float halfHeight,
-                 float angle, SDL_Color tint, bool outline);
+                 float angle, SDL_Color tint, MaterialKind material,
+                 float impactDamage, bool outline);
     void drawCircle(float x, float y, float radius, float angle,
-                    SDL_Color tint, bool outline);
+                    SDL_Color tint, MaterialKind material,
+                    float impactDamage, bool outline);
     void drawUi();
     void drawButton(const SDL_FRect& rect, const char* label, bool active);
     bool pointInRect(float x, float y, const SDL_FRect& rect) const;

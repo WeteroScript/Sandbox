@@ -246,7 +246,7 @@ UiLayout SandboxGame::makeUiLayout() const
     const float innerWidth = layout.spawnPanel.w - 20.0f * scale;
     const float categoryY = layout.spawnPanel.y + 30.0f * scale;
     const float categoryGap = 5.0f * scale;
-    const float categoryWidth = (innerWidth - categoryGap * 2.0f) / 3.0f;
+    const float categoryWidth = (innerWidth - categoryGap * 3.0f) / 4.0f;
     for (std::size_t i = 0; i < layout.categoryButtons.size(); ++i)
     {
         layout.categoryButtons[i] = {
@@ -731,11 +731,16 @@ void SandboxGame::handleUiClick(float x, float y)
         SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
         SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable
     };
+    static constexpr std::array<SpawnItem, 6> materialItems{
+        SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
+        SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::Empty
+    };
 
     const auto& items = spawnCategory_ == SpawnCategory::Props
         ? propItems
         : spawnCategory_ == SpawnCategory::Mechanisms
-            ? mechanismItems : miscItems;
+            ? mechanismItems
+            : spawnCategory_ == SpawnCategory::Misc ? miscItems : materialItems;
 
     for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
     {
@@ -871,6 +876,23 @@ void SandboxGame::placeSelected(float worldX, float worldY)
                 break;
             case SpawnItem::Cable:
                 result = physics_.spawnMechanism(MechanismKind::Cable, x, y);
+                break;
+            case SpawnItem::WoodBlock:
+                result = physics_.spawnMaterialBlock(MaterialKind::Wood, x, y);
+                break;
+            case SpawnItem::MetalBlock:
+                result = physics_.spawnMaterialBlock(MaterialKind::Metal, x, y);
+                break;
+            case SpawnItem::GlassBlock:
+                result = physics_.spawnMaterialBlock(MaterialKind::Glass, x, y);
+                break;
+            case SpawnItem::RubberBlock:
+                result = physics_.spawnMaterialBlock(MaterialKind::Rubber, x, y);
+                break;
+            case SpawnItem::ConcreteBlock:
+                result = physics_.spawnMaterialBlock(MaterialKind::Concrete, x, y);
+                break;
+            case SpawnItem::Empty:
                 break;
         }
 
@@ -1174,7 +1196,8 @@ void SandboxGame::drawGrid()
 }
 
 void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
-                          float angle, SDL_Color tint, bool outline)
+                          float angle, SDL_Color tint, MaterialKind material,
+                          float impactDamage, bool outline)
 {
     const float c = std::cos(angle), s = std::sin(angle);
     const auto point = [&](float lx, float ly)
@@ -1208,11 +1231,10 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
     if (halfWidth*pixelsPerMeter_ > 12.0f &&
         halfHeight*pixelsPerMeter_ > 10.0f)
     {
-        const bool wood=tint.r>tint.g*1.12f && tint.g>tint.b*1.18f;
         const bool green=tint.g>tint.r*1.12f && tint.g>tint.b*1.04f;
         const SDL_Color dark=shadeColor(tint,0.48f);
         const SDL_Color bright=shadeColor(tint,1.42f);
-        if (wood)
+        if (material == MaterialKind::Wood)
         {
             for (int grain=-1;grain<=1;++grain)
             {
@@ -1226,18 +1248,27 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                                  SDL_Color{dark.r,dark.g,dark.b,180});
             }
         }
-        else if (green)
+        else if (material == MaterialKind::Glass)
         {
-            const SDL_FPoint a=point(-halfWidth*0.78f,-halfHeight*0.58f);
-            const SDL_FPoint b=point(halfWidth*0.78f,-halfHeight*0.58f);
-            const SDL_FPoint c=point(-halfWidth*0.68f,halfHeight*0.58f);
-            const SDL_FPoint d=point(halfWidth*0.68f,halfHeight*0.58f);
-            setColor(renderer_,SDL_Color{dark.r,dark.g,dark.b,155});
+            const SDL_FPoint a=point(-halfWidth*0.72f,-halfHeight*0.58f);
+            const SDL_FPoint b=point(halfWidth*0.45f,halfHeight*0.62f);
+            const SDL_FPoint c=point(-halfWidth*0.42f,-halfHeight*0.58f);
+            const SDL_FPoint d=point(halfWidth*0.72f,halfHeight*0.42f);
+            setColor(renderer_,SDL_Color{239,250,255,185});
             SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
-            setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,125});
             SDL_RenderLine(renderer_,c.x,c.y,d.x,d.y);
+            const SDL_FPoint frame[4]={
+                point(-halfWidth*0.86f,-halfHeight*0.78f),
+                point(halfWidth*0.86f,-halfHeight*0.78f),
+                point(halfWidth*0.86f,halfHeight*0.78f),
+                point(-halfWidth*0.86f,halfHeight*0.78f)
+            };
+            setColor(renderer_,SDL_Color{231,248,255,165});
+            for(int i=0;i<4;++i)
+                SDL_RenderLine(renderer_,frame[i].x,frame[i].y,
+                               frame[(i+1)%4].x,frame[(i+1)%4].y);
         }
-        else
+        else if (material == MaterialKind::Metal)
         {
             const float ix=halfWidth*0.22f, iy=halfHeight*0.22f;
             const SDL_FPoint panel[4]={
@@ -1259,8 +1290,49 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                 SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
             }
         }
+        else if (material == MaterialKind::Rubber)
+        {
+            const SDL_FPoint a=point(-halfWidth*0.72f,-halfHeight*0.34f);
+            const SDL_FPoint b=point(halfWidth*0.72f,-halfHeight*0.34f);
+            const SDL_FPoint c=point(-halfWidth*0.72f,halfHeight*0.34f);
+            const SDL_FPoint d=point(halfWidth*0.72f,halfHeight*0.34f);
+            setColor(renderer_,SDL_Color{dark.r,dark.g,dark.b,190});
+            SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+            SDL_RenderLine(renderer_,c.x,c.y,d.x,d.y);
+            const SDL_FPoint midA=point(-halfWidth*0.54f,0.0f);
+            const SDL_FPoint midB=point(halfWidth*0.54f,0.0f);
+            setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,100});
+            SDL_RenderLine(renderer_,midA.x,midA.y,midB.x,midB.y);
+        }
+        else if (material == MaterialKind::Concrete)
+        {
+            for(int mark=-1;mark<=1;++mark)
+            {
+                const SDL_FPoint a=point(-halfWidth*0.62f,
+                    static_cast<float>(mark)*halfHeight*0.42f);
+                const SDL_FPoint b=point(-halfWidth*0.36f,
+                    static_cast<float>(mark)*halfHeight*0.32f);
+                setColor(renderer_,SDL_Color{dark.r,dark.g,dark.b,115});
+                SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+            }
+            setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,105});
+            const SDL_FPoint seamA=point(-halfWidth*0.68f,halfHeight*0.66f);
+            const SDL_FPoint seamB=point(halfWidth*0.68f,halfHeight*0.66f);
+            SDL_RenderLine(renderer_,seamA.x,seamA.y,seamB.x,seamB.y);
+        }
+        else if (green)
+        {
+            const SDL_FPoint a=point(-halfWidth*0.78f,-halfHeight*0.58f);
+            const SDL_FPoint b=point(halfWidth*0.78f,-halfHeight*0.58f);
+            const SDL_FPoint c=point(-halfWidth*0.68f,halfHeight*0.58f);
+            const SDL_FPoint d=point(halfWidth*0.68f,halfHeight*0.58f);
+            setColor(renderer_,SDL_Color{dark.r,dark.g,dark.b,155});
+            SDL_RenderLine(renderer_,a.x,a.y,b.x,b.y);
+            setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,125});
+            SDL_RenderLine(renderer_,c.x,c.y,d.x,d.y);
+        }
 
-        if (!green)
+        if (material == MaterialKind::Metal || material == MaterialKind::Concrete)
         {
             for(float bx:{-halfWidth*0.78f,halfWidth*0.78f})
                 for(float by:{-halfHeight*0.72f,halfHeight*0.72f})
@@ -1271,6 +1343,23 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                     drawFilledCircle(renderer_,bolt.x-0.4f,bolt.y-0.4f,0.7f,
                                      SDL_Color{225,233,239,220});
                 }
+        }
+
+        // Stress marks are surface cracks, not a numeric health display.
+        if (impactDamage > 0.025f)
+        {
+            const Uint8 alpha=static_cast<Uint8>(
+                70.0f + std::clamp(impactDamage,0.0f,1.0f)*145.0f);
+            setColor(renderer_,SDL_Color{30,35,42,alpha});
+            const SDL_FPoint crack0=point(0.0f,0.0f);
+            const SDL_FPoint crack1=point(halfWidth*0.16f,halfHeight*0.22f);
+            const SDL_FPoint crack2=point(halfWidth*0.02f,halfHeight*0.43f);
+            const SDL_FPoint crack3=point(halfWidth*0.25f,halfHeight*0.64f);
+            SDL_RenderLine(renderer_,crack0.x,crack0.y,crack1.x,crack1.y);
+            SDL_RenderLine(renderer_,crack1.x,crack1.y,crack2.x,crack2.y);
+            SDL_RenderLine(renderer_,crack2.x,crack2.y,crack3.x,crack3.y);
+            const SDL_FPoint branch=point(-halfWidth*0.34f,halfHeight*0.24f);
+            SDL_RenderLine(renderer_,crack1.x,crack1.y,branch.x,branch.y);
         }
     }
 
@@ -1284,7 +1373,8 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
 }
 
 void SandboxGame::drawCircle(float x, float y, float radius, float angle,
-                             SDL_Color tint, bool outline)
+                             SDL_Color tint, MaterialKind material,
+                             float impactDamage, bool outline)
 {
     constexpr int segments=64;
     std::array<SDL_Vertex,segments+1> vertices{};
@@ -1314,8 +1404,9 @@ void SandboxGame::drawCircle(float x, float y, float radius, float angle,
     {
         return worldToScreen(x+c*lx-s*ly,y+s*lx+c*ly);
     };
-    const bool melon=tint.g>tint.r*1.18f && tint.g>tint.b*1.08f;
-    const bool barrel=tint.r>tint.g*1.20f && tint.g>tint.b*1.15f;
+    const bool melon=material == MaterialKind::Organic &&
+        tint.g>tint.r*1.18f && tint.g>tint.b*1.08f;
+    const bool barrel=material == MaterialKind::Metal;
     if(melon)
     {
         setColor(renderer_,SDL_Color{42,113,59,175});
@@ -1351,6 +1442,33 @@ void SandboxGame::drawCircle(float x, float y, float radius, float angle,
                 previous=q;
             }
         }
+    }
+    else if(material == MaterialKind::Rubber)
+    {
+        const SDL_FPoint seamA=point(-radius*0.78f,0.0f);
+        const SDL_FPoint seamB=point(radius*0.78f,0.0f);
+        setColor(renderer_,SDL_Color{21,29,37,170});
+        SDL_RenderLine(renderer_,seamA.x,seamA.y,seamB.x,seamB.y);
+        const SDL_FPoint grooveA=point(-radius*0.34f,-radius*0.62f);
+        const SDL_FPoint grooveB=point(radius*0.34f,radius*0.62f);
+        SDL_RenderLine(renderer_,grooveA.x,grooveA.y,grooveB.x,grooveB.y);
+    }
+    else if(material == MaterialKind::Glass)
+    {
+        const SDL_FPoint shineA=point(-radius*0.48f,radius*0.56f);
+        const SDL_FPoint shineB=point(radius*0.20f,radius*0.72f);
+        setColor(renderer_,SDL_Color{238,251,255,185});
+        SDL_RenderLine(renderer_,shineA.x,shineA.y,shineB.x,shineB.y);
+    }
+
+    if (impactDamage > 0.025f)
+    {
+        setColor(renderer_,SDL_Color{30,35,42,190});
+        const SDL_FPoint crackA=point(-radius*0.08f,radius*0.08f);
+        const SDL_FPoint crackB=point(radius*0.22f,radius*0.30f);
+        const SDL_FPoint crackC=point(radius*0.10f,radius*0.58f);
+        SDL_RenderLine(renderer_,crackA.x,crackA.y,crackB.x,crackB.y);
+        SDL_RenderLine(renderer_,crackB.x,crackB.y,crackC.x,crackC.y);
     }
 
     const SDL_FPoint highlight=point(-radius*0.30f,radius*0.34f);
@@ -1569,9 +1687,11 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         }
     }
     else if (body.shape == BodyShape::Circle)
-        drawCircle(x, y, body.radius, angle, tint, selected);
+        drawCircle(x, y, body.radius, angle, tint, body.material,
+                   body.impactDamage, selected);
     else
-        drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint, selected);
+        drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint,
+                body.material, body.impactDamage, selected);
 
     if (body.bucketKind != BucketKind::None)
         drawBucket(body, x, y, angle);
@@ -1656,8 +1776,12 @@ void SandboxGame::drawUi()
             spawnCategory_ == SpawnCategory::Mechanisms
         );
         drawButton(
-            layout.categoryButtons[2], "RAZNOE",
+            layout.categoryButtons[2], "MISC",
             spawnCategory_ == SpawnCategory::Misc
+        );
+        drawButton(
+            layout.categoryButtons[3], "MAT",
+            spawnCategory_ == SpawnCategory::Materials
         );
 
         static constexpr std::array<const char*, 6> propLabels{
@@ -1668,6 +1792,9 @@ void SandboxGame::drawUi()
         };
         static constexpr std::array<const char*, 6> miscLabels{
             "WATER", "LAVA", "ACID", "CHAIN", "ELASTIC", "CABLE"
+        };
+        static constexpr std::array<const char*, 6> materialLabels{
+            "WOOD", "METAL", "GLASS", "RUBBER", "CONCRETE", ""
         };
         static constexpr std::array<SpawnItem, 6> propItems{
             SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
@@ -1681,15 +1808,21 @@ void SandboxGame::drawUi()
             SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
             SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable
         };
+        static constexpr std::array<SpawnItem, 6> materialItems{
+            SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
+            SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::Empty
+        };
 
         const auto& labels = spawnCategory_ == SpawnCategory::Props
             ? propLabels
             : spawnCategory_ == SpawnCategory::Mechanisms
-                ? mechanismLabels : miscLabels;
+                ? mechanismLabels
+                : spawnCategory_ == SpawnCategory::Misc ? miscLabels : materialLabels;
         const auto& items = spawnCategory_ == SpawnCategory::Props
             ? propItems
             : spawnCategory_ == SpawnCategory::Mechanisms
-                ? mechanismItems : miscItems;
+                ? mechanismItems
+                : spawnCategory_ == SpawnCategory::Misc ? miscItems : materialItems;
 
         for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
         {
