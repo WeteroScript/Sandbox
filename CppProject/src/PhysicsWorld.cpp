@@ -366,11 +366,16 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
         if (!b2Joint_IsValid(mechanism.joint))
             continue;
 
-        mechanism.active = enabled;
         if (mechanism.kind == MechanismKind::Spring)
+        {
+            mechanism.active = enabled;
             b2DistanceJoint_EnableSpring(mechanism.joint, enabled);
+        }
         else if (mechanism.kind == MechanismKind::Piston)
+        {
+            mechanism.active = enabled;
             b2DistanceJoint_EnableMotor(mechanism.joint, enabled);
+        }
     }
 }
 

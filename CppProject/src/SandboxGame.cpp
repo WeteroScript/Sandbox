@@ -36,6 +36,37 @@ SDL_FColor toFloatColor(SDL_Color tint)
     };
 }
 
+void drawFilledCircle(SDL_Renderer* renderer, float x, float y,
+                      float radius, SDL_Color tint)
+{
+    constexpr int segments = 20;
+    std::array<SDL_Vertex, segments + 1> vertices{};
+    std::array<int, segments * 3> indices{};
+
+    vertices[0].position = {x, y};
+    vertices[0].color = toFloatColor(tint);
+    vertices[0].tex_coord = {0.0f, 0.0f};
+
+    for (int i = 0; i < segments; ++i)
+    {
+        const float angle = 2.0f * kPi * static_cast<float>(i) / segments;
+        vertices[static_cast<std::size_t>(i + 1)].position = {
+            x + std::cos(angle) * radius,
+            y + std::sin(angle) * radius
+        };
+        vertices[static_cast<std::size_t>(i + 1)].color = toFloatColor(tint);
+        vertices[static_cast<std::size_t>(i + 1)].tex_coord = {0.0f, 0.0f};
+        const std::size_t base = static_cast<std::size_t>(i) * 3;
+        indices[base] = 0;
+        indices[base + 1] = i + 1;
+        indices[base + 2] = (i + 1) % segments + 1;
+    }
+
+    SDL_RenderGeometry(renderer, nullptr, vertices.data(),
+                       static_cast<int>(vertices.size()),
+                       indices.data(), static_cast<int>(indices.size()));
+}
+
 float clampFloat(float value, float low, float high)
 {
     return std::max(low, std::min(value, high));
@@ -1277,8 +1308,7 @@ void SandboxGame::drawSurfaces()
                 const float y = rect.y + rect.h * (0.25f + 0.55f *
                     std::abs(std::sin(time * 1.8f + bubble)));
                 const float radius = 2.0f + static_cast<float>(bubble % 3);
-                setColor(renderer_, makeColor(255, 205, 103, 185));
-                SDL_RenderCircle(renderer_, x, y, radius);
+                drawFilledCircle(renderer_, x, y, radius, makeColor(255, 205, 103, 185));
             }
         }
     }
@@ -1304,7 +1334,9 @@ void SandboxGame::drawMechanisms()
                 ? makeColor(79, 206, 123)
                 : makeColor(207, 84, 72));
             SDL_RenderLine(renderer_, anchor.x, anchor.y, anchor.x, leverY);
-            SDL_RenderFillCircle(renderer_, anchor.x, leverY, 6.0f);
+            drawFilledCircle(renderer_, anchor.x, leverY, 6.0f,
+                             mechanism.pressed ? makeColor(79, 206, 123)
+                                               : makeColor(207, 84, 72));
             continue;
         }
 
@@ -1321,7 +1353,9 @@ void SandboxGame::drawMechanisms()
             setColor(renderer_, mechanism.pressed
                 ? makeColor(226, 83, 67)
                 : makeColor(82, 194, 111));
-            SDL_RenderFillCircle(renderer_, anchor.x, headY, 10.0f);
+            drawFilledCircle(renderer_, anchor.x, headY, 10.0f,
+                             mechanism.pressed ? makeColor(226, 83, 67)
+                                               : makeColor(82, 194, 111));
             continue;
         }
 
@@ -1357,8 +1391,8 @@ void SandboxGame::drawMechanisms()
             SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
             SDL_RenderLine(renderer_, a.x + nx * 2.0f, a.y + ny * 2.0f,
                            b.x + nx * 2.0f, b.y + ny * 2.0f);
-            SDL_RenderFillCircle(renderer_, a.x, a.y, 4.0f);
-            SDL_RenderFillCircle(renderer_, b.x, b.y, 4.0f);
+            drawFilledCircle(renderer_, a.x, a.y, 4.0f, makeColor(178, 190, 201));
+            drawFilledCircle(renderer_, b.x, b.y, 4.0f, makeColor(178, 190, 201));
         }
         else if (mechanism.kind == MechanismKind::Rope)
         {
@@ -1374,8 +1408,8 @@ void SandboxGame::drawMechanisms()
                     a.x + dx * t1, a.y + dy * t1,
                     a.x + dx * t2, a.y + dy * t2);
             }
-            SDL_RenderFillCircle(renderer_, a.x, a.y, 4.0f);
-            SDL_RenderFillCircle(renderer_, b.x, b.y, 4.0f);
+            drawFilledCircle(renderer_, a.x, a.y, 4.0f, makeColor(192, 147, 86));
+            drawFilledCircle(renderer_, b.x, b.y, 4.0f, makeColor(192, 147, 86));
         }
         else if (mechanism.kind == MechanismKind::Spring)
         {
@@ -1403,11 +1437,13 @@ void SandboxGame::drawMechanisms()
             SDL_RenderLine(renderer_, a.x + nx * 4.0f, a.y + ny * 4.0f,
                            b.x + nx * 4.0f, b.y + ny * 4.0f);
             setColor(renderer_, makeColor(205, 132, 57));
-            SDL_RenderFillCircle(renderer_, a.x, a.y, 9.0f);
+            drawFilledCircle(renderer_, a.x, a.y, 9.0f, makeColor(205, 132, 57));
             setColor(renderer_, active
                 ? makeColor(109, 190, 208)
                 : makeColor(116, 122, 130));
-            SDL_RenderFillCircle(renderer_, b.x, b.y, 6.0f);
+            drawFilledCircle(renderer_, b.x, b.y, 6.0f,
+                             active ? makeColor(109, 190, 208)
+                                    : makeColor(116, 122, 130));
         }
     }
 }
