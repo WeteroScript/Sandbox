@@ -42,6 +42,7 @@ SandboxGame::~SandboxGame()
 
 bool SandboxGame::initialize()
 {
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
         return false;
 
