@@ -134,6 +134,7 @@ struct JointHealth {
     max_health: f32,
 }
 
+#[derive(Clone)]
 pub struct Prop {
     pub body: RigidBodyHandle,
     pub half_width: f32,
@@ -178,6 +179,7 @@ pub struct PhysicsWorld {
     pub query_pipeline: QueryPipeline,
     pub ragdoll: Ragdoll,
     pub spawned_ragdolls: Vec<(Ragdoll, CharacterKind)>,
+    pub frozen_bodies: Vec<RigidBodyHandle>,
     pub props: Vec<Prop>,
     pub explosions: Vec<Explosion>,
     pub character: CharacterKind,
@@ -209,6 +211,7 @@ impl PhysicsWorld {
             query_pipeline: QueryPipeline::new(),
             ragdoll: Self::empty_ragdoll(),
             spawned_ragdolls: Vec::new(),
+            frozen_bodies: Vec::new(),
             props: Vec::new(),
             explosions: Vec::new(),
             character,
@@ -416,6 +419,104 @@ impl PhysicsWorld {
 
     pub fn is_detached(&self, handle: RigidBodyHandle) -> bool {
         self.detached_parts.contains(&handle)
+    }
+
+    pub fn is_frozen(&self, handle: RigidBodyHandle) -> bool {
+        self.frozen_bodies.contains(&handle)
+    }
+
+    pub fn toggle_freeze(&mut self, handle: RigidBodyHandle) {
+        let was_frozen = self.is_frozen(handle);
+        let Some(body) = self.bodies.get_mut(handle) else {
+            return;
+        };
+
+        if was_frozen {
+            body.set_body_type(RigidBodyType::Dynamic, true);
+            self.frozen_bodies.retain(|frozen| *frozen != handle);
+        } else if body.is_dynamic() {
+            body.set_linvel(vector![0.0, 0.0], true);
+            body.set_angvel(0.0, true);
+            body.set_body_type(RigidBodyType::Fixed, true);
+            self.frozen_bodies.push(handle);
+        }
+    }
+
+    pub fn duplicate_body(&mut self, handle: RigidBodyHandle) -> Option<RigidBodyHandle> {
+        let source_position = self.body_position(handle)?;
+        let source_velocity = self.bodies.get(handle).map(|body| *body.linvel())?;
+
+        let character = if Self::ragdoll_has_body(&self.ragdoll, handle) {
+            Some(self.character)
+        } else {
+            self.spawned_ragdolls
+                .iter()
+                .find(|(ragdoll, _)| Self::ragdoll_has_body(ragdoll, handle))
+                .map(|(_, character)| *character)
+        };
+
+        let side = if source_position.translation.x < 1800.0 { 1.0 } else { -1.0 };
+        if let Some(character) = character {
+            let position = vector![
+                (source_position.translation.x + side * 170.0).clamp(90.0, 2310.0),
+                (source_position.translation.y - 35.0).clamp(45.0, 1320.0)
+            ];
+            self.spawn_character_prop(position, character);
+            return self.spawned_ragdolls.last().map(|(ragdoll, _)| ragdoll.head);
+        }
+
+        let (kind, half_width, half_height, color, timer, durability) = self
+            .props
+            .iter()
+            .find(|prop| prop.body == handle && prop.active)
+            .map(|prop| (
+                prop.kind,
+                prop.half_width,
+                prop.half_height,
+                prop.color,
+                prop.timer,
+                prop.durability,
+            ))?;
+
+        if matches!(kind, PropKind::Static | PropKind::Projectile) {
+            return None;
+        }
+
+        let position = vector![
+            (source_position.translation.x + side * (half_width.max(24.0) * 2.0 + 24.0))
+                .clamp(55.0, 2345.0),
+            (source_position.translation.y - 18.0).clamp(35.0, 1390.0)
+        ];
+        self.spawn_special(
+            position,
+            vector![half_width, half_height],
+            kind,
+            color,
+            timer,
+            durability,
+        );
+
+        let duplicate = self.props.last()?.body;
+        if let Some(body) = self.bodies.get_mut(duplicate) {
+            body.set_linvel(source_velocity * 0.2, true);
+        }
+        Some(duplicate)
+    }
+
+    fn ragdoll_has_body(ragdoll: &Ragdoll, handle: RigidBodyHandle) -> bool {
+        [
+            ragdoll.head,
+            ragdoll.torso,
+            ragdoll.left_upper_arm,
+            ragdoll.right_upper_arm,
+            ragdoll.left_lower_arm,
+            ragdoll.right_lower_arm,
+            ragdoll.left_upper_leg,
+            ragdoll.right_upper_leg,
+            ragdoll.left_lower_leg,
+            ragdoll.right_lower_leg,
+        ]
+        .contains(&handle)
     }
 
     fn spawn_special(
