@@ -343,8 +343,8 @@ int main()
 
     PhysicsWorld fluidWorld;
     fluidWorld.setMap(MapKind::Laboratory, false);
-    const int dryWaterIndex = fluidWorld.spawnBall(-12.0f, -4.4f);
-    const int partialWaterIndex = fluidWorld.spawnBall(-7.0f, -4.4f);
+    const int dryWaterIndex = fluidWorld.spawnBall(-12.0f, -4.3f);
+    const int partialWaterIndex = fluidWorld.spawnBall(-7.1f, -4.3f);
     const int dryLavaIndex = fluidWorld.spawnBall(1.7f, -4.0f);
     const int partialLavaIndex = fluidWorld.spawnBall(3.0f, -4.0f);
     CHECK(dryWaterIndex >= 0 && partialWaterIndex >= 0);
