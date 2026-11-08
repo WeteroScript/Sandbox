@@ -1,0 +1,95 @@
+#pragma once
+
+#include "PhysicsWorld.hpp"
+#include <SDL3/SDL.h>
+
+#include <array>
+
+enum class SandboxTool { Grab, Freeze, Clone, Delete };
+enum class SpawnKind { None, Box, Ball, Ragdoll };
+
+struct UiLayout
+{
+    float scale = 1.0f;
+    std::array<SDL_FRect, 5> toolButtons{};
+    SDL_FRect speedDown{};
+    SDL_FRect speedLabel{};
+    SDL_FRect speedUp{};
+    SDL_FRect pauseButton{};
+    SDL_FRect spawnPanel{};
+    SDL_FRect spawnBox{};
+    SDL_FRect spawnBall{};
+    SDL_FRect spawnRagdoll{};
+    SDL_FRect quantityDown{};
+    SDL_FRect quantityUp{};
+    SDL_FRect clearButton{};
+};
+
+class SandboxGame
+{
+public:
+    SandboxGame() = default;
+    ~SandboxGame();
+
+    SandboxGame(const SandboxGame&) = delete;
+    SandboxGame& operator=(const SandboxGame&) = delete;
+
+    bool initialize();
+    int run();
+
+private:
+    SDL_Window* window_ = nullptr;
+    SDL_Renderer* renderer_ = nullptr;
+    PhysicsWorld physics_;
+
+    bool running_ = true;
+    bool paused_ = false;
+    bool spawnPanelOpen_ = true;
+    bool pointerDown_ = false;
+    bool panning_ = false;
+
+    SandboxTool tool_ = SandboxTool::Grab;
+    SpawnKind spawnKind_ = SpawnKind::None;
+    int spawnQuantity_ = 1;
+    int grabbedIndex_ = -1;
+    int speedIndex_ = 2;
+
+    float simulationSpeed_ = 1.0f;
+    float cameraX_ = 0.0f;
+    float cameraY_ = 0.0f;
+    float pixelsPerMeter_ = 44.0f;
+    float pointerX_ = 0.0f;
+    float pointerY_ = 0.0f;
+    float grabOffsetX_ = 0.0f;
+    float grabOffsetY_ = 0.0f;
+    float lastPanX_ = 0.0f;
+    float lastPanY_ = 0.0f;
+    float accumulator_ = 0.0f;
+    float fps_ = 0.0f;
+
+    int outputWidth_ = 1280;
+    int outputHeight_ = 720;
+
+    UiLayout makeUiLayout() const;
+    void processEvents();
+    void handleKey(SDL_Keycode key);
+    void handlePointerDown(float x, float y);
+    void handlePointerMove(float x, float y);
+    void handlePointerUp();
+    void handleUiClick(float x, float y);
+    void placeSelected(float worldX, float worldY);
+    void update(float deltaTime);
+    void render();
+
+    b2Vec2 screenToWorld(float x, float y) const;
+    SDL_FPoint worldToScreen(float x, float y) const;
+
+    void drawGrid();
+    void drawBody(const BodyRecord& body, bool selected);
+    void drawBox(float x, float y, float halfWidth, float halfHeight,
+                 float angle, SDL_Color tint, bool outline);
+    void drawCircle(float x, float y, float radius, SDL_Color tint, bool outline);
+    void drawUi();
+    void drawButton(const SDL_FRect& rect, const char* label, bool active);
+    bool pointInRect(float x, float y, const SDL_FRect& rect) const;
+};

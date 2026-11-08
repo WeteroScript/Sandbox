@@ -1,0 +1,9 @@
+build/
+cmake-build-*/
+.gradle/
+.idea/
+local.properties
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
