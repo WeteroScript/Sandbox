@@ -727,36 +727,41 @@ int main()
     for (std::size_t i = 0; i < 3; ++i)
         CHECK(b2Joint_IsValid(powerWorld.mechanisms()[i].joint));
 
-    // A wheel motor receives power through a closed switch link and stops
-    // when that conductive path is opened.
+    // A battery powers a wheel through a wire, an intermediate body and a
+    // switch. Opening the switch interrupts the motor's conductive path.
     PhysicsWorld batteryMotorWorld;
     batteryMotorWorld.setMap(MapKind::Laboratory, false);
-    const int batteryIndex = batteryMotorWorld.spawnBattery(-4.0f, 6.0f);
-    const int conductiveBlock = batteryMotorWorld.spawnBox(0.0f, 6.0f);
-    const int poweredWheel = batteryMotorWorld.spawnWheel(4.0f, 6.0f);
-    CHECK(batteryIndex >= 0 && conductiveBlock >= 0 && poweredWheel >= 0);
+    const int batteryIndex = batteryMotorWorld.spawnBattery(-6.0f, 6.0f);
+    const int wireBlock = batteryMotorWorld.spawnBox(-2.0f, 6.0f);
+    const int switchBlock = batteryMotorWorld.spawnBox(2.0f, 6.0f);
+    const int poweredWheel = batteryMotorWorld.spawnWheel(6.0f, 6.0f);
+    CHECK(batteryIndex >= 0 && wireBlock >= 0 &&
+          switchBlock >= 0 && poweredWheel >= 0);
     CHECK(batteryMotorWorld.records()[static_cast<std::size_t>(batteryIndex)].powerSource);
     CHECK(batteryMotorWorld.spawnMechanism(
-        MechanismKind::Switch, -2.0f, 6.0f) == 0);
+        MechanismKind::Wire, -4.0f, 6.0f) == 0);
     CHECK(batteryMotorWorld.spawnMechanism(
-        MechanismKind::Motor, 2.0f, 6.0f) == 1);
+        MechanismKind::Switch, 0.0f, 6.0f) == 1);
+    CHECK(batteryMotorWorld.spawnMechanism(
+        MechanismKind::Motor, 4.0f, 6.0f) == 2);
     CHECK(batteryMotorWorld.mechanisms()[0].active);
-    CHECK(batteryMotorWorld.mechanisms()[0].pressed);
+    CHECK(batteryMotorWorld.mechanisms()[1].active);
+    CHECK(batteryMotorWorld.mechanisms()[1].pressed);
 
     batteryMotorWorld.step(1.0f / 60.0f, 4);
-    CHECK(batteryMotorWorld.mechanisms()[1].active);
+    CHECK(batteryMotorWorld.mechanisms()[2].active);
     const float chargeAfterFirstStep =
         batteryMotorWorld.records()[static_cast<std::size_t>(batteryIndex)].batteryCharge;
     CHECK(chargeAfterFirstStep < 100.0f);
 
-    CHECK(batteryMotorWorld.interactAt(-2.0f, 6.0f));
-    CHECK(!batteryMotorWorld.mechanisms()[0].active);
-    batteryMotorWorld.step(1.0f / 60.0f, 4);
+    CHECK(batteryMotorWorld.interactAt(0.0f, 6.0f));
     CHECK(!batteryMotorWorld.mechanisms()[1].active);
-
-    CHECK(batteryMotorWorld.interactAt(-2.0f, 6.0f));
     batteryMotorWorld.step(1.0f / 60.0f, 4);
-    CHECK(batteryMotorWorld.mechanisms()[1].active);
+    CHECK(!batteryMotorWorld.mechanisms()[2].active);
+
+    CHECK(batteryMotorWorld.interactAt(0.0f, 6.0f));
+    batteryMotorWorld.step(1.0f / 60.0f, 4);
+    CHECK(batteryMotorWorld.mechanisms()[2].active);
     CHECK(batteryMotorWorld.records()[static_cast<std::size_t>(batteryIndex)].batteryCharge <
           chargeAfterFirstStep);
 
@@ -769,6 +774,9 @@ int main()
         if (record.powerSource && record.batteryCharge > 0.0f)
             restoredBatteryFound = true;
     CHECK(restoredBatteryFound);
+    restoredBatteryMotor.step(1.0f / 60.0f, 4);
+    CHECK(restoredBatteryMotor.mechanisms().size() == 3);
+    CHECK(restoredBatteryMotor.mechanisms()[2].active);
 
     PhysicsWorld ropeVariantWorld;
     ropeVariantWorld.setMap(MapKind::Laboratory, false);
