@@ -368,31 +368,33 @@ int main()
     // Removing either endpoint must destroy the constraint and preserve the
     // unrelated endpoint for every two-body mechanism type.
     PhysicsWorld cleanupWorld;
-    cleanupWorld.setMap(MapKind::Laboratory, false);
     for (MechanismKind kind : {
              MechanismKind::Rod, MechanismKind::Rope, MechanismKind::Spring})
     {
-        cleanupWorld.setMap(MapKind::Laboratory, false);
-        const int firstIndex = cleanupWorld.spawnBox(-1.0f, 0.0f);
-        const int secondIndex = cleanupWorld.spawnBox(1.0f, 0.0f);
-        CHECK(firstIndex >= 0 && secondIndex >= 0);
-        const b2BodyId firstBody = cleanupWorld.records()[
-            static_cast<std::size_t>(firstIndex)].id;
-        const b2BodyId secondBody = cleanupWorld.records()[
-            static_cast<std::size_t>(secondIndex)].id;
+        for (int endpointToDelete = 0; endpointToDelete < 2; ++endpointToDelete)
+        {
+            cleanupWorld.setMap(MapKind::Laboratory, false);
+            const int firstIndex = cleanupWorld.spawnBox(-1.0f, 0.0f);
+            const int secondIndex = cleanupWorld.spawnBox(1.0f, 0.0f);
+            CHECK(firstIndex >= 0 && secondIndex >= 0);
+            const b2BodyId firstBody = cleanupWorld.records()[
+                static_cast<std::size_t>(firstIndex)].id;
+            const b2BodyId secondBody = cleanupWorld.records()[
+                static_cast<std::size_t>(secondIndex)].id;
 
-        CHECK(cleanupWorld.spawnMechanism(kind, 0.0f, 0.0f) == 0);
-        CHECK(cleanupWorld.mechanisms().size() == 1);
-        const b2JointId linkedJoint = cleanupWorld.mechanisms()[0].joint;
-        CHECK(b2Joint_IsValid(linkedJoint));
-        CHECK(b2Body_IsValid(firstBody) && b2Body_IsValid(secondBody));
+            CHECK(cleanupWorld.spawnMechanism(kind, 0.0f, 0.0f) == 0);
+            CHECK(cleanupWorld.mechanisms().size() == 1);
+            const b2JointId linkedJoint = cleanupWorld.mechanisms()[0].joint;
+            CHECK(b2Joint_IsValid(linkedJoint));
+            CHECK(b2Body_IsValid(firstBody) && b2Body_IsValid(secondBody));
 
-        cleanupWorld.deleteAt(firstIndex);
-        CHECK(cleanupWorld.mechanisms().empty());
-        CHECK(!b2Joint_IsValid(linkedJoint));
-        CHECK(!b2Body_IsValid(firstBody));
-        CHECK(b2Body_IsValid(secondBody));
-        CHECK(cleanupWorld.dynamicCount() == 1);
+            cleanupWorld.deleteAt(endpointToDelete == 0 ? firstIndex : secondIndex);
+            CHECK(cleanupWorld.mechanisms().empty());
+            CHECK(!b2Joint_IsValid(linkedJoint));
+            CHECK(b2Body_IsValid(endpointToDelete == 0 ? secondBody : firstBody));
+            CHECK(!b2Body_IsValid(endpointToDelete == 0 ? firstBody : secondBody));
+            CHECK(cleanupWorld.dynamicCount() == 1);
+        }
     }
 
     // A button is a body-linked mechanism even though it has no physics joint.
