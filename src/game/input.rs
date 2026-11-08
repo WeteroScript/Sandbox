@@ -53,10 +53,11 @@ impl InputState {
         dragging: bool,
         spawn_dialog_open: bool,
     ) {
-        self.play = is_key_pressed(KeyCode::Enter)
-            || is_key_pressed(KeyCode::Space)
-            || (is_mouse_button_pressed(MouseButton::Left)
-                && !self.in_spawn_panel(mouse_position().into(), spawn_menu_open));
+        self.play = !spawn_dialog_open
+            && (is_key_pressed(KeyCode::Enter)
+                || is_key_pressed(KeyCode::Space)
+                || (is_mouse_button_pressed(MouseButton::Left)
+                    && !self.in_spawn_panel(mouse_position().into(), spawn_menu_open)));
 
         self.settings = is_key_pressed(KeyCode::S)
             || is_key_pressed(KeyCode::Tab)
@@ -121,7 +122,7 @@ impl InputState {
             movement = movement.normalize();
         }
 
-        self.movement = movement;
+        self.movement = if spawn_dialog_open { Vec2::ZERO } else { movement };
         self.update_drag_pointer(spawn_menu_open);
         self.update_camera_gesture(spawn_menu_open, dragging);
     }
