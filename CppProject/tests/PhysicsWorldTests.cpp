@@ -248,7 +248,7 @@ int main()
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
 
-    // Version-2 and version-3 scenes remain readable after adding material data in v4.
+    // Version-2 and version-3 scenes remain readable after material data (v4) and battery data (v5).
     const std::filesystem::path legacyV2Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
     const std::filesystem::path legacyV3Path =
@@ -261,7 +261,7 @@ int main()
             std::istreambuf_iterator<char>()
         };
         constexpr std::size_t headerSize = 21;
-        constexpr std::size_t currentBodySize = 109;
+        constexpr std::size_t currentBodySize = 114;
         constexpr std::size_t legacyV3BodySize = 103;
         constexpr std::size_t legacyV2BodySize = 94;
         constexpr std::size_t mechanismSize = 27;
@@ -353,7 +353,7 @@ int main()
         };
         constexpr std::size_t bodyCountOffset = 17;
         constexpr std::size_t bodyDataOffset = 21;
-        constexpr std::size_t savedBodySize = 109;
+        constexpr std::size_t savedBodySize = 114;
         constexpr std::size_t savedMechanismSize = 27;
         CHECK(bytes.size() >= bodyCountOffset + sizeof(std::uint32_t));
         std::uint32_t bodyCount = 0;
