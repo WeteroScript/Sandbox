@@ -179,7 +179,14 @@ impl Game {
 
     fn spawn_many(&mut self, item: SpawnItem, count: u32, position: Vec2) {
         let total = count.max(1);
-        let spacing = 8.0;
+        let spacing = if matches!(
+            item,
+            SpawnItem::Melon | SpawnItem::MelonHead | SpawnItem::Robot
+        ) {
+            150.0
+        } else {
+            18.0
+        };
 
         for index in 0..total {
             let offset = index as f32 * spacing;
