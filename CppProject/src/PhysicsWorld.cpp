@@ -66,27 +66,28 @@ struct MaterialProfile
     float friction;
     float restitution;
     float fractureSpeed;
+    float surfaceDamageSpeed;
     SDL_Color tint;
 };
 
 const MaterialProfile& materialProfile(MaterialKind material)
 {
     static const MaterialProfile wood{
-        0.95f, 0.82f, 0.035f, 14.0f, {174, 121, 68, 255}};
+        0.95f, 0.82f, 0.035f, 14.0f, 7.0f, {174, 121, 68, 255}};
     static const MaterialProfile metal{
-        2.80f, 0.46f, 0.11f, 30.0f, {137, 155, 173, 255}};
+        2.80f, 0.46f, 0.11f, 30.0f, 14.0f, {137, 155, 173, 255}};
     static const MaterialProfile glass{
-        1.35f, 0.32f, 0.12f, 9.0f, {126, 190, 211, 220}};
+        1.35f, 0.32f, 0.12f, 9.0f, 4.5f, {126, 190, 211, 220}};
     static const MaterialProfile rubber{
-        1.15f, 0.98f, 0.58f, 0.0f, {55, 67, 78, 255}};
+        1.15f, 0.98f, 0.58f, 0.0f, 6.5f, {55, 67, 78, 255}};
     static const MaterialProfile concrete{
-        2.25f, 0.84f, 0.015f, 24.0f, {139, 147, 155, 255}};
+        2.25f, 0.84f, 0.015f, 24.0f, 12.0f, {139, 147, 155, 255}};
     static const MaterialProfile ice{
-        0.92f, 0.045f, 0.025f, 11.5f, {151, 205, 228, 255}};
+        0.92f, 0.045f, 0.025f, 11.5f, 5.0f, {151, 205, 228, 255}};
     static const MaterialProfile plastic{
-        0.82f, 0.62f, 0.11f, 18.0f, {190, 105, 74, 255}};
+        0.82f, 0.62f, 0.11f, 18.0f, 8.0f, {190, 105, 74, 255}};
     static const MaterialProfile organic{
-        1.0f, 0.68f, 0.02f, 0.0f, {128, 190, 135, 255}};
+        1.0f, 0.68f, 0.02f, 0.0f, 5.0f, {128, 190, 135, 255}};
 
     switch (material)
     {
@@ -1317,24 +1318,48 @@ void PhysicsWorld::processImpactEvents()
             return;
         }
 
-        if (!record.breakable || record.shape != BodyShape::Box || record.frozen)
+        if (!record.selectable || record.frozen ||
+            !std::isfinite(approachSpeed))
             return;
 
-        const float threshold = materialProfile(record.material).fractureSpeed;
-        if (threshold <= 0.0f || approachSpeed < threshold * 0.35f)
-            return;
-
-        const float ratio = approachSpeed / threshold;
-        const float increment = ratio >= 1.35f
-            ? 1.0f
-            : ratio * ratio * 0.52f;
-        rememberImpactPoint(std::clamp(increment * 1.15f, 0.08f, 1.0f));
-        record.impactDamage = std::clamp(record.impactDamage + increment, 0.0f, 1.0f);
-        if (record.impactDamage >= 1.0f && !fractureQueued[recordIndex])
+        const MaterialProfile& profile = materialProfile(record.material);
+        const bool canFracture = record.breakable &&
+            record.shape == BodyShape::Box && profile.fractureSpeed > 0.0f;
+        if (canFracture)
         {
-            fractureQueued[recordIndex] = 1U;
-            fracturedBodies.push_back(bodyId);
+            const float threshold = profile.fractureSpeed;
+            if (approachSpeed < threshold * 0.35f)
+                return;
+
+            const float ratio = approachSpeed / threshold;
+            const float increment = ratio >= 1.35f
+                ? 1.0f
+                : ratio * ratio * 0.52f;
+            rememberImpactPoint(std::clamp(increment * 1.15f, 0.08f, 1.0f));
+            record.impactDamage = std::clamp(
+                record.impactDamage + increment, 0.0f, 1.0f);
+            if (record.impactDamage >= 1.0f && !fractureQueued[recordIndex])
+            {
+                fractureQueued[recordIndex] = 1U;
+                fracturedBodies.push_back(bodyId);
+            }
+            return;
         }
+
+        // Non-fracturing props can still accumulate cosmetic wear from hard
+        // impacts. Their material profile controls when marks become visible.
+        const float threshold = profile.surfaceDamageSpeed;
+        if (threshold <= 0.0f || approachSpeed < threshold)
+            return;
+
+        const float excessRatio = (approachSpeed - threshold) / threshold;
+        const float increment = std::clamp(
+            0.045f + excessRatio * 0.075f, 0.045f, 0.16f);
+        const float markStrength = std::clamp(
+            0.14f + excessRatio * 0.13f, 0.14f, 0.55f);
+        rememberImpactPoint(markStrength);
+        record.impactDamage = std::clamp(
+            record.impactDamage + increment, 0.0f, 0.92f);
     };
 
     for (int i = 0; i < events.hitCount; ++i)
@@ -1442,7 +1467,7 @@ int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
     sd.material.restitution = profile.restitution;
     const bool canFracture = !isStatic && selectable && groupId < 0 &&
         allowFracture && profile.fractureSpeed > 0.0f;
-    sd.enableHitEvents = canFracture || (selectable && groupId >= 0);
+    sd.enableHitEvents = !isStatic && selectable;
     const b2Polygon polygon = b2MakeBox(hw, hh);
     b2CreatePolygonShape(body, &sd, &polygon);
 
@@ -1485,7 +1510,7 @@ int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
     sd.material.restitution = profile.restitution;
     const bool canFracture = selectable && groupId < 0 && allowFracture &&
         profile.fractureSpeed > 0.0f;
-    sd.enableHitEvents = canFracture || (selectable && groupId >= 0);
+    sd.enableHitEvents = selectable;
     const b2Circle circle{{0.0f, 0.0f}, radius};
     b2CreateCircleShape(body, &sd, &circle);
 

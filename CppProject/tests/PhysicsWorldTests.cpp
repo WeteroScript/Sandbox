@@ -1324,6 +1324,66 @@ int main()
     CHECK(melonFallMarked);
     CHECK(fallJointCountAfter == fallJointCount);
 
+    // Non-fracturing props receive localized surface wear only from hard hits.
+    PhysicsWorld surfaceWearWorld;
+    surfaceWearWorld.setMap(MapKind::TestRange, false);
+    const int wornBarrelIndex = surfaceWearWorld.spawnBarrel(0.0f, 5.0f);
+    const int wearBallIndex = surfaceWearWorld.spawnBall(-2.0f, 5.0f);
+    CHECK(wornBarrelIndex >= 0 && wearBallIndex >= 0);
+    const b2BodyId wornBarrelId =
+        surfaceWearWorld.records()[static_cast<std::size_t>(wornBarrelIndex)].id;
+    CHECK(!surfaceWearWorld.records()[static_cast<std::size_t>(wornBarrelIndex)].breakable);
+    b2Body_SetLinearVelocity(
+        surfaceWearWorld.records()[static_cast<std::size_t>(wearBallIndex)].id,
+        {17.0f, 0.0f});
+    for (int i = 0; i < 24; ++i)
+        surfaceWearWorld.step(1.0f / 60.0f, 4);
+    CHECK(b2Body_IsValid(wornBarrelId));
+    const BodyRecord& wornBarrel =
+        surfaceWearWorld.records()[static_cast<std::size_t>(wornBarrelIndex)];
+    CHECK(wornBarrel.impactDamage > 0.0f);
+    CHECK(wornBarrel.impactDamage <= 0.92f);
+    CHECK(wornBarrel.impactMarkCount > 0);
+    CHECK(wornBarrel.impactMarkCount <= kMaxImpactMarks);
+
+    std::vector<std::uint8_t> surfaceWearSnapshot;
+    CHECK(surfaceWearWorld.saveToSnapshot(surfaceWearSnapshot));
+    PhysicsWorld restoredSurfaceWear;
+    CHECK(restoredSurfaceWear.loadFromSnapshot(surfaceWearSnapshot));
+    bool restoredWearMark = false;
+    for (const BodyRecord& body : restoredSurfaceWear.records())
+    {
+        if (body.shape != BodyShape::Circle ||
+            body.material != MaterialKind::Metal || body.impactMarkCount == 0)
+            continue;
+        CHECK(std::abs(body.impactDamage - wornBarrel.impactDamage) < 0.0001f);
+        CHECK(body.impactMarkCount == wornBarrel.impactMarkCount);
+        for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
+        {
+            CHECK(std::abs(body.impactMarks[mark].localX -
+                           wornBarrel.impactMarks[mark].localX) < 0.0001f);
+            CHECK(std::abs(body.impactMarks[mark].localY -
+                           wornBarrel.impactMarks[mark].localY) < 0.0001f);
+        }
+        restoredWearMark = true;
+    }
+    CHECK(restoredWearMark);
+
+    surfaceWearWorld.cloneAt(wornBarrelIndex);
+    bool clonedWearMark = false;
+    for (std::size_t i = 0; i < surfaceWearWorld.records().size(); ++i)
+    {
+        const BodyRecord& body = surfaceWearWorld.records()[i];
+        if (static_cast<int>(i) == wornBarrelIndex ||
+            body.material != MaterialKind::Metal || body.shape != BodyShape::Circle ||
+            body.impactMarkCount == 0)
+            continue;
+        CHECK(body.impactMarkCount == wornBarrel.impactMarkCount);
+        CHECK(std::abs(body.impactDamage - wornBarrel.impactDamage) < 0.0001f);
+        clonedWearMark = true;
+    }
+    CHECK(clonedWearMark);
+
     // A light collision creates no breakage; a high-speed hit fractures wood into four pieces.
     PhysicsWorld lightImpactWorld;
     lightImpactWorld.setMap(MapKind::Laboratory, false);
