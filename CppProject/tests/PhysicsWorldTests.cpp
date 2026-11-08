@@ -677,11 +677,53 @@ int main()
         acidWorld.step(1.0f / 60.0f, 4);
     CHECK(!b2Body_IsValid(acidTargetId));
 
+    // Every rope style creates a real two-body joint and survives save/load.
+    PhysicsWorld ropeVariantWorld;
+    ropeVariantWorld.setMap(MapKind::Laboratory, false);
+    const int ropeFirst = ropeVariantWorld.spawnBox(-1.0f, 0.0f);
+    const int ropeSecond = ropeVariantWorld.spawnBox(1.0f, 0.0f);
+    CHECK(ropeFirst >= 0 && ropeSecond >= 0);
+    for (MechanismKind kind : {MechanismKind::Rope, MechanismKind::Chain,
+                               MechanismKind::ElasticRope, MechanismKind::Cable})
+        CHECK(ropeVariantWorld.spawnMechanism(kind, 0.0f, 0.0f) >= 0);
+    CHECK(ropeVariantWorld.mechanisms().size() == 4);
+    for (const MechanismRecord& mechanism : ropeVariantWorld.mechanisms())
+        CHECK(b2Joint_IsValid(mechanism.joint));
+    std::vector<std::uint8_t> ropeSnapshot;
+    CHECK(ropeVariantWorld.saveToSnapshot(ropeSnapshot));
+    PhysicsWorld restoredRopes;
+    CHECK(restoredRopes.loadFromSnapshot(ropeSnapshot));
+    CHECK(restoredRopes.mechanisms().size() == 4);
+    CHECK(restoredRopes.mechanisms()[0].kind == MechanismKind::Rope);
+    CHECK(restoredRopes.mechanisms()[1].kind == MechanismKind::Chain);
+    CHECK(restoredRopes.mechanisms()[2].kind == MechanismKind::ElasticRope);
+    CHECK(restoredRopes.mechanisms()[3].kind == MechanismKind::Cable);
+    for (const MechanismRecord& mechanism : restoredRopes.mechanisms())
+        CHECK(b2Joint_IsValid(mechanism.joint));
+
+    // A character part stays inside a bounded motion envelope after a hit.
+    PhysicsWorld stableCharacterWorld;
+    stableCharacterWorld.setMap(MapKind::Laboratory, false);
+    const int stableGroup = stableCharacterWorld.spawnRagdoll(0.0f, 5.0f);
+    CHECK(stableGroup >= 0);
+    b2BodyId fastCharacterPart = b2_nullBodyId;
+    for (const BodyRecord& record : stableCharacterWorld.records())
+        if (record.groupId == stableGroup && record.partIndex == 0)
+            fastCharacterPart = record.id;
+    CHECK(b2Body_IsValid(fastCharacterPart));
+    b2Body_SetLinearVelocity(fastCharacterPart, {50.0f, 0.0f});
+    stableCharacterWorld.step(1.0f / 60.0f, 4);
+    const b2Vec2 stabilizedVelocity = b2Body_GetLinearVelocity(fastCharacterPart);
+    CHECK(std::sqrt(stabilizedVelocity.x * stabilizedVelocity.x +
+                    stabilizedVelocity.y * stabilizedVelocity.y) <= 20.01f);
+    CHECK(b2Body_GetJointCount(fastCharacterPart) == 5);
+
     // Removing either endpoint must destroy the constraint and preserve the
     // unrelated endpoint for every two-body mechanism type.
     PhysicsWorld cleanupWorld;
     for (MechanismKind kind : {
-             MechanismKind::Rod, MechanismKind::Rope, MechanismKind::Spring})
+             MechanismKind::Rod, MechanismKind::Rope, MechanismKind::Spring,
+             MechanismKind::Chain, MechanismKind::ElasticRope, MechanismKind::Cable})
     {
         for (int endpointToDelete = 0; endpointToDelete < 2; ++endpointToDelete)
         {

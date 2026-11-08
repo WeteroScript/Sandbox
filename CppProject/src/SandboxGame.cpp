@@ -541,7 +541,11 @@ void SandboxGame::handleFingerDown(SDL_FingerID fingerId, float x, float y)
     secondaryTouchX_ = x;
     secondaryTouchY_ = y;
 
-    // A second finger switches from object manipulation to camera gestures.
+    // After a second touch, object manipulation stays disabled until all
+    // fingers are released. The remaining finger can only pan the camera.
+    suppressObjectDragUntilAllFingersUp_ = true;
+    lastPanX_ = primaryTouchX_;
+    lastPanY_ = primaryTouchY_;
     handlePointerUp();
     pinchDistance_ = std::hypot(
         secondaryTouchX_ - primaryTouchX_,
@@ -594,6 +598,20 @@ void SandboxGame::handleFingerMove(SDL_FingerID fingerId, float x, float y)
         return;
     }
 
+    if (suppressObjectDragUntilAllFingersUp_)
+    {
+        if (hasPrimaryFinger_)
+        {
+            const float dx = primaryTouchX_ - lastPanX_;
+            const float dy = primaryTouchY_ - lastPanY_;
+            cameraX_ -= dx / pixelsPerMeter_;
+            cameraY_ += dy / pixelsPerMeter_;
+            lastPanX_ = primaryTouchX_;
+            lastPanY_ = primaryTouchY_;
+        }
+        return;
+    }
+
     handlePointerMove(primaryTouchX_, primaryTouchY_);
 }
 
@@ -618,6 +636,7 @@ void SandboxGame::handleFingerUp(SDL_FingerID fingerId)
         {
             hasPrimaryFinger_ = false;
             handlePointerUp();
+            suppressObjectDragUntilAllFingersUp_ = false;
         }
         return;
     }
@@ -633,6 +652,10 @@ void SandboxGame::handleFingerUp(SDL_FingerID fingerId)
             panning_ = true;
             lastPanX_ = primaryTouchX_;
             lastPanY_ = primaryTouchY_;
+        }
+        else
+        {
+            suppressObjectDragUntilAllFingersUp_ = false;
         }
     }
 }
@@ -706,7 +729,7 @@ void SandboxGame::handleUiClick(float x, float y)
     };
     static constexpr std::array<SpawnItem, 6> miscItems{
         SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
-        SpawnItem::Box, SpawnItem::Box, SpawnItem::Box
+        SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable
     };
 
     const auto& items = spawnCategory_ == SpawnCategory::Props
@@ -767,7 +790,10 @@ void SandboxGame::handleUiClick(float x, float y)
 }
 void SandboxGame::placeSelected(float worldX, float worldY)
 {
-    const bool mechanism = spawnCategory_ == SpawnCategory::Mechanisms;
+    const bool ropeConnection = selectedSpawnItem_ == SpawnItem::Chain ||
+        selectedSpawnItem_ == SpawnItem::ElasticRope ||
+        selectedSpawnItem_ == SpawnItem::Cable;
+    const bool mechanism = spawnCategory_ == SpawnCategory::Mechanisms || ropeConnection;
     const bool character = selectedSpawnItem_ == SpawnItem::Ragdoll ||
                            selectedSpawnItem_ == SpawnItem::Robot;
     const float spacing = mechanism ? 1.25f : character ? 2.6f : 1.45f;
@@ -836,6 +862,15 @@ void SandboxGame::placeSelected(float worldX, float worldY)
                 break;
             case SpawnItem::AcidBucket:
                 result = physics_.spawnBucket(BucketKind::Acid, x, y);
+                break;
+            case SpawnItem::Chain:
+                result = physics_.spawnMechanism(MechanismKind::Chain, x, y);
+                break;
+            case SpawnItem::ElasticRope:
+                result = physics_.spawnMechanism(MechanismKind::ElasticRope, x, y);
+                break;
+            case SpawnItem::Cable:
+                result = physics_.spawnMechanism(MechanismKind::Cable, x, y);
                 break;
         }
 
@@ -1072,7 +1107,8 @@ void SandboxGame::update(float deltaTime)
     noticeTimer_ = std::max(0.0f, noticeTimer_ - deltaTime);
     clearConfirmTimer_ = std::max(0.0f, clearConfirmTimer_ - deltaTime);
 
-    if (grabbedIndex_ >= 0 && pointerDown_ && tool_ == SandboxTool::Grab)
+    if (grabbedIndex_ >= 0 && pointerDown_ && tool_ == SandboxTool::Grab &&
+        !suppressObjectDragUntilAllFingersUp_)
     {
         const b2Vec2 world = screenToWorld(pointerX_, pointerY_);
         physics_.updateGrab(
@@ -1457,7 +1493,82 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         shadowWidth, shadowHeight,
         SDL_Color{3, 5, 8, 48});
 
-    if (body.shape == BodyShape::Circle)
+    const bool melonSideProfile = body.groupId >= 0 && body.partIndex == 1 &&
+        tint.g > tint.r * 1.18f && tint.g > tint.b * 1.08f;
+    if (melonSideProfile)
+    {
+        const SDL_FPoint center = worldToScreen(x, y);
+        const float radiusPixels = body.radius * pixelsPerMeter_;
+        const float cosine = std::cos(angle);
+        const float sine = std::sin(angle);
+        const auto facePoint = [&](float localX, float localY)
+        {
+            return worldToScreen(
+                x + cosine * localX * body.radius - sine * localY * body.radius,
+                y + sine * localX * body.radius + cosine * localY * body.radius);
+        };
+
+        // Flat side-on melon head with a visible profile facing right.
+        drawFilledEllipse(renderer_, center.x, center.y,
+            radiusPixels * 1.03f, radiusPixels * 0.84f,
+            shadeColor(tint, 0.96f));
+        drawFilledEllipse(renderer_, center.x - cosine * radiusPixels * 0.12f,
+            center.y + sine * radiusPixels * 0.12f,
+            radiusPixels * 0.62f, radiusPixels * 0.66f,
+            shadeColor(tint, 1.10f, 175));
+
+        setColor(renderer_, SDL_Color{42, 105, 57, 205});
+        const SDL_FPoint rindA = facePoint(-0.66f, -0.55f);
+        const SDL_FPoint rindB = facePoint(-0.80f, 0.12f);
+        const SDL_FPoint rindC = facePoint(-0.56f, 0.66f);
+        SDL_RenderLine(renderer_, rindA.x, rindA.y, rindB.x, rindB.y);
+        SDL_RenderLine(renderer_, rindB.x, rindB.y, rindC.x, rindC.y);
+
+        const SDL_FPoint eye = facePoint(0.36f, 0.21f);
+        const SDL_FPoint pupil = facePoint(0.40f, 0.22f);
+        drawFilledCircle(renderer_, eye.x, eye.y,
+            std::max(2.0f, radiusPixels * 0.105f),
+            SDL_Color{241, 247, 226, 255});
+        drawFilledCircle(renderer_, pupil.x, pupil.y,
+            std::max(1.4f, radiusPixels * 0.052f),
+            SDL_Color{24, 39, 28, 255});
+
+        const SDL_FPoint noseA = facePoint(0.72f, 0.02f);
+        const SDL_FPoint noseB = facePoint(0.82f, -0.04f);
+        const SDL_FPoint mouthA = facePoint(0.48f, -0.25f);
+        const SDL_FPoint mouthB = facePoint(0.70f, -0.28f);
+        setColor(renderer_, SDL_Color{28, 76, 44, 235});
+        SDL_RenderLine(renderer_, noseA.x, noseA.y, noseB.x, noseB.y);
+        SDL_RenderLine(renderer_, mouthA.x, mouthA.y, mouthB.x, mouthB.y);
+
+        const SDL_FPoint cheek = facePoint(0.24f, -0.17f);
+        drawFilledCircle(renderer_, cheek.x, cheek.y,
+            std::max(1.2f, radiusPixels * 0.045f),
+            SDL_Color{157, 217, 112, 170});
+
+        for (int i = 0; i < 32; ++i)
+        {
+            const float a0 = 2.0f * kPi * static_cast<float>(i) / 32.0f;
+            const float a1 = 2.0f * kPi * static_cast<float>(i + 1) / 32.0f;
+            const SDL_FPoint p0 = facePoint(std::cos(a0), std::sin(a0) * 0.84f);
+            const SDL_FPoint p1 = facePoint(std::cos(a1), std::sin(a1) * 0.84f);
+            setColor(renderer_, SDL_Color{34, 100, 53, 235});
+            SDL_RenderLine(renderer_, p0.x, p0.y, p1.x, p1.y);
+        }
+        if (selected)
+        {
+            setColor(renderer_, SDL_Color{245, 248, 250, 255});
+            const SDL_FPoint outlineA = facePoint(-1.0f, 0.0f);
+            const SDL_FPoint outlineB = facePoint(0.0f, 0.82f);
+            const SDL_FPoint outlineC = facePoint(1.0f, 0.0f);
+            const SDL_FPoint outlineD = facePoint(0.0f, -0.82f);
+            SDL_RenderLine(renderer_, outlineA.x, outlineA.y, outlineB.x, outlineB.y);
+            SDL_RenderLine(renderer_, outlineB.x, outlineB.y, outlineC.x, outlineC.y);
+            SDL_RenderLine(renderer_, outlineC.x, outlineC.y, outlineD.x, outlineD.y);
+            SDL_RenderLine(renderer_, outlineD.x, outlineD.y, outlineA.x, outlineA.y);
+        }
+    }
+    else if (body.shape == BodyShape::Circle)
         drawCircle(x, y, body.radius, angle, tint, selected);
     else
         drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint, selected);
@@ -1556,7 +1667,7 @@ void SandboxGame::drawUi()
             "ROD", "ROPE", "SPRING", "PISTON", "BUTTON", "TOGGLE"
         };
         static constexpr std::array<const char*, 6> miscLabels{
-            "VEDRO VODY", "VEDRO LAVY", "VEDRO KISLOTY", "", "", ""
+            "WATER", "LAVA", "ACID", "CHAIN", "ELASTIC", "CABLE"
         };
         static constexpr std::array<SpawnItem, 6> propItems{
             SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
@@ -1568,7 +1679,7 @@ void SandboxGame::drawUi()
         };
         static constexpr std::array<SpawnItem, 6> miscItems{
             SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
-            SpawnItem::Box, SpawnItem::Box, SpawnItem::Box
+            SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable
         };
 
         const auto& labels = spawnCategory_ == SpawnCategory::Props
@@ -2048,12 +2159,59 @@ void SandboxGame::drawMechanisms()
                     continue;
                 const float t1 = static_cast<float>(i) / segments;
                 const float t2 = std::min(1.0f, t1 + 0.13f);
-                SDL_RenderLine(renderer_,
-                    a.x + dx * t1, a.y + dy * t1,
-                    a.x + dx * t2, a.y + dy * t2);
+                SDL_RenderLine(renderer_, a.x + dx * t1, a.y + dy * t1,
+                               a.x + dx * t2, a.y + dy * t2);
             }
             drawFilledCircle(renderer_, a.x, a.y, 4.0f, makeColor(192, 147, 86));
             drawFilledCircle(renderer_, b.x, b.y, 4.0f, makeColor(192, 147, 86));
+        }
+        else if (mechanism.kind == MechanismKind::Chain)
+        {
+            const int links = std::clamp(static_cast<int>(length / 8.0f), 3, 42);
+            for (int i = 0; i <= links; ++i)
+            {
+                const float t = static_cast<float>(i) / links;
+                const float cx = a.x + dx * t;
+                const float cy = a.y + dy * t;
+                const float offset = (i % 2 == 0 ? -1.0f : 1.0f) * 2.0f;
+                setColor(renderer_, makeColor(44, 54, 66));
+                SDL_RenderLine(renderer_, cx - nx * 4.0f, cy - ny * 4.0f,
+                               cx + nx * 4.0f, cy + ny * 4.0f);
+                drawFilledCircle(renderer_, cx + nx * offset, cy + ny * offset,
+                                 2.5f, makeColor(172, 190, 205));
+            }
+            drawFilledCircle(renderer_, a.x, a.y, 4.0f, makeColor(172, 190, 205));
+            drawFilledCircle(renderer_, b.x, b.y, 4.0f, makeColor(172, 190, 205));
+        }
+        else if (mechanism.kind == MechanismKind::ElasticRope)
+        {
+            setColor(renderer_, active ? makeColor(78, 195, 166)
+                                       : makeColor(94, 115, 119));
+            const int segments = std::clamp(static_cast<int>(length / 7.0f), 8, 36);
+            SDL_FPoint previous = a;
+            for (int i = 1; i <= segments; ++i)
+            {
+                const float t = static_cast<float>(i) / segments;
+                const float wave = i == segments ? 0.0f
+                    : std::sin(t * kPi * static_cast<float>(segments) * 0.5f) * 2.6f;
+                const SDL_FPoint point{
+                    a.x + dx * t + nx * wave,
+                    a.y + dy * t + ny * wave
+                };
+                SDL_RenderLine(renderer_, previous.x, previous.y, point.x, point.y);
+                previous = point;
+            }
+            drawFilledCircle(renderer_, a.x, a.y, 4.0f, makeColor(78, 195, 166));
+            drawFilledCircle(renderer_, b.x, b.y, 4.0f, makeColor(78, 195, 166));
+        }
+        else if (mechanism.kind == MechanismKind::Cable)
+        {
+            setColor(renderer_, makeColor(118, 143, 164));
+            for (float offset : {-2.0f, 2.0f})
+                SDL_RenderLine(renderer_, a.x + nx * offset, a.y + ny * offset,
+                               b.x + nx * offset, b.y + ny * offset);
+            drawFilledCircle(renderer_, a.x, a.y, 4.0f, makeColor(208, 218, 228));
+            drawFilledCircle(renderer_, b.x, b.y, 4.0f, makeColor(208, 218, 228));
         }
         else if (mechanism.kind == MechanismKind::Spring)
         {

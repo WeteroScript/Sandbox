@@ -13,7 +13,7 @@ enum class BodyShape : std::uint8_t { Box, Circle };
 enum class MapKind : std::uint8_t { TestRange, City, Laboratory };
 enum class SurfaceKind : std::uint8_t { Water, Lava, Acid };
 enum class BucketKind : std::uint8_t { None, Water, Lava, Acid };
-enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle };
+enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle, Chain, ElasticRope, Cable };
 
 struct BodyRecord
 {

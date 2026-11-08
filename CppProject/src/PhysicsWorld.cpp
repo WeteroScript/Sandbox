@@ -443,7 +443,7 @@ bool readSavedMechanism(std::istream& in, SavedMechanism& m)
           readValue(in, m.active)))
         return false;
 
-    const auto maxKind = static_cast<std::uint8_t>(MechanismKind::Toggle);
+    const auto maxKind = static_cast<std::uint8_t>(MechanismKind::Cable);
     return m.kind <= maxKind &&
         m.firstIndex >= -1 && m.secondIndex >= -1 &&
         finite(m.anchorX) && finite(m.anchorY) &&
@@ -811,7 +811,8 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
         if (!b2Joint_IsValid(mechanism.joint))
             continue;
 
-        if (mechanism.kind == MechanismKind::Spring)
+        if (mechanism.kind == MechanismKind::Spring ||
+            mechanism.kind == MechanismKind::ElasticRope)
         {
             mechanism.active = enabled;
             b2DistanceJoint_EnableSpring(mechanism.joint, enabled);
@@ -868,6 +869,18 @@ void PhysicsWorld::step(float dt, int subSteps)
     updateSurfaces(dt);
     updateMechanisms(dt);
     b2World_Step(world_, dt, subSteps);
+
+    // Keep articulated characters stable under small incidental impacts.
+    // This motion envelope applies only to character groups, not scene props.
+    for (BodyRecord& record : records_)
+    {
+        if (record.groupId < 0 || !b2Body_IsValid(record.id))
+            continue;
+        b2Body_SetLinearVelocity(
+            record.id, clampVector(b2Body_GetLinearVelocity(record.id), 20.0f));
+        b2Body_SetAngularVelocity(record.id,
+            std::clamp(b2Body_GetAngularVelocity(record.id), -12.0f, 12.0f));
+    }
 }
 
 int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
@@ -878,7 +891,8 @@ int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
     bd.type = isStatic ? b2_staticBody : b2_dynamicBody;
     bd.position = {x, y};
     bd.rotation = b2MakeRot(angle);
-    bd.angularDamping = 0.15f;
+    bd.linearDamping = 0.16f;
+    bd.angularDamping = 0.42f;
 
     b2BodyId body = b2CreateBody(world_, &bd);
     if (!b2Body_IsValid(body))
@@ -886,8 +900,8 @@ int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
 
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = isStatic ? 0.0f : density;
-    sd.material.friction = 0.62f;
-    sd.material.restitution = 0.08f;
+    sd.material.friction = 0.72f;
+    sd.material.restitution = 0.035f;
     const b2Polygon polygon = b2MakeBox(hw, hh);
     b2CreatePolygonShape(body, &sd, &polygon);
 
@@ -913,7 +927,8 @@ int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
     bd.type = b2_dynamicBody;
     bd.position = {x, y};
     bd.rotation = b2MakeRot(angle);
-    bd.angularDamping = 0.12f;
+    bd.linearDamping = 0.12f;
+    bd.angularDamping = 0.34f;
 
     b2BodyId body = b2CreateBody(world_, &bd);
     if (!b2Body_IsValid(body))
@@ -921,8 +936,8 @@ int PhysicsWorld::createCircle(float x, float y, float radius, SDL_Color tint,
 
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = density;
-    sd.material.friction = 0.5f;
-    sd.material.restitution = 0.22f;
+    sd.material.friction = 0.62f;
+    sd.material.restitution = 0.08f;
     const b2Circle circle{{0.0f, 0.0f}, radius};
     b2CreateCircleShape(body, &sd, &circle);
 
@@ -1049,16 +1064,27 @@ bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
     definition.base.localFrameB.p = {0.0f, 0.0f};
     definition.length = length;
     definition.enableSpring = kind == MechanismKind::Spring ||
-                              kind == MechanismKind::Piston;
-    definition.hertz = kind == MechanismKind::Piston ? 1.45f : 2.6f;
-    definition.dampingRatio = kind == MechanismKind::Piston ? 0.72f : 0.32f;
+                              kind == MechanismKind::Piston ||
+                              kind == MechanismKind::ElasticRope;
+    definition.hertz = kind == MechanismKind::Piston ? 1.45f
+        : kind == MechanismKind::ElasticRope ? 0.95f : 2.6f;
+    definition.dampingRatio = kind == MechanismKind::Piston ? 0.72f
+        : kind == MechanismKind::ElasticRope ? 0.28f : 0.32f;
 
-    if (kind == MechanismKind::Rope)
+    if (kind == MechanismKind::Rope || kind == MechanismKind::Chain ||
+        kind == MechanismKind::Cable)
     {
         definition.enableLimit = true;
         definition.minLength = 0.45f;
-        definition.maxLength = length;
+        definition.maxLength = kind == MechanismKind::Cable
+            ? std::max(0.45f, length * 0.94f) : length;
         definition.enableSpring = false;
+    }
+    else if (kind == MechanismKind::ElasticRope)
+    {
+        definition.enableLimit = true;
+        definition.minLength = 0.45f;
+        definition.maxLength = std::min(24.0f, length * 1.65f);
     }
 
     if (kind == MechanismKind::Piston)
@@ -1093,7 +1119,7 @@ bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
     mechanism.active = mechanismsEnabled_;
     mechanisms_.push_back(mechanism);
 
-    if (kind == MechanismKind::Spring)
+    if (kind == MechanismKind::Spring || kind == MechanismKind::ElasticRope)
         b2DistanceJoint_EnableSpring(joint, mechanismsEnabled_);
     if (kind == MechanismKind::Piston)
         b2DistanceJoint_EnableMotor(joint, mechanismsEnabled_);
@@ -1138,8 +1164,9 @@ int PhysicsWorld::spawnMechanism(MechanismKind kind, float x, float y)
 
     const b2BodyId first = records_[static_cast<std::size_t>(firstIndex)].id;
     const b2BodyId second = records_[static_cast<std::size_t>(secondIndex)].id;
-    return createMechanism(kind, x, y, first, second)
-        ? static_cast<int>(mechanisms_.size() - 1) : -1;
+    if (!createMechanism(kind, x, y, first, second))
+        return -1;
+    return static_cast<int>(mechanisms_.size() - 1);
 }
 
 bool PhysicsWorld::interactAt(float x, float y)
@@ -1194,6 +1221,7 @@ void PhysicsWorld::connectHingeLocal(b2BodyId a, b2BodyId b,
     b2RevoluteJointDef joint = b2DefaultRevoluteJointDef();
     joint.base.bodyIdA = a;
     joint.base.bodyIdB = b;
+    joint.base.collideConnected = false;
     joint.base.localFrameA.p = localA;
     joint.base.localFrameB.p = localB;
     joint.enableLimit = true;
@@ -1249,20 +1277,20 @@ int PhysicsWorld::spawnCharacter(float x, float y, bool robot)
         : SDL_Color{128,213,130,255};
 
     const int torso = createBox(x, y+0.75f, 0.34f, 0.55f, 0.0f,
-                                torsoColor, false, true, group, 1.25f, 0);
+                                torsoColor, false, true, group, 2.0f, 0);
     const int head = robot
         ? createBox(x, y+1.58f, 0.32f, 0.32f, 0.0f,
-                    headColor, false, true, group, 0.9f, 1)
+                    headColor, false, true, group, 1.35f, 1)
         : createCircle(x, y+1.58f, 0.38f, headColor,
-                       true, group, 0.9f, 0.0f, 1);
+                       true, group, 1.35f, 0.0f, 1);
     const int armL = createBox(x-0.54f, y+0.75f, 0.15f, 0.43f, -0.1f,
-                               limbColor, false, true, group, 0.75f, 2);
+                               limbColor, false, true, group, 1.15f, 2);
     const int armR = createBox(x+0.54f, y+0.75f, 0.15f, 0.43f, 0.1f,
-                               limbColor, false, true, group, 0.75f, 3);
+                               limbColor, false, true, group, 1.15f, 3);
     const int legL = createBox(x-0.20f, y-0.20f, 0.17f, 0.48f, -0.05f,
-                               limbColor, false, true, group, 0.9f, 4);
+                               limbColor, false, true, group, 1.3f, 4);
     const int legR = createBox(x+0.20f, y-0.20f, 0.17f, 0.48f, 0.05f,
-                               limbColor, false, true, group, 0.9f, 5);
+                               limbColor, false, true, group, 1.3f, 5);
 
     if (torso < 0 || head < 0 || armL < 0 || armR < 0 || legL < 0 || legR < 0)
         return group;
@@ -1863,7 +1891,8 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
             const MechanismKind kind = static_cast<MechanismKind>(mechanism.kind);
             if ((kind == MechanismKind::Rod || kind == MechanismKind::Rope ||
-                 kind == MechanismKind::Spring) &&
+                 kind == MechanismKind::Spring || kind == MechanismKind::Chain ||
+                 kind == MechanismKind::ElasticRope || kind == MechanismKind::Cable) &&
                 (mechanism.firstIndex < 0 || mechanism.secondIndex < 0 ||
                  mechanism.firstIndex == mechanism.secondIndex ||
                  mechanism.restLength < 0.45f))
@@ -1921,7 +1950,8 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
             float anchorX = mechanism.anchorX;
             float anchorY = mechanism.anchorY;
             if (kind == MechanismKind::Rod || kind == MechanismKind::Rope ||
-                kind == MechanismKind::Spring)
+                kind == MechanismKind::Spring || kind == MechanismKind::Chain ||
+                kind == MechanismKind::ElasticRope || kind == MechanismKind::Cable)
             {
                 if (first > second) std::swap(first, second);
                 anchorX = 0.0f;
@@ -2073,7 +2103,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
         if (b2Joint_IsValid(restored.joint))
         {
-            if (kind == MechanismKind::Spring)
+            if (kind == MechanismKind::Spring || kind == MechanismKind::ElasticRope)
                 b2DistanceJoint_EnableSpring(restored.joint, restored.active);
             else if (kind == MechanismKind::Piston)
                 b2DistanceJoint_EnableMotor(restored.joint, restored.active);

@@ -13,7 +13,7 @@ enum class SpawnCategory { Props, Mechanisms, Misc };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
-    WaterBucket, LavaBucket, AcidBucket
+    WaterBucket, LavaBucket, AcidBucket, Chain, ElasticRope, Cable
 };
 
 struct UiLayout
@@ -60,6 +60,7 @@ private:
     bool panning_ = false;
     bool hasPrimaryFinger_ = false;
     bool hasSecondaryFinger_ = false;
+    bool suppressObjectDragUntilAllFingersUp_ = false;
     SDL_FingerID primaryFingerId_ = 0;
     SDL_FingerID secondaryFingerId_ = 0;
     float primaryTouchX_ = 0.0f;
