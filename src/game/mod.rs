@@ -39,16 +39,18 @@ impl Game {
             && matches!(self.state.mode, GameMode::Playing | GameMode::Paused);
         self.input.update(
             spawn_ui_active,
-            self.drag_body.is_some(),
+            self.drag_body.is_some() || self.state.tool_mode != state::ToolMode::Grab,
             spawn_dialog_was_open,
             self.state.tool_mode,
         );
 
         self.handle_spawn_dialog();
 
-        if let Some(tool_mode) = self.input.tool_mode_pressed() {
-            self.state.tool_mode = tool_mode;
-            self.drag_body = None;
+        if self.state.mode == GameMode::Playing {
+            if let Some(tool_mode) = self.input.tool_mode_pressed() {
+                self.state.tool_mode = tool_mode;
+                self.drag_body = None;
+            }
         }
         self.update_tool_interaction();
 
