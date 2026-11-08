@@ -22,6 +22,8 @@ Third-party source is downloaded during CMake configuration rather than copied i
 - Spawn panel for boxes, balls, and Melon ragdolls.
 - Spawn quantity from 1 to 10 and tap-to-place workflow.
 - Mouse and single-touch interaction.
+- Versioned scene save/load with body transforms, velocities, colors, frozen states, and ragdoll joint links.
+- Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
 - Versioned scene save/load, including body transforms, velocities, materials, frozen state, and ragdoll joint links.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
 - Camera pan, mouse-wheel zoom, pause, and simulation speed controls.
