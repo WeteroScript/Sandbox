@@ -2,6 +2,9 @@ use macroquad::prelude::Vec2;
 
 use super::physics::{CharacterKind, MapKind, PhysicsWorld};
 
+#[path = "bounds.rs"]
+mod bounds;
+
 pub struct CameraState {
     pub center: Vec2,
     pub zoom: f32,
@@ -18,8 +21,8 @@ impl CameraState {
     pub fn apply_gesture(&mut self, pan: Vec2, zoom_delta: f32) {
         self.center -= pan / self.zoom.max(0.1);
         self.zoom = (self.zoom * (1.0 + zoom_delta)).clamp(0.55, 2.8);
-        self.center.x = self.center.x.clamp(320.0, 960.0);
-        self.center.y = self.center.y.clamp(180.0, 540.0);
+        self.center.x = self.center.x.clamp(160.0, 1120.0);
+        self.center.y = self.center.y.clamp(120.0, 580.0);
     }
 
     pub fn macroquad_camera(&self) -> macroquad::camera::Camera2D {
@@ -197,6 +200,8 @@ impl GameState {
     pub fn new() -> Self {
         let character = CharacterKind::Melon;
         let map = MapKind::TestRange;
+        let mut physics = PhysicsWorld::new(character, map);
+        bounds::install_bounds(&mut physics);
 
         Self {
             mode: GameMode::MainMenu,
@@ -204,7 +209,7 @@ impl GameState {
             character,
             map,
             camera: CameraState::new(),
-            physics: PhysicsWorld::new(character, map),
+            physics,
             spawn_menu_open: true,
             spawn_category: SpawnCategory::Pistols,
         }
@@ -212,6 +217,7 @@ impl GameState {
 
     pub fn rebuild_world(&mut self) {
         self.physics = PhysicsWorld::new(self.character, self.map);
+        bounds::install_bounds(&mut self.physics);
         self.camera = CameraState::new();
         self.elapsed = 0.0;
     }
