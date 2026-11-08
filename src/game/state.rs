@@ -13,7 +13,7 @@ pub struct CameraState {
 impl CameraState {
     pub fn new() -> Self {
         Self {
-            center: Vec2::new(640.0, 360.0),
+            center: Vec2::new(1200.0, 700.0),
             zoom: 1.0,
         }
     }
@@ -21,8 +21,8 @@ impl CameraState {
     pub fn apply_gesture(&mut self, pan: Vec2, zoom_delta: f32) {
         self.center -= pan / self.zoom.max(0.1);
         self.zoom = (self.zoom * (1.0 + zoom_delta)).clamp(0.55, 2.8);
-        self.center.x = self.center.x.clamp(160.0, 1120.0);
-        self.center.y = self.center.y.clamp(120.0, 580.0);
+        self.center.x = self.center.x.clamp(320.0, 2080.0);
+        self.center.y = self.center.y.clamp(220.0, 1100.0);
     }
 
     pub fn macroquad_camera(&self) -> macroquad::camera::Camera2D {
@@ -30,7 +30,7 @@ impl CameraState {
             target: self.center,
             zoom: macroquad::prelude::vec2(
                 2.0 * self.zoom / macroquad::prelude::screen_width(),
-                -2.0 * self.zoom / macroquad::prelude::screen_height(),
+                2.0 * self.zoom / macroquad::prelude::screen_height(),
             ),
             ..Default::default()
         }
