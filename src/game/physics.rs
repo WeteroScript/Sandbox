@@ -786,12 +786,14 @@ impl PhysicsWorld {
                 for handle in submerged {
                     if let Some(body) = self.bodies.get_mut(handle) {
                         let mass = body.mass().max(0.1);
+                        let depth = (body.translation().y - 870.0).max(0.0);
+                        let submersion = (depth / 120.0).clamp(0.0, 1.0);
                         let velocity = *body.linvel();
-                        let drag = velocity * (-mass * 1.9);
-                        let buoyancy = mass * 1020.0;
+                        let drag = velocity * (-mass * 1.9 * submersion);
+                        let buoyancy = mass * 1020.0 * submersion;
                         let angular_velocity = body.angvel();
                         body.add_force(vector![drag.x, drag.y - buoyancy], true);
-                        body.add_torque(-angular_velocity * mass * 1.6, true);
+                        body.add_torque(-angular_velocity * mass * 1.6 * submersion, true);
                     }
                 }
             }
