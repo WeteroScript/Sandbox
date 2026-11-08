@@ -639,7 +639,7 @@ bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
         if (kind == MechanismKind::Piston)
             eraseRecord(static_cast<std::size_t>(
                 std::find_if(records_.begin(), records_.end(),
-                    [bodyA](const BodyRecord& r) { return r.id == bodyA; }) - records_.begin()
+                    [bodyA](const BodyRecord& r) { return sameBodyId(r.id, bodyA); }) - records_.begin()
             ));
         return false;
     }
@@ -1033,7 +1033,7 @@ void PhysicsWorld::clearDynamic()
     for (b2BodyId victim : victims)
     {
         const auto found = std::find_if(records_.begin(), records_.end(),
-            [victim](const BodyRecord& record) { return record.id == victim; });
+            [victim](const BodyRecord& record) { return sameBodyId(record.id, victim); });
         if (found != records_.end())
             eraseRecord(static_cast<std::size_t>(found - records_.begin()));
     }
