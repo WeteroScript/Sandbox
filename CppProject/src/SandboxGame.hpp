@@ -88,6 +88,7 @@ private:
     float accumulator_ = 0.0f;
     float fps_ = 0.0f;
     float noticeTimer_ = 0.0f;
+    float clearConfirmTimer_ = 0.0f;
     std::string notice_;
 
     int outputWidth_ = 1280;

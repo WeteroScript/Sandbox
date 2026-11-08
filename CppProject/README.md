@@ -27,6 +27,7 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Spawn catalogue for boxes, balls, barrels, platforms, Melon, Robot, and all six mechanisms.
 - Placement feedback when a mechanism cannot find the required nearby movable bodies.
 - Spawn quantity from 1 to 10 and tap-to-place workflow.
+- Clear-scene action requires a second confirmation tap to prevent accidental deletion.
 - Mouse and touch interaction, including two-finger camera pan and pinch zoom.
 - Versioned scene save/load with map selection, body transforms, velocities, dimensions, colors, freeze state, ragdoll joint links, and mechanism connections.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.

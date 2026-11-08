@@ -453,6 +453,8 @@ void SandboxGame::handlePointerDown(float x, float y)
     panning_ = false;
 
     const UiLayout layout = makeUiLayout();
+    if (!pointInRect(x, y, layout.clearButton))
+        clearConfirmTimer_ = 0.0f;
 
     for (const SDL_FRect& button : layout.toolButtons)
     {
@@ -769,8 +771,19 @@ void SandboxGame::handleUiClick(float x, float y)
         loadScene();
     else if (pointInRect(x, y, layout.clearButton))
     {
-        physics_.clearDynamic();
-        grabbedIndex_ = -1;
+        if (clearConfirmTimer_ > 0.0f)
+        {
+            physics_.clearDynamic();
+            grabbedIndex_ = -1;
+            clearConfirmTimer_ = 0.0f;
+            notice_ = "Scene cleared";
+        }
+        else
+        {
+            clearConfirmTimer_ = 3.0f;
+            notice_ = "Tap CLEAR again to remove all objects";
+        }
+        noticeTimer_ = 3.0f;
     }
 }
 void SandboxGame::placeSelected(float worldX, float worldY)
@@ -948,6 +961,7 @@ void SandboxGame::loadScene(bool silent)
 void SandboxGame::update(float deltaTime)
 {
     noticeTimer_ = std::max(0.0f, noticeTimer_ - deltaTime);
+    clearConfirmTimer_ = std::max(0.0f, clearConfirmTimer_ - deltaTime);
 
     if (grabbedIndex_ >= 0 && pointerDown_ && tool_ == SandboxTool::Grab)
     {
@@ -1379,7 +1393,9 @@ void SandboxGame::drawUi()
         drawButton(layout.quantityUp, "+", false);
         drawButton(layout.saveButton, "SAVE", false);
         drawButton(layout.loadButton, "LOAD", false);
-        drawButton(layout.clearButton, "CLEAR", false);
+        drawButton(layout.clearButton,
+                   clearConfirmTimer_ > 0.0f ? "SURE?" : "CLEAR",
+                   clearConfirmTimer_ > 0.0f);
 
         char quantity[12];
         std::snprintf(quantity, sizeof(quantity), "x%d", spawnQuantity_);
