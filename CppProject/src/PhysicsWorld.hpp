@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <box2d/box2d.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
@@ -15,6 +16,15 @@ enum class MapKind : std::uint8_t { TestRange, City, Laboratory };
 enum class SurfaceKind : std::uint8_t { Water, Lava, Acid };
 enum class BucketKind : std::uint8_t { None, Water, Lava, Acid };
 enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle, Chain, ElasticRope, Cable, Wire, Switch, Motor };
+
+struct ImpactMark
+{
+    float localX = 0.0f;
+    float localY = 0.0f;
+    float strength = 0.0f;
+};
+
+inline constexpr std::size_t kMaxImpactMarks = 3;
 
 struct BodyRecord
 {
@@ -43,6 +53,8 @@ struct BodyRecord
     float impactDamage = 0.0f;
     float impactLocalX = 0.0f;
     float impactLocalY = 0.0f;
+    std::array<ImpactMark, kMaxImpactMarks> impactMarks{};
+    std::uint8_t impactMarkCount = 0;
     bool breakable = false;
     bool powerSource = false;
     float batteryCharge = 0.0f;

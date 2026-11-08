@@ -313,6 +313,8 @@ struct SavedBody
     float batteryCharge = 0.0f;
     float impactLocalX = 0.0f;
     float impactLocalY = 0.0f;
+    std::array<ImpactMark, kMaxImpactMarks> impactMarks{};
+    std::uint8_t impactMarkCount = 0;
 };
 
 bool writeSavedBody(std::ostream& out, const SavedBody& b)
@@ -348,7 +350,19 @@ bool writeSavedBody(std::ostream& out, const SavedBody& b)
         writeValue(out, static_cast<std::uint8_t>(b.powerSource ? 1U : 0U)) &&
         writeValue(out, b.batteryCharge) &&
         writeValue(out, b.impactLocalX) &&
-        writeValue(out, b.impactLocalY);
+        writeValue(out, b.impactLocalY)
+        return false;
+
+    if (!writeValue(out, b.impactMarkCount))
+        return false;
+    for (const ImpactMark& mark : b.impactMarks)
+    {
+        if (!writeValue(out, mark.localX) ||
+            !writeValue(out, mark.localY) ||
+            !writeValue(out, mark.strength))
+            return false;
+    }
+    return true;
 }
 
 bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
@@ -424,6 +438,27 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
          !readValue(in, b.impactLocalY)))
         return false;
 
+    if (version >= 9)
+    {
+        if (!readValue(in, b.impactMarkCount) ||
+            b.impactMarkCount > kMaxImpactMarks)
+            return false;
+        for (ImpactMark& mark : b.impactMarks)
+        {
+            if (!readValue(in, mark.localX) ||
+                !readValue(in, mark.localY) ||
+                !readValue(in, mark.strength))
+                return false;
+        }
+    }
+    else if (b.impactDamage > 0.025f)
+    {
+        b.impactMarkCount = 1;
+        b.impactMarks[0] = {
+            b.impactLocalX, b.impactLocalY, b.impactDamage
+        };
+    }
+
     if (shape > static_cast<std::uint8_t>(BodyShape::Circle) || frozen > 1)
         return false;
 
@@ -446,6 +481,19 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
     for (float value : values)
         if (!finite(value))
             return false;
+
+    if (b.impactMarkCount > kMaxImpactMarks)
+        return false;
+    for (std::size_t i = 0; i < b.impactMarks.size(); ++i)
+    {
+        const ImpactMark& mark = b.impactMarks[i];
+        if (!finite(mark.localX) || !finite(mark.localY) ||
+            !finite(mark.strength) || std::abs(mark.localX) > 1000.0f ||
+            std::abs(mark.localY) > 1000.0f || mark.strength < 0.0f ||
+            mark.strength > 1.0f ||
+            (i < b.impactMarkCount && mark.strength <= 0.0f))
+            return false;
+    }
 
     if (b.halfWidth <= 0.0f || b.halfWidth > 1000.0f ||
         b.halfHeight <= 0.0f || b.halfHeight > 1000.0f ||
@@ -1173,7 +1221,7 @@ void PhysicsWorld::processImpactEvents()
         const std::size_t recordIndex = found->second;
         BodyRecord& record = records_[recordIndex];
 
-        const auto rememberImpactPoint = [&]()
+        const auto rememberImpactPoint = [&](float strength)
         {
             const b2Vec2 localPoint = b2Body_GetLocalPoint(
                 bodyId,
@@ -1183,8 +1231,64 @@ void PhysicsWorld::processImpactEvents()
                 ? record.radius * 0.96f : record.halfWidth * 0.96f;
             const float limitY = record.shape == BodyShape::Circle
                 ? record.radius * 0.96f : record.halfHeight * 0.96f;
-            record.impactLocalX = std::clamp(localPoint.x, -limitX, limitX);
-            record.impactLocalY = std::clamp(localPoint.y, -limitY, limitY);
+            const float localX = std::clamp(localPoint.x, -limitX, limitX);
+            const float localY = std::clamp(localPoint.y, -limitY, limitY);
+            if (!std::isfinite(strength) || strength <= 0.0f)
+                return;
+
+            const float safeStrength = std::clamp(strength, 0.04f, 1.0f);
+            const float mergeDistance = std::max(
+                0.06f, std::max(limitX, limitY) * 0.30f);
+            const float mergeDistanceSquared = mergeDistance * mergeDistance;
+            std::size_t closest = record.impactMarkCount;
+            float closestDistanceSquared = mergeDistanceSquared;
+            for (std::size_t i = 0; i < record.impactMarkCount; ++i)
+            {
+                const ImpactMark& mark = record.impactMarks[i];
+                const float dx = mark.localX - localX;
+                const float dy = mark.localY - localY;
+                const float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared <= closestDistanceSquared)
+                {
+                    closest = i;
+                    closestDistanceSquared = distanceSquared;
+                }
+            }
+
+            if (closest < record.impactMarkCount)
+            {
+                ImpactMark& mark = record.impactMarks[closest];
+                const float previousStrength = mark.strength;
+                const float combinedStrength = previousStrength + safeStrength;
+                if (combinedStrength > 0.0001f)
+                {
+                    mark.localX = (mark.localX * previousStrength +
+                                   localX * safeStrength) / combinedStrength;
+                    mark.localY = (mark.localY * previousStrength +
+                                   localY * safeStrength) / combinedStrength;
+                }
+                mark.strength = std::clamp(
+                    previousStrength + safeStrength * 0.48f, 0.04f, 1.0f);
+                record.impactLocalX = mark.localX;
+                record.impactLocalY = mark.localY;
+                return;
+            }
+
+            ImpactMark newMark{localX, localY, safeStrength};
+            std::size_t slot = record.impactMarkCount;
+            if (slot < kMaxImpactMarks)
+                ++record.impactMarkCount;
+            else
+            {
+                slot = 0;
+                for (std::size_t i = 1; i < record.impactMarks.size(); ++i)
+                    if (record.impactMarks[i].strength <
+                        record.impactMarks[slot].strength)
+                        slot = i;
+            }
+            record.impactMarks[slot] = newMark;
+            record.impactLocalX = localX;
+            record.impactLocalY = localY;
         };
 
         // Character parts accumulate persistent, non-structural impact marks.
@@ -1207,8 +1311,9 @@ void PhysicsWorld::processImpactEvents()
             const float previousDamage = record.impactDamage;
             record.impactDamage = std::clamp(
                 previousDamage + increment, 0.0f, melonHead ? 0.96f : 0.88f);
-            if (previousDamage <= 0.001f || increment >= previousDamage * 0.85f)
-                rememberImpactPoint();
+            const float markStrength = std::clamp(
+                increment * 1.75f + previousDamage * 0.06f, 0.08f, 0.92f);
+            rememberImpactPoint(markStrength);
             return;
         }
 
@@ -1223,7 +1328,7 @@ void PhysicsWorld::processImpactEvents()
         const float increment = ratio >= 1.35f
             ? 1.0f
             : ratio * ratio * 0.52f;
-        rememberImpactPoint();
+        rememberImpactPoint(std::clamp(increment * 1.15f, 0.08f, 1.0f));
         record.impactDamage = std::clamp(record.impactDamage + increment, 0.0f, 1.0f);
         if (record.impactDamage >= 1.0f && !fractureQueued[recordIndex])
         {
@@ -1981,6 +2086,8 @@ void PhysicsWorld::cloneAt(int index)
         std::array<float, 6> partDamage{};
         std::array<float, 6> partImpactX{};
         std::array<float, 6> partImpactY{};
+        std::array<std::array<ImpactMark, kMaxImpactMarks>, 6> partImpactMarks{};
+        std::array<std::uint8_t, 6> partImpactMarkCounts{};
 
         for (const BodyRecord& r : records_)
         {
@@ -1997,6 +2104,8 @@ void PhysicsWorld::cloneAt(int index)
                 partDamage[part] = r.impactDamage;
                 partImpactX[part] = r.impactLocalX;
                 partImpactY[part] = r.impactLocalY;
+                partImpactMarks[part] = r.impactMarks;
+                partImpactMarkCounts[part] = r.impactMarkCount;
             }
             ++count;
         }
@@ -2020,6 +2129,8 @@ void PhysicsWorld::cloneAt(int index)
                 clone.impactDamage = partDamage[part];
                 clone.impactLocalX = partImpactX[part];
                 clone.impactLocalY = partImpactY[part];
+                clone.impactMarks = partImpactMarks[part];
+                clone.impactMarkCount = partImpactMarkCounts[part];
             }
         }
         return;
@@ -2060,6 +2171,8 @@ void PhysicsWorld::cloneAt(int index)
         clone.impactDamage = selected.impactDamage;
         clone.impactLocalX = selected.impactLocalX;
         clone.impactLocalY = selected.impactLocalY;
+        clone.impactMarks = selected.impactMarks;
+        clone.impactMarkCount = selected.impactMarkCount;
         clone.breakable = selected.breakable;
         clone.powerSource = selected.powerSource;
         clone.batteryCharge = selected.batteryCharge;
@@ -2329,7 +2442,7 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
-    constexpr std::uint32_t version = 8;
+    constexpr std::uint32_t version = 9;
     constexpr std::uint32_t endianMarker = 0x01020304U;
     const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
@@ -2377,6 +2490,8 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         body.impactDamage = record.impactDamage;
         body.impactLocalX = record.impactLocalX;
         body.impactLocalY = record.impactLocalY;
+        body.impactMarks = record.impactMarks;
+        body.impactMarkCount = record.impactMarkCount;
         body.breakable = record.breakable;
         body.powerSource = record.powerSource;
         body.batteryCharge = record.batteryCharge;
@@ -2498,7 +2613,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     if (!readValue(input, version) ||
         !readValue(input, endianMarker) ||
-        (version < 1 || version > 8) ||
+        (version < 1 || version > 9) ||
         endianMarker != 0x01020304U)
         return false;
 
@@ -2685,6 +2800,8 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         record.impactDamage = body.impactDamage;
         record.impactLocalX = body.impactLocalX;
         record.impactLocalY = body.impactLocalY;
+        record.impactMarks = body.impactMarks;
+        record.impactMarkCount = body.impactMarkCount;
         record.breakable = body.breakable;
         record.powerSource = body.powerSource;
         record.batteryCharge = body.batteryCharge;

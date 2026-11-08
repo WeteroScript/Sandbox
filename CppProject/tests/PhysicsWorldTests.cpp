@@ -249,7 +249,7 @@ int main()
     CHECK(world.saveToFile(savePath.string()));
 
     // Older scene formats remain readable after material data (v4), batteries (v5),
-    // ice (v6), plastic (v7), and impact coordinates (v8).
+    // ice (v6), plastic (v7), impact coordinates (v8), and impact marks (v9).
     const std::filesystem::path legacyV2Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
     const std::filesystem::path legacyV3Path =
@@ -258,6 +258,8 @@ int main()
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v4.scene";
     const std::filesystem::path legacyV7Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v7.scene";
+    const std::filesystem::path legacyV8Path =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v8.scene";
     {
         std::ifstream input(savePath, std::ios::binary);
         CHECK(input.good());
@@ -266,7 +268,8 @@ int main()
             std::istreambuf_iterator<char>()
         };
         constexpr std::size_t headerSize = 21;
-        constexpr std::size_t currentBodySize = 122;
+        constexpr std::size_t currentBodySize = 159;
+        constexpr std::size_t legacyV8BodySize = 122;
         constexpr std::size_t legacyV7BodySize = 114;
         constexpr std::size_t legacyV4BodySize = 109;
         constexpr std::size_t legacyV3BodySize = 103;
@@ -331,6 +334,7 @@ int main()
         CHECK(makeLegacy(3, legacyV3BodySize, true, legacyV3Path));
         CHECK(makeLegacy(4, legacyV4BodySize, true, legacyV4Path));
         CHECK(makeLegacy(7, legacyV7BodySize, true, legacyV7Path));
+        CHECK(makeLegacy(8, legacyV8BodySize, true, legacyV8Path));
     }
 
     PhysicsWorld legacyV2World;
@@ -361,11 +365,19 @@ int main()
     CHECK(legacyV7World.mechanisms().size() == world.mechanisms().size());
     CHECK(legacyV7World.surfaces().size() == world.surfaces().size());
 
+    PhysicsWorld legacyV8World;
+    CHECK(legacyV8World.loadFromFile(legacyV8Path.string()));
+    CHECK(legacyV8World.map() == MapKind::Laboratory);
+    CHECK(legacyV8World.dynamicCount() == world.dynamicCount());
+    CHECK(legacyV8World.mechanisms().size() == world.mechanisms().size());
+    CHECK(legacyV8World.surfaces().size() == world.surfaces().size());
+
     std::error_code legacyCleanupError;
     std::filesystem::remove(legacyV2Path, legacyCleanupError);
     std::filesystem::remove(legacyV3Path, legacyCleanupError);
     std::filesystem::remove(legacyV4Path, legacyCleanupError);
     std::filesystem::remove(legacyV7Path, legacyCleanupError);
+    std::filesystem::remove(legacyV8Path, legacyCleanupError);
 
     const std::filesystem::path duplicateMechanismPath =
         std::filesystem::temp_directory_path() / "sandbox_cpp_duplicate_mechanism.scene";
@@ -378,7 +390,7 @@ int main()
         };
         constexpr std::size_t bodyCountOffset = 17;
         constexpr std::size_t bodyDataOffset = 21;
-        constexpr std::size_t savedBodySize = 122;
+        constexpr std::size_t savedBodySize = 159;
         constexpr std::size_t savedMechanismSize = 27;
         CHECK(bytes.size() >= bodyCountOffset + sizeof(std::uint32_t));
         std::uint32_t bodyCount = 0;
@@ -1172,6 +1184,8 @@ int main()
     CHECK(b2Body_IsValid(melonHeadId));
     CHECK(damagedMelonHead.impactDamage > 0.0f);
     CHECK(damagedMelonHead.impactDamage <= 0.96f);
+    CHECK(damagedMelonHead.impactMarkCount >= 1);
+    CHECK(damagedMelonHead.impactMarkCount <= kMaxImpactMarks);
     CHECK(damagedMelonHead.impactLocalX > 0.02f);
     CHECK(std::abs(damagedMelonHead.impactLocalX) <=
           damagedMelonHead.radius * 0.96f + 0.001f);
@@ -1188,6 +1202,16 @@ int main()
         CHECK(std::abs(body.impactDamage - damagedMelonHead.impactDamage) < 0.0001f);
         CHECK(std::abs(body.impactLocalX - damagedMelonHead.impactLocalX) < 0.0001f);
         CHECK(std::abs(body.impactLocalY - damagedMelonHead.impactLocalY) < 0.0001f);
+        CHECK(body.impactMarkCount == damagedMelonHead.impactMarkCount);
+        for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
+        {
+            CHECK(std::abs(body.impactMarks[mark].localX -
+                           damagedMelonHead.impactMarks[mark].localX) < 0.0001f);
+            CHECK(std::abs(body.impactMarks[mark].localY -
+                           damagedMelonHead.impactMarks[mark].localY) < 0.0001f);
+            CHECK(std::abs(body.impactMarks[mark].strength -
+                           damagedMelonHead.impactMarks[mark].strength) < 0.0001f);
+        }
         restoredMelonMark = true;
     }
     CHECK(restoredMelonMark);
@@ -1195,6 +1219,8 @@ int main()
     const float expectedCloneDamage = damagedMelonHead.impactDamage;
     const float expectedCloneImpactX = damagedMelonHead.impactLocalX;
     const float expectedCloneImpactY = damagedMelonHead.impactLocalY;
+    const auto expectedCloneMarks = damagedMelonHead.impactMarks;
+    const std::uint8_t expectedCloneMarkCount = damagedMelonHead.impactMarkCount;
     melonHitWorld.cloneAt(melonHeadIndex);
     int clonedMelonGroup = -1;
     for (const BodyRecord& body : melonHitWorld.records())
@@ -1206,9 +1232,56 @@ int main()
             CHECK(std::abs(body.impactDamage - expectedCloneDamage) < 0.0001f);
             CHECK(std::abs(body.impactLocalX - expectedCloneImpactX) < 0.0001f);
             CHECK(std::abs(body.impactLocalY - expectedCloneImpactY) < 0.0001f);
+            CHECK(body.impactMarkCount == expectedCloneMarkCount);
+            for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
+            {
+                CHECK(std::abs(body.impactMarks[mark].localX -
+                               expectedCloneMarks[mark].localX) < 0.0001f);
+                CHECK(std::abs(body.impactMarks[mark].localY -
+                               expectedCloneMarks[mark].localY) < 0.0001f);
+                CHECK(std::abs(body.impactMarks[mark].strength -
+                               expectedCloneMarks[mark].strength) < 0.0001f);
+            }
         }
     }
     CHECK(clonedMelonGroup >= 0);
+
+    // Hits from opposite directions leave independent, bounded surface marks.
+    PhysicsWorld multiHitMelonWorld;
+    multiHitMelonWorld.setMap(MapKind::TestRange, false);
+    const int multiHitGroup = multiHitMelonWorld.spawnRagdoll(0.0f, 5.0f);
+    const int rightImpactBall = multiHitMelonWorld.spawnBall(1.1f, 6.58f);
+    const int leftImpactBall = multiHitMelonWorld.spawnBall(-1.1f, 6.58f);
+    CHECK(multiHitGroup >= 0 && rightImpactBall >= 0 && leftImpactBall >= 0);
+    b2Body_SetLinearVelocity(
+        multiHitMelonWorld.records()[static_cast<std::size_t>(rightImpactBall)].id,
+        {-22.0f, 0.0f});
+    b2Body_SetLinearVelocity(
+        multiHitMelonWorld.records()[static_cast<std::size_t>(leftImpactBall)].id,
+        {22.0f, 0.0f});
+    for (int i = 0; i < 18; ++i)
+        multiHitMelonWorld.step(1.0f / 60.0f, 4);
+
+    bool foundMultiHitHead = false;
+    for (const BodyRecord& body : multiHitMelonWorld.records())
+    {
+        if (body.groupId != multiHitGroup || body.partIndex != 1)
+            continue;
+        CHECK(body.impactMarkCount >= 2);
+        bool distinctMarks = false;
+        for (std::size_t a = 0; a < body.impactMarkCount; ++a)
+            for (std::size_t b = a + 1; b < body.impactMarkCount; ++b)
+            {
+                const float dx = body.impactMarks[a].localX -
+                                 body.impactMarks[b].localX;
+                const float dy = body.impactMarks[a].localY -
+                                 body.impactMarks[b].localY;
+                distinctMarks = distinctMarks || dx * dx + dy * dy > 0.025f;
+            }
+        CHECK(distinctMarks);
+        foundMultiHitHead = true;
+    }
+    CHECK(foundMultiHitHead);
 
     PhysicsWorld gentleMelonWorld;
     gentleMelonWorld.setMap(MapKind::TestRange, false);

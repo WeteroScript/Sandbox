@@ -1931,19 +1931,20 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
             SDL_RenderLine(renderer_, p0.x, p0.y, p1.x, p1.y);
         }
 
-        if (body.impactDamage > 0.015f)
+        const auto drawMelonImpact = [&](float localX, float localY,
+                                         float damage)
         {
-            const float severity = std::clamp(body.impactDamage, 0.0f, 0.96f);
+            if (damage <= 0.015f)
+                return;
+            const float severity = std::clamp(damage, 0.0f, 0.96f);
             const float impactX = std::clamp(
-                body.impactLocalX / std::max(0.001f, body.radius),
-                -0.88f, 0.88f);
+                localX / std::max(0.001f, body.radius), -0.88f, 0.88f);
             const float impactY = std::clamp(
-                body.impactLocalY / std::max(0.001f, body.radius),
-                -0.68f, 0.68f);
+                localY / std::max(0.001f, body.radius), -0.68f, 0.68f);
             const SDL_FPoint impact = facePoint(impactX, impactY);
-            const float markRadius = radiusPixels * (0.085f + severity * 0.085f);
+            const float markRadius =
+                radiusPixels * (0.085f + severity * 0.085f);
 
-            // A soft, layered dent stays on the rind and scales with impact strength.
             drawFilledEllipse(renderer_, impact.x, impact.y,
                 markRadius * 1.55f, markRadius * 1.05f,
                 SDL_Color{34, 83, 43,
@@ -1961,7 +1962,6 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                 SDL_Color{193, 226, 132,
                     static_cast<Uint8>(35.0f + severity * 70.0f)});
 
-            // Cracks branch from the dent. Their length grows with accumulated damage.
             const float crackLength = 0.14f + severity * 0.30f;
             for (int branch = 0; branch < 4; ++branch)
             {
@@ -2002,7 +2002,19 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                 SDL_RenderLine(renderer_, middle.x, middle.y,
                                branchPoint.x, branchPoint.y);
             }
+        };
+
+        if (body.impactMarkCount > 0)
+        {
+            for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
+            {
+                const ImpactMark& impact = body.impactMarks[mark];
+                drawMelonImpact(impact.localX, impact.localY, impact.strength);
+            }
         }
+        else
+            drawMelonImpact(body.impactLocalX, body.impactLocalY,
+                            body.impactDamage);
 
         if (selected)
         {
@@ -2171,32 +2183,47 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
     if (body.groupId >= 0 && body.impactDamage > 0.025f &&
         !melonHeadWithCustomDamage)
     {
-        const float severity = std::clamp(body.impactDamage, 0.0f, 1.0f);
-        const float localX = body.impactLocalX;
-        const float localY = body.impactLocalY;
-        const float markWorldX = x + std::cos(angle) * localX -
-                                 std::sin(angle) * localY;
-        const float markWorldY = y + std::sin(angle) * localX +
-                                 std::cos(angle) * localY;
-        const SDL_FPoint mark = worldToScreen(markWorldX, markWorldY);
-        const float baseSize = body.shape == BodyShape::Circle
-            ? body.radius : std::min(body.halfWidth, body.halfHeight);
-        const float markRadius = std::max(2.0f,
-            baseSize * pixelsPerMeter_ * (0.20f + severity * 0.07f));
-        const Uint8 alpha = static_cast<Uint8>(45.0f + severity * 105.0f);
+        const auto drawCharacterImpact = [&](float localX, float localY,
+                                             float damage)
+        {
+            const float severity = std::clamp(damage, 0.0f, 1.0f);
+            const float markWorldX = x + std::cos(angle) * localX -
+                                     std::sin(angle) * localY;
+            const float markWorldY = y + std::sin(angle) * localX +
+                                     std::cos(angle) * localY;
+            const SDL_FPoint mark = worldToScreen(markWorldX, markWorldY);
+            const float baseSize = body.shape == BodyShape::Circle
+                ? body.radius : std::min(body.halfWidth, body.halfHeight);
+            const float markRadius = std::max(2.0f,
+                baseSize * pixelsPerMeter_ * (0.20f + severity * 0.07f));
+            const Uint8 alpha = static_cast<Uint8>(45.0f + severity * 105.0f);
 
-        drawFilledEllipse(renderer_, mark.x, mark.y,
-            markRadius * 1.18f, markRadius * 0.72f,
-            SDL_Color{74, 62, 82, alpha});
-        drawFilledEllipse(renderer_, mark.x - markRadius * 0.12f,
-            mark.y - markRadius * 0.10f,
-            markRadius * 0.48f, markRadius * 0.26f,
-            SDL_Color{166, 132, 139, static_cast<Uint8>(alpha / 2)});
-        setColor(renderer_, SDL_Color{56, 49, 65,
-                                      static_cast<Uint8>(alpha * 0.82f)});
-        SDL_RenderLine(renderer_,
-            mark.x - markRadius * 0.52f, mark.y + markRadius * 0.12f,
-            mark.x + markRadius * 0.34f, mark.y - markRadius * 0.20f);
+            drawFilledEllipse(renderer_, mark.x, mark.y,
+                markRadius * 1.18f, markRadius * 0.72f,
+                SDL_Color{74, 62, 82, alpha});
+            drawFilledEllipse(renderer_, mark.x - markRadius * 0.12f,
+                mark.y - markRadius * 0.10f,
+                markRadius * 0.48f, markRadius * 0.26f,
+                SDL_Color{166, 132, 139, static_cast<Uint8>(alpha / 2)});
+            setColor(renderer_, SDL_Color{56, 49, 65,
+                                          static_cast<Uint8>(alpha * 0.82f)});
+            SDL_RenderLine(renderer_,
+                mark.x - markRadius * 0.52f, mark.y + markRadius * 0.12f,
+                mark.x + markRadius * 0.34f, mark.y - markRadius * 0.20f);
+        };
+
+        if (body.impactMarkCount > 0)
+        {
+            for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
+            {
+                const ImpactMark& impact = body.impactMarks[mark];
+                drawCharacterImpact(
+                    impact.localX, impact.localY, impact.strength);
+            }
+        }
+        else
+            drawCharacterImpact(
+                body.impactLocalX, body.impactLocalY, body.impactDamage);
     }
 
     if (body.bucketKind != BucketKind::None)
