@@ -4,7 +4,9 @@
 #include <SDL3/SDL.h>
 
 #include <array>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
 enum class SpawnCategory { Props, Mechanisms };
@@ -31,6 +33,8 @@ struct UiLayout
     SDL_FRect saveButton{};
     SDL_FRect loadButton{};
     SDL_FRect clearButton{};
+    SDL_FRect undoButton{};
+    SDL_FRect redoButton{};
 };
 
 class SandboxGame
@@ -90,13 +94,19 @@ private:
     float noticeTimer_ = 0.0f;
     float clearConfirmTimer_ = 0.0f;
     std::string notice_;
+    std::vector<std::vector<std::uint8_t>> undoHistory_;
+    std::vector<std::vector<std::uint8_t>> redoHistory_;
+    std::vector<std::uint8_t> dragStartSnapshot_;
+    float dragStartPointerX_ = 0.0f;
+    float dragStartPointerY_ = 0.0f;
+    bool dragChanged_ = false;
 
     int outputWidth_ = 1280;
     int outputHeight_ = 720;
 
     UiLayout makeUiLayout() const;
     void processEvents();
-    void handleKey(SDL_Keycode key);
+    void handleKey(SDL_Keycode key, SDL_Keymod modifiers);
     void handlePointerDown(float x, float y);
     void handlePointerMove(float x, float y);
     void handlePointerUp();
@@ -108,6 +118,11 @@ private:
     void cycleMap();
     void saveScene();
     void loadScene(bool silent = false);
+    bool captureHistorySnapshot(std::vector<std::uint8_t>& snapshot);
+    void pushUndoSnapshot(std::vector<std::uint8_t>&& snapshot);
+    void finishDragHistory();
+    void undoScene();
+    void redoScene();
     void update(float deltaTime);
     void render();
 

@@ -12,6 +12,7 @@ namespace
 {
 constexpr float kFixedStep = 1.0f / 60.0f;
 constexpr float kPi = 3.14159265358979323846f;
+constexpr std::size_t kHistoryLimit = 20;
 constexpr std::array<float, 4> kSpeeds{0.25f, 0.5f, 1.0f, 2.0f};
 constexpr std::array<const char*, 4> kSpeedLabels{"0.25x", "0.5x", "1x", "2x"};
 
@@ -247,7 +248,7 @@ UiLayout SandboxGame::makeUiLayout() const
         margin,
         top + buttonHeight + 10.0f * scale,
         252.0f * scale,
-        286.0f * scale
+        326.0f * scale
     };
 
     const float innerX = layout.spawnPanel.x + 10.0f * scale;
@@ -298,6 +299,14 @@ UiLayout SandboxGame::makeUiLayout() const
         itemHeight
     };
 
+    const float historyY = actionsY + itemHeight + 6.0f * scale;
+    const float historyGap = 6.0f * scale;
+    const float historyWidth = (innerWidth - historyGap) * 0.5f;
+    layout.undoButton = {innerX, historyY, historyWidth, itemHeight};
+    layout.redoButton = {
+        innerX + historyWidth + historyGap, historyY, historyWidth, itemHeight
+    };
+
     return layout;
 }
 void SandboxGame::processEvents()
@@ -313,7 +322,7 @@ void SandboxGame::processEvents()
 
             case SDL_EVENT_KEY_DOWN:
                 if (!event.key.repeat)
-                    handleKey(event.key.key);
+                    handleKey(event.key.key, event.key.mod);
                 break;
 
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -412,8 +421,25 @@ void SandboxGame::processEvents()
     }
 }
 
-void SandboxGame::handleKey(SDL_Keycode key)
+void SandboxGame::handleKey(SDL_Keycode key, SDL_Keymod modifiers)
 {
+    if ((modifiers & SDL_KMOD_CTRL) != 0)
+    {
+        if (key == SDLK_Z)
+        {
+            if ((modifiers & SDL_KMOD_SHIFT) != 0)
+                redoScene();
+            else
+                undoScene();
+            return;
+        }
+        if (key == SDLK_Y)
+        {
+            redoScene();
+            return;
+        }
+    }
+
     switch (key)
     {
         case SDLK_ESCAPE:
