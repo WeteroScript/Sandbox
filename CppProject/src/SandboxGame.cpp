@@ -25,6 +25,17 @@ void setColor(SDL_Renderer* renderer, SDL_Color tint)
     SDL_SetRenderDrawColor(renderer, tint.r, tint.g, tint.b, tint.a);
 }
 
+SDL_FColor toFloatColor(SDL_Color tint)
+{
+    constexpr float channelScale = 1.0f / 255.0f;
+    return SDL_FColor{
+        static_cast<float>(tint.r) * channelScale,
+        static_cast<float>(tint.g) * channelScale,
+        static_cast<float>(tint.b) * channelScale,
+        static_cast<float>(tint.a) * channelScale
+    };
+}
+
 float clampFloat(float value, float low, float high)
 {
     return std::max(low, std::min(value, high));
@@ -776,7 +787,7 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
             y + s * local[i].x + c * local[i].y
         );
         vertices[i].position = points[i];
-        vertices[i].color = tint;
+        vertices[i].color = toFloatColor(tint);
         vertices[i].tex_coord = {0.0f, 0.0f};
     }
 
@@ -802,7 +813,7 @@ void SandboxGame::drawCircle(float x, float y, float radius, SDL_Color tint, boo
     std::array<int, segments * 3> indices{};
 
     vertices[0].position = worldToScreen(x, y);
-    vertices[0].color = tint;
+    vertices[0].color = toFloatColor(tint);
     vertices[0].tex_coord = {0.0f, 0.0f};
 
     for (int i = 0; i < segments; ++i)
@@ -812,7 +823,7 @@ void SandboxGame::drawCircle(float x, float y, float radius, SDL_Color tint, boo
             x + std::cos(angle) * radius,
             y + std::sin(angle) * radius
         );
-        vertices[static_cast<std::size_t>(i + 1)].color = tint;
+        vertices[static_cast<std::size_t>(i + 1)].color = toFloatColor(tint);
         vertices[static_cast<std::size_t>(i + 1)].tex_coord = {0.0f, 0.0f};
 
         const std::size_t base = static_cast<std::size_t>(i) * 3;
