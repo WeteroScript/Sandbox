@@ -454,6 +454,46 @@ int main()
 
     CHECK(std::accumulate(rotationJointCounts.begin(), rotationJointCounts.end(), 0) == 10);
 
+    // In-memory snapshots preserve the complete scene, including map,
+    // ragdoll joints, and linked mechanisms, without touching the filesystem.
+    PhysicsWorld snapshotWorld;
+    snapshotWorld.setMap(MapKind::Laboratory, false);
+    const int snapshotFirst = snapshotWorld.spawnBox(-1.0f, 0.0f);
+    const int snapshotSecond = snapshotWorld.spawnBox(1.0f, 0.0f);
+    const int snapshotRobot = snapshotWorld.spawnRobot(0.0f, 6.0f);
+    CHECK(snapshotFirst >= 0 && snapshotSecond >= 0 && snapshotRobot >= 0);
+    CHECK(snapshotWorld.spawnMechanism(MechanismKind::Rod, 0.0f, 0.0f) >= 0);
+    std::vector<std::uint8_t> sceneSnapshot;
+    CHECK(snapshotWorld.saveToSnapshot(sceneSnapshot));
+    CHECK(!sceneSnapshot.empty());
+
+    snapshotWorld.setMap(MapKind::City, false);
+    CHECK(snapshotWorld.map() == MapKind::City);
+    CHECK(snapshotWorld.dynamicCount() == 0);
+    CHECK(snapshotWorld.loadFromSnapshot(sceneSnapshot));
+    CHECK(snapshotWorld.map() == MapKind::Laboratory);
+    CHECK(snapshotWorld.dynamicCount() == 8);
+    CHECK(snapshotWorld.mechanisms().size() == 1);
+    CHECK(snapshotWorld.mechanisms()[0].kind == MechanismKind::Rod);
+    CHECK(b2Joint_IsValid(snapshotWorld.mechanisms()[0].joint));
+
+    bool restoredRobotJoint = false;
+    for (const BodyRecord& body : snapshotWorld.records())
+    {
+        if (body.groupId < 0 || !body.selectable)
+            continue;
+        if (body.partIndex == 0)
+            restoredRobotJoint = b2Body_GetJointCount(body.id) > 0;
+    }
+    CHECK(restoredRobotJoint);
+
+    std::vector<std::uint8_t> invalidSnapshot = sceneSnapshot;
+    invalidSnapshot[0] ^= 0xFFU;
+    const std::size_t beforeInvalidSnapshot = snapshotWorld.dynamicCount();
+    CHECK(!snapshotWorld.loadFromSnapshot(invalidSnapshot));
+    CHECK(snapshotWorld.dynamicCount() == beforeInvalidSnapshot);
+    CHECK(snapshotWorld.map() == MapKind::Laboratory);
+
     PhysicsWorld fluidWorld;
     fluidWorld.setMap(MapKind::Laboratory, false);
     const int dryWaterIndex = fluidWorld.spawnBall(-12.0f, -4.28f);
