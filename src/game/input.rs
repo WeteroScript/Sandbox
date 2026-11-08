@@ -116,7 +116,8 @@ impl InputState {
         let regular_mouse_action = mouse_pressed
             && active_tool == ToolMode::Grab
             && !self.in_spawn_panel(mouse_point, spawn_menu_open)
-            && !Self::in_tool_bar(mouse_point);
+            && !Self::in_tool_bar(mouse_point)
+            && !Self::in_top_bar(mouse_point);
         self.action = if !spawn_dialog_open
             && (is_key_pressed(KeyCode::F)
                 || mouse_fire_button
@@ -206,7 +207,8 @@ impl InputState {
 
             if !self.in_spawn_panel(position, spawn_menu_open)
                 && !Self::in_tool_bar(position)
-                && !self.in_fire_button(position)
+                && !Self::in_fire_button(position)
+                && !Self::in_top_bar(position)
             {
                 self.drag_pointer = Some(position);
                 return;
@@ -227,6 +229,7 @@ impl InputState {
             && !self.in_spawn_panel(active_touches[0].position, spawn_menu_open)
             && !Self::in_tool_bar(active_touches[0].position)
             && !Self::in_fire_button(active_touches[0].position)
+            && !Self::in_top_bar(active_touches[0].position)
         {
             self.drag_pointer = Some(active_touches[0].position);
         }
@@ -262,6 +265,7 @@ impl InputState {
                 if !self.in_spawn_panel(touch.position, spawn_menu_open)
                     && !Self::in_tool_bar(touch.position)
                     && !Self::in_fire_button(touch.position)
+                    && !Self::in_top_bar(touch.position)
                 {
                     if let Some(previous) = self.previous_position(touch.id) {
                         self.camera_pan = touch.position - previous;
@@ -318,6 +322,10 @@ impl InputState {
 
     fn in_fire_button(position: Vec2) -> bool {
         position.distance(vec2(screen_width() - 100.0, screen_height() - 118.0)) <= 52.0
+    }
+
+    fn in_top_bar(position: Vec2) -> bool {
+        position.y <= 62.0
     }
 
     fn previous_position(&self, id: u64) -> Option<Vec2> {
