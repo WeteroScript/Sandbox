@@ -864,11 +864,20 @@ void SandboxGame::handleUiClick(float x, float y)
         saveScene();
     else if (pointInRect(x, y, layout.loadButton))
         loadScene();
+    else if (pointInRect(x, y, layout.undoButton))
+        undoScene();
+    else if (pointInRect(x, y, layout.redoButton))
+        redoScene();
     else if (pointInRect(x, y, layout.clearButton))
     {
         if (clearConfirmTimer_ > 0.0f)
         {
+            const bool hadContent = physics_.dynamicCount() > 0 ||
+                                    !physics_.mechanisms().empty();
+            std::vector<std::uint8_t> before;
+            const bool canUndo = hadContent && captureHistorySnapshot(before);
             physics_.clearDynamic();
+            if (canUndo) pushUndoSnapshot(std::move(before));
             grabbedIndex_ = -1;
             clearConfirmTimer_ = 0.0f;
             notice_ = "Scene cleared";
@@ -891,6 +900,8 @@ void SandboxGame::placeSelected(float worldX, float worldY)
         static_cast<float>(spawnQuantity_)
     ))));
     const int rows = (spawnQuantity_ + columns - 1) / columns;
+    std::vector<std::uint8_t> before;
+    const bool canUndo = captureHistorySnapshot(before);
     int created = 0;
     int failed = 0;
 
@@ -950,6 +961,9 @@ void SandboxGame::placeSelected(float worldX, float worldY)
             ++failed;
     }
 
+    if (created > 0 && canUndo)
+        pushUndoSnapshot(std::move(before));
+
     if (failed > 0)
     {
         notice_ = mechanism
@@ -979,7 +993,10 @@ void SandboxGame::cycleMap()
             break;
     }
 
+    std::vector<std::uint8_t> before;
+    const bool canUndo = captureHistorySnapshot(before);
     physics_.setMap(next, true);
+    if (canUndo) pushUndoSnapshot(std::move(before));
     cameraX_ = 0.0f;
     cameraY_ = 0.0f;
     pixelsPerMeter_ = 44.0f;
@@ -1038,9 +1055,12 @@ void SandboxGame::loadScene(bool silent)
     }
     probe.close();
 
+    std::vector<std::uint8_t> before;
+    const bool canUndo = !silent && captureHistorySnapshot(before);
     const bool loaded = physics_.loadFromFile(path);
     if (loaded)
     {
+        if (canUndo) pushUndoSnapshot(std::move(before));
         grabbedIndex_ = -1;
         accumulator_ = 0.0f;
         notice_ = "Scene loaded";
