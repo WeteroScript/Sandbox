@@ -124,6 +124,7 @@ private:
     int nextGroupId_ = 1;
     MapKind map_ = MapKind::TestRange;
     bool mechanismsEnabled_ = true;
+    float environmentTime_ = 0.0f;
 
     int createBox(float x, float y, float halfWidth, float halfHeight, float angle,
                   SDL_Color color, bool isStatic, bool selectable,
@@ -152,7 +153,6 @@ private:
     bool pourBucket(int index);
     void updateSurfaces(float deltaTime);
     void updateMechanisms(float deltaTime);
-    int findPowerSourceIndex(b2BodyId start) const;
     void processImpactEvents();
     void fractureBody(b2BodyId body);
     void setMechanismsEnabled(bool enabled);

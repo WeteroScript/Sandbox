@@ -220,6 +220,18 @@ float bodyRectangleOverlap(const BodyRecord& record, float x, float y,
 {
     const float left=zone.x-zone.halfWidth, right=zone.x+zone.halfWidth;
     const float bottom=zone.y-zone.halfHeight, top=zone.y+zone.halfHeight;
+    const float cosine = std::abs(static_cast<float>(rotation.c));
+    const float sine = std::abs(static_cast<float>(rotation.s));
+    const float extentX = record.shape == BodyShape::Circle
+        ? record.radius
+        : cosine * record.halfWidth + sine * record.halfHeight;
+    const float extentY = record.shape == BodyShape::Circle
+        ? record.radius
+        : sine * record.halfWidth + cosine * record.halfHeight;
+    if (x + extentX <= left || x - extentX >= right ||
+        y + extentY <= bottom || y - extentY >= top)
+        return 0.0f;
+
     if (record.shape == BodyShape::Circle)
     {
         constexpr float pi=3.14159265358979323846f;
@@ -787,8 +799,7 @@ bool PhysicsWorld::pourBucket(int index)
 
 void PhysicsWorld::updateSurfaces(float dt)
 {
-    static float environmentTime = 0.0f;
-    environmentTime += dt;
+    environmentTime_ += dt;
     std::vector<b2BodyId> dissolvedBodies;
 
     for (BodyRecord& record : records_)
@@ -824,20 +835,20 @@ void PhysicsWorld::updateSurfaces(float dt)
                 case SurfaceKind::Water:
                     buoyancyScale = 16.3f;
                     dragScale = 2.8f;
-                    currentX = std::sin(environmentTime * 0.75f + zone.x * 0.6f) * 0.12f;
-                    currentY = std::cos(environmentTime * 1.35f + x * 0.8f) * 0.035f;
-                    waveForce = std::sin(environmentTime * 2.0f + x * 1.7f) * 0.30f;
+                    currentX = std::sin(environmentTime_ * 0.75f + zone.x * 0.6f) * 0.12f;
+                    currentY = std::cos(environmentTime_ * 1.35f + x * 0.8f) * 0.035f;
+                    waveForce = std::sin(environmentTime_ * 2.0f + x * 1.7f) * 0.30f;
                     break;
                 case SurfaceKind::Lava:
                     buoyancyScale = 13.4f;
                     dragScale = 0.72f;
-                    currentX = std::sin(environmentTime * 0.45f + y) * 0.20f;
-                    waveForce = std::sin(environmentTime * 1.7f + x) * 0.75f;
+                    currentX = std::sin(environmentTime_ * 0.45f + y) * 0.20f;
+                    waveForce = std::sin(environmentTime_ * 1.7f + x) * 0.75f;
                     break;
                 case SurfaceKind::Acid:
                     buoyancyScale = 17.2f;
                     dragScale = 3.4f;
-                    currentX = std::sin(environmentTime * 0.9f + x) * 0.045f;
+                    currentX = std::sin(environmentTime_ * 0.9f + x) * 0.045f;
                     immersedInAcid = true;
                     break;
             }
@@ -915,61 +926,106 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
     }
 }
 
-int PhysicsWorld::findPowerSourceIndex(b2BodyId start) const
+void PhysicsWorld::updateMechanisms(float dt)
 {
-    if (!b2Body_IsValid(start))
-        return -1;
-
-    std::vector<b2BodyId> pending{start};
-    std::vector<b2BodyId> visited;
-    visited.reserve(mechanisms_.size() + 1);
-
-    for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
+    // Build the active electrical graph once per tick. The previous approach
+    // rescanned every body and every link for every node visited by every motor.
+    std::unordered_map<std::uint64_t, std::size_t> recordIndices;
+    recordIndices.reserve(records_.size());
+    for (std::size_t i = 0; i < records_.size(); ++i)
     {
-        const b2BodyId current = pending[cursor];
-        if (std::any_of(visited.begin(), visited.end(),
-            [current](b2BodyId id) { return sameBodyId(id, current); }))
+        if (b2Body_IsValid(records_[i].id))
+            recordIndices.emplace(
+                static_cast<std::uint64_t>(records_[i].id.index1) |
+                    (static_cast<std::uint64_t>(records_[i].id.world0) << 32) |
+                    (static_cast<std::uint64_t>(records_[i].id.generation) << 48),
+                i);
+    }
+
+    std::vector<std::vector<std::size_t>> conductiveAdjacency(records_.size());
+    for (const MechanismRecord& link : mechanisms_)
+    {
+        if (!link.active ||
+            (link.kind != MechanismKind::Wire &&
+             link.kind != MechanismKind::Switch))
             continue;
-        visited.push_back(current);
 
-        const auto body = std::find_if(records_.begin(), records_.end(),
-            [current](const BodyRecord& record)
-            {
-                return b2Body_IsValid(record.id) &&
-                       sameBodyId(record.id, current);
-            });
-        if (body != records_.end() && body->powerSource &&
-            body->batteryCharge > 0.001f)
-            return static_cast<int>(body - records_.begin());
+        const auto first = recordIndices.find(
+            static_cast<std::uint64_t>(link.bodyA.index1) |
+            (static_cast<std::uint64_t>(link.bodyA.world0) << 32) |
+            (static_cast<std::uint64_t>(link.bodyA.generation) << 48));
+        const auto second = recordIndices.find(
+            static_cast<std::uint64_t>(link.bodyB.index1) |
+            (static_cast<std::uint64_t>(link.bodyB.world0) << 32) |
+            (static_cast<std::uint64_t>(link.bodyB.generation) << 48));
+        if (first == recordIndices.end() || second == recordIndices.end())
+            continue;
 
-        for (const MechanismRecord& link : mechanisms_)
+        conductiveAdjacency[first->second].push_back(second->second);
+        conductiveAdjacency[second->second].push_back(first->second);
+    }
+
+    // Resolve connected components once. A component can contain multiple
+    // batteries; motors select the first one that still has charge.
+    std::vector<int> componentForBody(records_.size(), -1);
+    std::vector<std::vector<std::size_t>> componentBatteries;
+    std::vector<std::size_t> pending;
+    pending.reserve(records_.size());
+
+    for (std::size_t start = 0; start < records_.size(); ++start)
+    {
+        if (componentForBody[start] >= 0)
+            continue;
+
+        const int component = static_cast<int>(componentBatteries.size());
+        componentBatteries.emplace_back();
+        pending.clear();
+        pending.push_back(start);
+        componentForBody[start] = component;
+
+        for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
         {
-            if (!link.active ||
-                (link.kind != MechanismKind::Wire &&
-                 link.kind != MechanismKind::Switch))
-                continue;
+            const std::size_t current = pending[cursor];
+            const BodyRecord& body = records_[current];
+            if (body.powerSource && body.batteryCharge > 0.001f)
+                componentBatteries.back().push_back(current);
 
-            b2BodyId next = b2_nullBodyId;
-            if (b2Body_IsValid(link.bodyA) && sameBodyId(link.bodyA, current))
-                next = link.bodyB;
-            else if (b2Body_IsValid(link.bodyB) && sameBodyId(link.bodyB, current))
-                next = link.bodyA;
-
-            if (!b2Body_IsValid(next))
-                continue;
-
-            const bool queued = std::any_of(pending.begin(), pending.end(),
-                [next](b2BodyId id) { return sameBodyId(id, next); });
-            if (!queued)
+            for (const std::size_t next : conductiveAdjacency[current])
+            {
+                if (componentForBody[next] >= 0)
+                    continue;
+                componentForBody[next] = component;
                 pending.push_back(next);
+            }
         }
     }
 
-    return -1;
-}
+    const auto findPowerSourceIndex = [&](b2BodyId endpoint) -> int
+    {
+        if (!b2Body_IsValid(endpoint))
+            return -1;
 
-void PhysicsWorld::updateMechanisms(float dt)
-{
+        const std::uint64_t key =
+            static_cast<std::uint64_t>(endpoint.index1) |
+            (static_cast<std::uint64_t>(endpoint.world0) << 32) |
+            (static_cast<std::uint64_t>(endpoint.generation) << 48);
+        const auto found = recordIndices.find(key);
+        if (found == recordIndices.end())
+            return -1;
+
+        const int component = componentForBody[found->second];
+        if (component < 0)
+            return -1;
+
+        for (const std::size_t batteryIndex :
+             componentBatteries[static_cast<std::size_t>(component)])
+        {
+            if (records_[batteryIndex].batteryCharge > 0.001f)
+                return static_cast<int>(batteryIndex);
+        }
+        return -1;
+    };
+
     for (MechanismRecord& mechanism : mechanisms_)
     {
         mechanism.phase += dt;
@@ -1025,10 +1081,11 @@ PhysicsWorld::~PhysicsWorld()
 
 void PhysicsWorld::step(float dt, int subSteps)
 {
-    if (!b2World_IsValid(world_))
+    if (!b2World_IsValid(world_) || !finite(dt) || dt <= 0.0f)
         return;
 
     dt = std::clamp(dt, 1.0f / 240.0f, 1.0f / 30.0f);
+    subSteps = std::clamp(subSteps, 1, 8);
     updateSurfaces(dt);
     updateMechanisms(dt);
     b2World_Step(world_, dt, subSteps);

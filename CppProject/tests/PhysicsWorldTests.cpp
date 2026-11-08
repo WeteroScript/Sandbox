@@ -1049,6 +1049,21 @@ int main()
             ++woodDebrisCount;
     CHECK(woodDebrisCount == 4);
 
+    PhysicsWorld stepValidationWorld;
+    stepValidationWorld.setMap(MapKind::Laboratory, false);
+    const int validationBodyIndex = stepValidationWorld.spawnBox(0.0f, 8.0f);
+    CHECK(validationBodyIndex >= 0);
+    const b2BodyId validationBody =
+        stepValidationWorld.records()[static_cast<std::size_t>(validationBodyIndex)].id;
+    const b2Pos beforeInvalidStep = b2Body_GetPosition(validationBody);
+    stepValidationWorld.step(std::numeric_limits<float>::quiet_NaN(), 4);
+    const b2Pos afterInvalidStep = b2Body_GetPosition(validationBody);
+    CHECK(std::abs(static_cast<float>(afterInvalidStep.x - beforeInvalidStep.x)) < 0.000001f);
+    CHECK(std::abs(static_cast<float>(afterInvalidStep.y - beforeInvalidStep.y)) < 0.000001f);
+    stepValidationWorld.step(1.0f / 60.0f, 0);
+    const b2Pos afterClampedSubsteps = b2Body_GetPosition(validationBody);
+    CHECK(afterClampedSubsteps.y < afterInvalidStep.y);
+
     std::error_code error;
     std::filesystem::remove(savePath, error);
     std::cout << "Physics, materials, impact fracture, powered actuators, rotation, maps, character persistence, fluid immersion, save compatibility and mechanism cleanup passed.\n";
