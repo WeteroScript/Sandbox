@@ -210,9 +210,9 @@ UiLayout SandboxGame::makeUiLayout() const
     const float scale = layout.scale;
     const float margin = 12.0f * scale;
     const float top = 12.0f * scale;
-    const float buttonWidth = 76.0f * scale;
+    const float buttonWidth = 66.0f * scale;
     const float buttonHeight = 38.0f * scale;
-    const float gap = 5.0f * scale;
+    const float gap = 4.5f * scale;
 
     for (std::size_t i = 0; i < layout.toolButtons.size(); ++i)
     {
@@ -408,6 +408,10 @@ void SandboxGame::handleKey(SDL_Keycode key)
         case SDLK_4:
             tool_ = SandboxTool::Delete;
             break;
+        case SDLK_5:
+            tool_ = SandboxTool::Rotate;
+            spawnPlacementActive_ = false;
+            break;
         case SDLK_TAB:
             spawnPanelOpen_ = !spawnPanelOpen_;
             break;
@@ -508,6 +512,12 @@ void SandboxGame::handlePointerDown(float x, float y)
             break;
         case SandboxTool::Delete:
             physics_.deleteAt(grabbedIndex_);
+            grabbedIndex_ = -1;
+            break;
+        case SandboxTool::Rotate:
+            physics_.rotateAt(grabbedIndex_, kPi / 12.0f);
+            notice_ = "Rotated 15 degrees";
+            noticeTimer_ = 1.4f;
             grabbedIndex_ = -1;
             break;
     }
@@ -655,11 +665,12 @@ void SandboxGame::handleFingerUp(SDL_FingerID fingerId)
 void SandboxGame::handleUiClick(float x, float y)
 {
     const UiLayout layout = makeUiLayout();
-    const std::array<SandboxTool, 4> tools{
+    const std::array<SandboxTool, 5> tools{
         SandboxTool::Grab,
         SandboxTool::Freeze,
         SandboxTool::Clone,
-        SandboxTool::Delete
+        SandboxTool::Delete,
+        SandboxTool::Rotate
     };
 
     for (std::size_t i = 0; i < tools.size(); ++i)
@@ -672,7 +683,7 @@ void SandboxGame::handleUiClick(float x, float y)
         }
     }
 
-    if (pointInRect(x, y, layout.toolButtons[4]))
+    if (pointInRect(x, y, layout.toolButtons[5]))
     {
         spawnPanelOpen_ = !spawnPanelOpen_;
         return;
@@ -1281,17 +1292,17 @@ void SandboxGame::drawButton(const SDL_FRect& rect, const char* label, bool acti
 void SandboxGame::drawUi()
 {
     const UiLayout layout = makeUiLayout();
-    const std::array<const char*, 5> toolLabels{
-        "GRAB", "FREEZE", "CLONE", "DELETE", "SPAWN"
+    const std::array<const char*, 6> toolLabels{
+        "GRAB", "FREEZE", "CLONE", "DELETE", "ROTATE", "SPAWN"
     };
-    const std::array<SandboxTool, 4> tools{
+    const std::array<SandboxTool, 5> tools{
         SandboxTool::Grab, SandboxTool::Freeze,
-        SandboxTool::Clone, SandboxTool::Delete
+        SandboxTool::Clone, SandboxTool::Delete, SandboxTool::Rotate
     };
 
-    for (std::size_t i = 0; i < 5; ++i)
+    for (std::size_t i = 0; i < layout.toolButtons.size(); ++i)
     {
-        const bool active = i < 4
+        const bool active = i < tools.size()
             ? tool_ == tools[i]
             : spawnPanelOpen_;
         drawButton(layout.toolButtons[i], toolLabels[i], active);
@@ -1396,7 +1407,7 @@ void SandboxGame::drawUi()
     std::snprintf(
         status,
         sizeof(status),
-        "%s   OBJECTS %zu   AWAKE %d   FPS %.0f   |   M MAP   1-4 TOOLS   SPACE PAUSE",
+        "%s   OBJECTS %zu   AWAKE %d   FPS %.0f   |   M MAP   1-5 TOOLS   SPACE PAUSE",
         mapLabel,
         physics_.dynamicCount(),
         physics_.awakeBodyCount(),

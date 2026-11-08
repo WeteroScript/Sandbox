@@ -6,7 +6,7 @@
 #include <array>
 #include <string>
 
-enum class SandboxTool { Grab, Freeze, Clone, Delete };
+enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
 enum class SpawnCategory { Props, Mechanisms };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
@@ -16,7 +16,7 @@ enum class SpawnItem {
 struct UiLayout
 {
     float scale = 1.0f;
-    std::array<SDL_FRect, 5> toolButtons{};
+    std::array<SDL_FRect, 6> toolButtons{};
     SDL_FRect speedDown{};
     SDL_FRect speedLabel{};
     SDL_FRect speedUp{};
