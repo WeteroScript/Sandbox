@@ -205,7 +205,7 @@ impl GameState {
             map,
             camera: CameraState::new(),
             physics,
-            spawn_menu_open: true,
+            spawn_menu_open: false,
             spawn_category: SpawnCategory::Pistols,
             pending_spawn: None,
             spawn_count: 1,

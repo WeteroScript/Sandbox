@@ -72,7 +72,7 @@ impl InputState {
         self.spawn_tab = None;
         self.spawn_item = None;
 
-        if spawn_menu_open {
+        if spawn_menu_open && !spawn_dialog_open {
             if let Some(position) = self.started_pointer() {
                 let panel_x = screen_width() - 300.0;
 

@@ -35,25 +35,32 @@ impl Game {
 
     pub fn update(&mut self) {
         let spawn_dialog_was_open = self.state.pending_spawn.is_some();
+        let spawn_ui_active = self.state.spawn_menu_open
+            && matches!(self.state.mode, GameMode::Playing | GameMode::Paused);
         self.input.update(
-            self.state.spawn_menu_open,
+            spawn_ui_active,
             self.drag_body.is_some(),
             spawn_dialog_was_open,
         );
 
         self.handle_spawn_dialog();
 
-        if self.input.spawn_toggle_pressed() {
+        if !spawn_dialog_was_open
+            && matches!(self.state.mode, GameMode::Playing | GameMode::Paused)
+            && self.input.spawn_toggle_pressed()
+        {
             self.state.spawn_menu_open = !self.state.spawn_menu_open;
         }
 
-        if let Some(tab) = self.input.spawn_tab() {
+        if !spawn_dialog_was_open {
+            if let Some(tab) = self.input.spawn_tab() {
             self.state.spawn_category = match tab {
                 0 => SpawnCategory::Pistols,
                 1 => SpawnCategory::Weapons,
                 2 => SpawnCategory::Melons,
                 _ => SpawnCategory::Mechanisms,
-            };
+                };
+            }
         }
 
         self.update_toggle_interaction();
@@ -79,6 +86,7 @@ impl Game {
                     self.mechanisms.clear();
                 } else if self.input.play_pressed() {
                     self.state.mode = GameMode::Playing;
+                    self.state.spawn_menu_open = true;
                 } else if self.input.settings_pressed() {
                     self.state.mode = GameMode::Settings;
                 }
@@ -118,12 +126,19 @@ impl Game {
                     self.state.mode = GameMode::Playing;
                 } else if self.input.back_pressed() {
                     self.state.mode = GameMode::MainMenu;
+                    self.state.spawn_menu_open = false;
+                    self.state.pending_spawn = None;
+                    self.state.spawn_placing = false;
                 }
             }
         }
     }
 
     fn handle_spawn_dialog(&mut self) {
+        if !matches!(self.state.mode, GameMode::Playing | GameMode::Paused) {
+            return;
+        }
+
         if self.state.pending_spawn.is_none() {
             if let Some(index) = self.input.spawn_item() {
                 if let Some(selected) = self.state.spawn_category.item(index) {
