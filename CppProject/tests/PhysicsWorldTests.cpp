@@ -970,6 +970,43 @@ int main()
     CHECK(cleanupWorld.records().size() == mapBodyCount);
     CHECK(cleanupWorld.dynamicCount() == 0);
 
+    // Clearing a scene removes poured liquid and hidden piston anchors,
+    // preserves map-authored pools, and restores the default master power state.
+    PhysicsWorld clearSceneWorld;
+    clearSceneWorld.setMap(MapKind::Laboratory, false);
+    const std::size_t clearMapBodyCount = clearSceneWorld.records().size();
+    CHECK(clearSceneWorld.surfaces().size() == 2);
+    CHECK(clearSceneWorld.spawnBox(-3.0f, 5.0f) >= 0);
+    CHECK(clearSceneWorld.spawnBox(3.0f, 5.0f) >= 0);
+    CHECK(clearSceneWorld.spawnMechanism(MechanismKind::Spring, 0.0f, 5.0f) == 0);
+    CHECK(clearSceneWorld.spawnMechanism(MechanismKind::Toggle, 10.0f, 10.0f) == 1);
+    CHECK(clearSceneWorld.interactAt(10.0f, 10.0f));
+    CHECK(!clearSceneWorld.mechanisms()[0].active);
+
+    CHECK(clearSceneWorld.spawnMechanism(MechanismKind::Piston, -3.0f, 5.0f) == 2);
+    const b2BodyId clearPistonAnchor = clearSceneWorld.mechanisms()[2].bodyA;
+    CHECK(b2Body_IsValid(clearPistonAnchor));
+
+    const int clearBucket = clearSceneWorld.spawnBucket(BucketKind::Water, 12.0f, 5.0f);
+    CHECK(clearBucket >= 0);
+    CHECK(clearSceneWorld.interactAt(12.0f, 5.0f));
+    CHECK(clearSceneWorld.surfaces().size() == 3);
+    CHECK(clearSceneWorld.surfaces().back().volume > 0.0f);
+
+    clearSceneWorld.clearDynamic();
+    CHECK(clearSceneWorld.records().size() == clearMapBodyCount);
+    CHECK(clearSceneWorld.dynamicCount() == 0);
+    CHECK(clearSceneWorld.mechanisms().empty());
+    CHECK(!b2Body_IsValid(clearPistonAnchor));
+    CHECK(clearSceneWorld.surfaces().size() == 2);
+    for (const SurfaceZone& zone : clearSceneWorld.surfaces())
+        CHECK(zone.volume == 0.0f);
+
+    CHECK(clearSceneWorld.spawnBox(-3.0f, 5.0f) >= 0);
+    CHECK(clearSceneWorld.spawnBox(3.0f, 5.0f) >= 0);
+    CHECK(clearSceneWorld.spawnMechanism(MechanismKind::Spring, 0.0f, 5.0f) == 0);
+    CHECK(clearSceneWorld.mechanisms()[0].active);
+
     // Material blocks carry distinct physical profiles and persist their material identity.
     PhysicsWorld materialWorld;
     materialWorld.setMap(MapKind::Laboratory, false);

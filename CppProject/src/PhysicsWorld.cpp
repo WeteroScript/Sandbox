@@ -11,6 +11,7 @@
 #include <set>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -2155,24 +2156,56 @@ void PhysicsWorld::deleteAt(int index)
 
 void PhysicsWorld::clearDynamic()
 {
-    std::vector<b2BodyId> victims;
-    for (const BodyRecord& record : records_)
-        if (record.selectable && b2Body_IsValid(record.id))
-            victims.push_back(record.id);
+    // Collect all dynamic/selectable bodies and hidden piston anchors first.
+    // Destroying them in one batch avoids repeatedly erasing from records_ and
+    // rescanning the mechanism list for every object in large scenes.
+    std::unordered_set<std::uint64_t> removedBodies;
+    removedBodies.reserve(records_.size() + mechanisms_.size());
 
-    for (b2BodyId victim : victims)
+    for (const BodyRecord& record : records_)
     {
-        const auto found = std::find_if(records_.begin(), records_.end(),
-            [victim](const BodyRecord& record) { return sameBodyId(record.id, victim); });
-        if (found != records_.end())
-            eraseRecord(static_cast<std::size_t>(found - records_.begin()));
+        if (record.selectable && b2Body_IsValid(record.id))
+            removedBodies.insert(bodyIdKey(record.id));
     }
 
-    // Remove any free-standing toggle devices left behind after their linked props were cleared.
-    for (MechanismRecord& mechanism : mechanisms_)
+    for (const MechanismRecord& mechanism : mechanisms_)
+    {
+        if (mechanism.kind == MechanismKind::Piston &&
+            b2Body_IsValid(mechanism.bodyA))
+            removedBodies.insert(bodyIdKey(mechanism.bodyA));
+
         if (b2Joint_IsValid(mechanism.joint))
             b2DestroyJoint(mechanism.joint);
+    }
+
     mechanisms_.clear();
+
+    for (const std::uint64_t key : removedBodies)
+    {
+        const auto found = std::find_if(records_.begin(), records_.end(),
+            [key](const BodyRecord& record)
+            {
+                return bodyIdKey(record.id) == key && b2Body_IsValid(record.id);
+            });
+        if (found != records_.end() && b2Body_IsValid(found->id))
+            b2DestroyBody(found->id);
+    }
+
+    records_.erase(
+        std::remove_if(records_.begin(), records_.end(),
+            [&removedBodies](const BodyRecord& record)
+            {
+                return removedBodies.contains(bodyIdKey(record.id));
+            }),
+        records_.end());
+
+    // Keep map-authored pools (volume == 0), but remove every poured puddle.
+    surfaces_.erase(
+        std::remove_if(surfaces_.begin(), surfaces_.end(),
+            [](const SurfaceZone& zone) { return zone.volume > 0.0f; }),
+        surfaces_.end());
+
+    mechanismsEnabled_ = true;
 }
 
 bool PhysicsWorld::saveToFile(const std::string& path) const
