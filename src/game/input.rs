@@ -1,5 +1,7 @@
 use macroquad::prelude::*;
 
+use super::state::ToolMode;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     None,
@@ -22,6 +24,7 @@ pub struct InputState {
     drag_pointer: Option<Vec2>,
     spawn_tab: Option<usize>,
     spawn_item: Option<usize>,
+    tool_mode_pressed: Option<ToolMode>,
     previous_touches: Vec<(u64, Vec2)>,
 }
 
@@ -43,6 +46,7 @@ impl InputState {
             drag_pointer: None,
             spawn_tab: None,
             spawn_item: None,
+            tool_mode_pressed: None,
             previous_touches: Vec::new(),
         }
     }
@@ -52,6 +56,7 @@ impl InputState {
         spawn_menu_open: bool,
         dragging: bool,
         spawn_dialog_open: bool,
+        active_tool: ToolMode,
     ) {
         self.play = !spawn_dialog_open
             && (is_key_pressed(KeyCode::Enter)
@@ -72,6 +77,15 @@ impl InputState {
 
         self.spawn_tab = None;
         self.spawn_item = None;
+        self.tool_mode_pressed = if is_key_pressed(KeyCode::G) {
+            Some(ToolMode::Grab)
+        } else if is_key_pressed(KeyCode::V) {
+            Some(ToolMode::Freeze)
+        } else if is_key_pressed(KeyCode::B) {
+            Some(ToolMode::Duplicate)
+        } else {
+            self.started_pointer().and_then(Self::tool_button_at)
+        };
 
         if spawn_menu_open && !spawn_dialog_open {
             if let Some(position) = self.started_pointer() {
@@ -92,10 +106,19 @@ impl InputState {
             }
         }
 
+        let mouse = mouse_position();
+        let mouse_point = vec2(mouse.0, mouse.1);
+        let mouse_pressed = is_mouse_button_pressed(MouseButton::Left);
+        let mouse_fire_button = mouse_pressed
+            && mouse_point.distance(vec2(screen_width() - 100.0, screen_height() - 118.0)) <= 50.0;
+        let regular_mouse_action = mouse_pressed
+            && active_tool == ToolMode::Grab
+            && !self.in_spawn_panel(mouse_point, spawn_menu_open)
+            && !Self::in_tool_bar(mouse_point);
         self.action = if !spawn_dialog_open
             && (is_key_pressed(KeyCode::F)
-                || (is_mouse_button_pressed(MouseButton::Left)
-                    && !self.in_spawn_panel(mouse_position().into(), spawn_menu_open))
+                || mouse_fire_button
+                || regular_mouse_action
                 || (self.touch_action_pressed() && !spawn_menu_open))
         {
             Action::Fire
@@ -142,6 +165,7 @@ impl InputState {
     pub fn drag_pointer(&self) -> Option<Vec2> { self.drag_pointer }
     pub fn spawn_tab(&self) -> Option<usize> { self.spawn_tab }
     pub fn spawn_item(&self) -> Option<usize> { self.spawn_item }
+    pub fn tool_mode_pressed(&self) -> Option<ToolMode> { self.tool_mode_pressed }
 
     pub fn pointer_pressed(&self) -> Option<Vec2> {
         self.started_pointer()
@@ -178,7 +202,10 @@ impl InputState {
             let mouse = mouse_position();
             let position = vec2(mouse.0, mouse.1);
 
-            if !self.in_spawn_panel(position, spawn_menu_open) {
+            if !self.in_spawn_panel(position, spawn_menu_open)
+                && !Self::in_tool_bar(position)
+                && !self.in_fire_button(position)
+            {
                 self.drag_pointer = Some(position);
                 return;
             }
@@ -194,7 +221,11 @@ impl InputState {
             })
             .collect();
 
-        if active_touches.len() == 1 && !self.in_spawn_panel(active_touches[0].position, spawn_menu_open) {
+        if active_touches.len() == 1
+            && !self.in_spawn_panel(active_touches[0].position, spawn_menu_open)
+            && !Self::in_tool_bar(active_touches[0].position)
+            && !Self::in_fire_button(active_touches[0].position)
+        {
             self.drag_pointer = Some(active_touches[0].position);
         }
     }
@@ -226,7 +257,10 @@ impl InputState {
             }
         } else if !dragging {
             if let Some(touch) = current_touches.first() {
-                if !self.in_spawn_panel(touch.position, spawn_menu_open) {
+                if !self.in_spawn_panel(touch.position, spawn_menu_open)
+                    && !Self::in_tool_bar(touch.position)
+                    && !Self::in_fire_button(touch.position)
+                {
                     if let Some(previous) = self.previous_position(touch.id) {
                         self.camera_pan = touch.position - previous;
                     }
@@ -254,6 +288,34 @@ impl InputState {
 
     fn in_spawn_panel(&self, position: Vec2, open: bool) -> bool {
         open && position.x >= screen_width() - 300.0
+    }
+
+    fn tool_button_at(position: Vec2) -> Option<ToolMode> {
+        let top = screen_height() - 58.0;
+        if position.y < top || position.y > top + 42.0 {
+            return None;
+        }
+
+        let index = [20.0_f32, 122.0, 224.0]
+            .iter()
+            .position(|left| position.x >= *left && position.x <= *left + 94.0)?;
+
+        Some(match index {
+            0 => ToolMode::Grab,
+            1 => ToolMode::Freeze,
+            _ => ToolMode::Duplicate,
+        })
+    }
+
+    fn in_tool_bar(position: Vec2) -> bool {
+        position.x >= 20.0
+            && position.x <= 318.0
+            && position.y >= screen_height() - 58.0
+            && position.y <= screen_height() - 16.0
+    }
+
+    fn in_fire_button(position: Vec2) -> bool {
+        position.distance(vec2(screen_width() - 100.0, screen_height() - 118.0)) <= 52.0
     }
 
     fn previous_position(&self, id: u64) -> Option<Vec2> {
