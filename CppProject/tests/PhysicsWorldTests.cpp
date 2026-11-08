@@ -639,7 +639,7 @@ int main()
     const int dragBucket = waterDragWorld.spawnBucket(BucketKind::Water, -5.0f, 5.0f);
     CHECK(dragBucket >= 0);
     CHECK(waterDragWorld.interactAt(-5.0f, 5.0f));
-    const int wetBall = waterDragWorld.spawnBall(-4.0f, -4.2f);
+    const int wetBall = waterDragWorld.spawnBall(-5.0f, -4.2f);
     CHECK(wetBall >= 0);
     const b2BodyId wetBallId =
         waterDragWorld.records()[static_cast<std::size_t>(wetBall)].id;
@@ -647,13 +647,15 @@ int main()
 
     PhysicsWorld airDragWorld;
     airDragWorld.setMap(MapKind::TestRange, false);
-    const int dryBall = airDragWorld.spawnBall(-4.0f, -4.2f);
+    const int dryBall = airDragWorld.spawnBall(-5.0f, -4.2f);
     CHECK(dryBall >= 0);
     const b2BodyId dryBallId =
         airDragWorld.records()[static_cast<std::size_t>(dryBall)].id;
     b2Body_SetLinearVelocity(dryBallId, {8.0f, 0.0f});
 
-    for (int i = 0; i < 30; ++i)
+    // Measure before the dry reference reaches the arena floor, so the
+    // comparison isolates fluid drag rather than ground friction.
+    for (int i = 0; i < 5; ++i)
     {
         waterDragWorld.step(1.0f / 60.0f, 4);
         airDragWorld.step(1.0f / 60.0f, 4);
