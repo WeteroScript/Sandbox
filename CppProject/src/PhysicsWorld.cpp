@@ -154,6 +154,53 @@ bool readSavedBody(std::istream& in, SavedBody& b)
 
     return true;
 }
+
+struct SavedMechanism
+{
+    std::uint8_t kind = 0;
+    std::int32_t firstIndex = -1;
+    std::int32_t secondIndex = -1;
+    float anchorX = 0.0f;
+    float anchorY = 0.0f;
+    float restLength = 0.0f;
+    float phase = 0.0f;
+    std::uint8_t pressed = 0;
+    std::uint8_t active = 1;
+};
+
+bool writeSavedMechanism(std::ostream& out, const SavedMechanism& m)
+{
+    return writeValue(out, m.kind) &&
+        writeValue(out, m.firstIndex) &&
+        writeValue(out, m.secondIndex) &&
+        writeValue(out, m.anchorX) &&
+        writeValue(out, m.anchorY) &&
+        writeValue(out, m.restLength) &&
+        writeValue(out, m.phase) &&
+        writeValue(out, m.pressed) &&
+        writeValue(out, m.active);
+}
+
+bool readSavedMechanism(std::istream& in, SavedMechanism& m)
+{
+    if (!(readValue(in, m.kind) &&
+          readValue(in, m.firstIndex) &&
+          readValue(in, m.secondIndex) &&
+          readValue(in, m.anchorX) &&
+          readValue(in, m.anchorY) &&
+          readValue(in, m.restLength) &&
+          readValue(in, m.phase) &&
+          readValue(in, m.pressed) &&
+          readValue(in, m.active)))
+        return false;
+
+    const auto maxKind = static_cast<std::uint8_t>(MechanismKind::Toggle);
+    return m.kind <= maxKind &&
+        m.firstIndex >= -1 && m.secondIndex >= -1 &&
+        finite(m.anchorX) && finite(m.anchorY) &&
+        finite(m.restLength) && m.restLength >= 0.0f && m.restLength <= 1000.0f &&
+        finite(m.phase) && m.pressed <= 1 && m.active <= 1;
+}
 }
 
 PhysicsWorld::PhysicsWorld()
@@ -166,16 +213,197 @@ PhysicsWorld::PhysicsWorld()
     def.maximumLinearSpeed = 45.0f;
     world_ = b2CreateWorld(&def);
 
-    createBox(0.0f, -5.35f, 16.0f, 0.55f, 0.0f, {54,64,77,255}, true, false);
-    createBox(-15.45f, 0.0f, 0.55f, 12.0f, 0.0f, {45,55,68,255}, true, false);
-    createBox(15.45f, 0.0f, 0.55f, 12.0f, 0.0f, {45,55,68,255}, true, false);
-
-    spawnRagdoll(-3.2f, -1.0f);
-    spawnBox(2.0f, -2.2f);
-    spawnBall(3.5f, 1.1f);
+    setMap(MapKind::TestRange, true);
 }
 
-PhysicsWorld::~PhysicsWorld()
+void PhysicsWorld::clearWorldBodies()
+{
+    for (MechanismRecord& mechanism : mechanisms_)
+        if (b2Joint_IsValid(mechanism.joint))
+            b2DestroyJoint(mechanism.joint);
+    mechanisms_.clear();
+
+    for (std::size_t i = records_.size(); i > 0; --i)
+    {
+        const b2BodyId body = records_[i - 1].id;
+        if (b2Body_IsValid(body))
+            b2DestroyBody(body);
+    }
+
+    records_.clear();
+    surfaces_.clear();
+    nextGroupId_ = 1;
+    mechanismsEnabled_ = true;
+}
+
+void PhysicsWorld::setMap(MapKind selectedMap, bool addStarterObjects)
+{
+    if (!b2World_IsValid(world_))
+        return;
+
+    clearWorldBodies();
+    map_ = selectedMap;
+    buildMapGeometry();
+
+    if (addStarterObjects)
+    {
+        spawnRagdoll(-3.2f, -1.0f);
+        spawnBox(2.0f, -2.2f);
+        spawnBall(3.5f, 1.1f);
+    }
+}
+
+void PhysicsWorld::buildMapGeometry()
+{
+    const SDL_Color boundary{45,55,68,255};
+    const SDL_Color obstacle = map_ == MapKind::TestRange
+        ? SDL_Color{115,123,132,255}
+        : map_ == MapKind::City
+            ? SDL_Color{92,103,114,255}
+            : SDL_Color{75,124,118,255};
+
+    createBox(0.0f, -5.35f, 16.0f, 0.55f, 0.0f,
+              {54,64,77,255}, true, false);
+    createBox(-15.45f, 0.0f, 0.55f, 12.0f, 0.0f,
+              boundary, true, false);
+    createBox(15.45f, 0.0f, 0.55f, 12.0f, 0.0f,
+              boundary, true, false);
+
+    switch (map_)
+    {
+        case MapKind::TestRange:
+            createBox(-10.8f, -3.2f, 1.9f, 1.3f, 0.0f,
+                      obstacle, true, false);
+            createBox(7.3f, -3.0f, 1.5f, 1.6f, 0.0f,
+                      obstacle, true, false);
+            break;
+
+        case MapKind::City:
+            createBox(-9.7f, -3.0f, 2.2f, 1.75f, 0.0f,
+                      obstacle, true, false);
+            createBox(6.4f, -3.1f, 2.6f, 1.55f, 0.0f,
+                      obstacle, true, false);
+            createBox(0.2f, -3.55f, 1.55f, 1.1f, 0.0f,
+                      obstacle, true, false);
+            addSurface(SurfaceKind::Water, -4.2f, -1.6f, 2.0f, 1.15f);
+            break;
+
+        case MapKind::Laboratory:
+            createBox(-8.6f, -2.5f, 0.42f, 2.2f, 0.0f,
+                      obstacle, true, false);
+            createBox(8.6f, -2.5f, 0.42f, 2.2f, 0.0f,
+                      obstacle, true, false);
+            createBox(0.0f, -2.55f, 2.8f, 0.34f, 0.0f,
+                      obstacle, true, false);
+            addSurface(SurfaceKind::Water, -5.0f, -3.2f, 1.8f, 1.0f);
+            addSurface(SurfaceKind::Lava, 5.0f, -3.2f, 1.8f, 1.0f);
+            break;
+    }
+}
+
+void PhysicsWorld::addSurface(SurfaceKind kind, float x, float y,
+                              float halfWidth, float halfHeight)
+{
+    surfaces_.push_back(SurfaceZone{kind, x, y, halfWidth, halfHeight});
+}
+
+void PhysicsWorld::updateSurfaces(float dt)
+{
+    static float environmentTime = 0.0f;
+    environmentTime += dt;
+
+    for (const BodyRecord& record : records_)
+    {
+        if (!record.selectable || record.frozen || !b2Body_IsValid(record.id))
+            continue;
+
+        const b2Pos position = b2Body_GetPosition(record.id);
+        const float x = static_cast<float>(position.x);
+        const float y = static_cast<float>(position.y);
+
+        for (const SurfaceZone& zone : surfaces_)
+        {
+            if (std::abs(x - zone.x) > zone.halfWidth ||
+                std::abs(y - zone.y) > zone.halfHeight)
+                continue;
+
+            const float mass = std::max(0.1f, b2Body_GetMass(record.id));
+            b2Vec2 velocity = b2Body_GetLinearVelocity(record.id);
+
+            if (zone.kind == SurfaceKind::Water)
+            {
+                const float buoyancy = mass * 15.8f;
+                b2Body_ApplyForceToCenter(record.id, {0.0f, buoyancy}, true);
+                const float drag = std::exp(-1.6f * dt);
+                velocity.x *= drag;
+                velocity.y *= std::exp(-0.35f * dt);
+                b2Body_SetLinearVelocity(record.id, velocity);
+                b2Body_SetAngularVelocity(
+                    record.id,
+                    b2Body_GetAngularVelocity(record.id) * std::exp(-1.1f * dt)
+                );
+            }
+            else
+            {
+                const float lift = mass * (5.0f + 1.2f * std::sin(environmentTime * 3.0f + x));
+                const float drift = std::sin(environmentTime * 2.0f + y) * mass * 1.5f;
+                b2Body_ApplyForceToCenter(record.id, {drift, lift}, true);
+                b2Body_SetAngularVelocity(
+                    record.id,
+                    b2Body_GetAngularVelocity(record.id) * std::exp(-0.15f * dt)
+                );
+            }
+        }
+    }
+}
+
+void PhysicsWorld::setMechanismsEnabled(bool enabled)
+{
+    mechanismsEnabled_ = enabled;
+
+    for (MechanismRecord& mechanism : mechanisms_)
+    {
+        if (!b2Joint_IsValid(mechanism.joint))
+            continue;
+
+        mechanism.active = enabled;
+        if (mechanism.kind == MechanismKind::Spring)
+            b2DistanceJoint_EnableSpring(mechanism.joint, enabled);
+        else if (mechanism.kind == MechanismKind::Piston)
+            b2DistanceJoint_EnableMotor(mechanism.joint, enabled);
+    }
+}
+
+void PhysicsWorld::updateMechanisms(float dt)
+{
+    for (MechanismRecord& mechanism : mechanisms_)
+    {
+        mechanism.phase += dt;
+
+        if (mechanism.kind == MechanismKind::Piston &&
+            mechanism.active && b2Joint_IsValid(mechanism.joint))
+        {
+            const float speed = std::sin(mechanism.phase * 2.2f) * 1.7f;
+            b2DistanceJoint_SetTargetMotorSpeed(mechanism.joint, speed);
+        }
+
+        if (mechanism.kind != MechanismKind::Button ||
+            !b2Body_IsValid(mechanism.bodyA))
+            continue;
+
+        const b2Pos bodyPosition = b2Body_GetPosition(mechanism.bodyA);
+        const float dx = static_cast<float>(bodyPosition.x) - mechanism.anchorX;
+        const float dy = static_cast<float>(bodyPosition.y) - mechanism.anchorY;
+        const bool pressed = dx * dx + dy * dy <= mechanism.restLength * mechanism.restLength;
+
+        mechanism.pressed = pressed;
+        if (pressed && !mechanism.wasPressed)
+            setMechanismsEnabled(!mechanismsEnabled_);
+        mechanism.wasPressed = pressed;
+    }
+}
+
+int PhysicsWorld::spawnMechanism(MechanismKind kind, float x, float y)
 {
     if (b2World_IsValid(world_))
         b2DestroyWorld(world_);
@@ -183,8 +411,13 @@ PhysicsWorld::~PhysicsWorld()
 
 void PhysicsWorld::step(float dt, int subSteps)
 {
-    if (b2World_IsValid(world_))
-        b2World_Step(world_, dt, subSteps);
+    if (!b2World_IsValid(world_))
+        return;
+
+    dt = std::clamp(dt, 1.0f / 240.0f, 1.0f / 30.0f);
+    updateSurfaces(dt);
+    updateMechanisms(dt);
+    b2World_Step(world_, dt, subSteps);
 }
 
 int PhysicsWorld::createBox(float x, float y, float hw, float hh, float angle,
@@ -265,6 +498,235 @@ int PhysicsWorld::spawnBox(float x, float y)
 int PhysicsWorld::spawnBall(float x, float y)
 {
     return createCircle(x, y, 0.48f, {88,174,220,255}, true);
+}
+
+int PhysicsWorld::spawnBarrel(float x, float y)
+{
+    const int index = createCircle(x, y, 0.58f, {177,111,56,255}, true, -1, 1.8f);
+    if (index >= 0)
+    {
+        BodyRecord& barrel = records_[static_cast<std::size_t>(index)];
+        if (b2Body_IsValid(barrel.id))
+            b2Body_SetAngularDamping(barrel.id, 0.7f);
+    }
+    return index;
+}
+
+int PhysicsWorld::spawnPlatform(float x, float y)
+{
+    return createBox(x, y, 1.65f, 0.18f, 0.0f,
+                     {126,143,157,255}, false, true, -1, 1.4f);
+}
+
+int PhysicsWorld::nearestDynamicBody(float x, float y, float maxDistance, int excluded) const
+{
+    int closestIndex = -1;
+    float closestDistanceSquared = maxDistance * maxDistance;
+
+    for (std::size_t i = 0; i < records_.size(); ++i)
+    {
+        const BodyRecord& record = records_[i];
+        if (!record.selectable || record.frozen ||
+            static_cast<int>(i) == excluded || !b2Body_IsValid(record.id))
+            continue;
+
+        const b2Pos p = b2Body_GetPosition(record.id);
+        const float dx = static_cast<float>(p.x) - x;
+        const float dy = static_cast<float>(p.y) - y;
+        const float distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < closestDistanceSquared)
+        {
+            closestDistanceSquared = distanceSquared;
+            closestIndex = static_cast<int>(i);
+        }
+    }
+
+    return closestIndex;
+}
+
+bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
+                                   b2BodyId bodyA, b2BodyId bodyB,
+                                   float restLength)
+{
+    if (kind == MechanismKind::Toggle || kind == MechanismKind::Button)
+    {
+        if (kind == MechanismKind::Button && !b2Body_IsValid(bodyA))
+            return false;
+
+        MechanismRecord mechanism;
+        mechanism.kind = kind;
+        mechanism.bodyA = bodyA;
+        mechanism.anchorX = x;
+        mechanism.anchorY = y;
+        mechanism.restLength = kind == MechanismKind::Button ? 0.9f : 0.0f;
+        mechanisms_.push_back(mechanism);
+        return true;
+    }
+
+    if (kind == MechanismKind::Piston)
+    {
+        if (!b2Body_IsValid(bodyB))
+            return false;
+
+        const int anchorIndex = createBox(
+            x, y, 0.18f, 0.18f, 0.0f,
+            {72,88,101,255}, true, false
+        );
+        if (anchorIndex < 0)
+            return false;
+        bodyA = records_[static_cast<std::size_t>(anchorIndex)].id;
+    }
+    else if (!b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB) || bodyA == bodyB)
+    {
+        return false;
+    }
+
+    const b2Pos positionA = b2Body_GetPosition(bodyA);
+    const b2Pos positionB = b2Body_GetPosition(bodyB);
+    const float dx = static_cast<float>(positionB.x - positionA.x);
+    const float dy = static_cast<float>(positionB.y - positionA.y);
+    const float currentLength = std::sqrt(dx * dx + dy * dy);
+    const float length = std::clamp(
+        restLength > 0.0f ? restLength : currentLength,
+        0.45f,
+        16.0f
+    );
+
+    b2DistanceJointDef definition = b2DefaultDistanceJointDef();
+    definition.base.bodyIdA = bodyA;
+    definition.base.bodyIdB = bodyB;
+    definition.base.localFrameA.p = {0.0f, 0.0f};
+    definition.base.localFrameB.p = {0.0f, 0.0f};
+    definition.length = length;
+    definition.enableSpring = kind == MechanismKind::Spring ||
+                              kind == MechanismKind::Piston;
+    definition.hertz = kind == MechanismKind::Piston ? 1.45f : 2.6f;
+    definition.dampingRatio = kind == MechanismKind::Piston ? 0.72f : 0.32f;
+
+    if (kind == MechanismKind::Rope)
+    {
+        definition.enableLimit = true;
+        definition.minLength = 0.45f;
+        definition.maxLength = length;
+        definition.enableSpring = false;
+    }
+
+    if (kind == MechanismKind::Piston)
+    {
+        definition.enableLimit = true;
+        definition.minLength = std::max(0.45f, length * 0.55f);
+        definition.maxLength = std::min(18.0f, length * 1.35f);
+        definition.enableMotor = true;
+        definition.maxMotorForce = 42.0f;
+        definition.motorSpeed = 0.0f;
+    }
+
+    const b2JointId joint = b2CreateDistanceJoint(world_, &definition);
+    if (!b2Joint_IsValid(joint))
+    {
+        if (kind == MechanismKind::Piston)
+            eraseRecord(static_cast<std::size_t>(
+                std::find_if(records_.begin(), records_.end(),
+                    [bodyA](const BodyRecord& r) { return r.id == bodyA; }) - records_.begin()
+            ));
+        return false;
+    }
+
+    MechanismRecord mechanism;
+    mechanism.kind = kind;
+    mechanism.bodyA = bodyA;
+    mechanism.bodyB = bodyB;
+    mechanism.joint = joint;
+    mechanism.anchorX = x;
+    mechanism.anchorY = y;
+    mechanism.restLength = length;
+    mechanism.active = mechanismsEnabled_;
+    mechanisms_.push_back(mechanism);
+
+    if (kind == MechanismKind::Spring)
+        b2DistanceJoint_EnableSpring(joint, mechanismsEnabled_);
+    if (kind == MechanismKind::Piston)
+        b2DistanceJoint_EnableMotor(joint, mechanismsEnabled_);
+
+    return true;
+}
+
+int PhysicsWorld::spawnMechanism(MechanismKind kind, float x, float y)
+{
+    if (kind == MechanismKind::Toggle)
+    {
+        createMechanism(kind, x, y, b2_nullBodyId, b2_nullBodyId);
+        return static_cast<int>(mechanisms_.size() - 1);
+    }
+
+    if (kind == MechanismKind::Button)
+    {
+        const int bodyIndex = nearestDynamicBody(x, y, 8.0f);
+        if (bodyIndex < 0)
+            return -1;
+        const b2BodyId body = records_[static_cast<std::size_t>(bodyIndex)].id;
+        return createMechanism(kind, x, y, body, b2_nullBodyId)
+            ? static_cast<int>(mechanisms_.size() - 1) : -1;
+    }
+
+    if (kind == MechanismKind::Piston)
+    {
+        const int bodyIndex = nearestDynamicBody(x, y, 9.0f);
+        if (bodyIndex < 0)
+            return -1;
+        const b2BodyId body = records_[static_cast<std::size_t>(bodyIndex)].id;
+        return createMechanism(kind, x, y, b2_nullBodyId, body)
+            ? static_cast<int>(mechanisms_.size() - 1) : -1;
+    }
+
+    const int firstIndex = nearestDynamicBody(x, y, 14.0f);
+    if (firstIndex < 0)
+        return -1;
+    const int secondIndex = nearestDynamicBody(x, y, 14.0f, firstIndex);
+    if (secondIndex < 0)
+        return -1;
+
+    const b2BodyId first = records_[static_cast<std::size_t>(firstIndex)].id;
+    const b2BodyId second = records_[static_cast<std::size_t>(secondIndex)].id;
+    return createMechanism(kind, x, y, first, second)
+        ? static_cast<int>(mechanisms_.size() - 1) : -1;
+}
+
+bool PhysicsWorld::interactAt(float x, float y)
+{
+    int closest = -1;
+    float distanceSquared = 1.25f * 1.25f;
+
+    for (std::size_t i = 0; i < mechanisms_.size(); ++i)
+    {
+        const MechanismRecord& mechanism = mechanisms_[i];
+        if (!mechanism.active ||
+            (mechanism.kind != MechanismKind::Toggle &&
+             mechanism.kind != MechanismKind::Button))
+            continue;
+
+        const float dx = x - mechanism.anchorX;
+        const float dy = y - mechanism.anchorY;
+        const float d2 = dx * dx + dy * dy;
+        if (d2 < distanceSquared)
+        {
+            distanceSquared = d2;
+            closest = static_cast<int>(i);
+        }
+    }
+
+    if (closest < 0)
+        return false;
+
+    MechanismRecord& mechanism = mechanisms_[static_cast<std::size_t>(closest)];
+    mechanism.pressed = !mechanism.pressed;
+
+    if (mechanism.kind == MechanismKind::Toggle)
+        setMechanismsEnabled(mechanism.pressed);
+    else
+        setMechanismsEnabled(mechanism.pressed);
+
+    return true;
 }
 
 void PhysicsWorld::connectHingeLocal(b2BodyId a, b2BodyId b,
@@ -470,44 +932,105 @@ void PhysicsWorld::cloneAt(int index)
                   selected.color, false, true, -1, selected.density);
 }
 
+void PhysicsWorld::removeMechanismsForBody(b2BodyId body)
+{
+    std::vector<b2BodyId> pistonAnchors;
+
+    for (std::size_t i = mechanisms_.size(); i > 0; --i)
+    {
+        const std::size_t index = i - 1;
+        const MechanismRecord& mechanism = mechanisms_[index];
+        if (mechanism.bodyA != body && mechanism.bodyB != body)
+            continue;
+
+        if (b2Joint_IsValid(mechanism.joint))
+            b2DestroyJoint(mechanism.joint);
+
+        if (mechanism.kind == MechanismKind::Piston &&
+            b2Body_IsValid(mechanism.bodyA) && mechanism.bodyA != body)
+            pistonAnchors.push_back(mechanism.bodyA);
+
+        mechanisms_.erase(mechanisms_.begin() + static_cast<std::ptrdiff_t>(index));
+    }
+
+    for (b2BodyId anchor : pistonAnchors)
+    {
+        const auto found = std::find_if(records_.begin(), records_.end(),
+            [anchor](const BodyRecord& record) { return record.id == anchor; });
+        if (found == records_.end())
+            continue;
+
+        if (b2Body_IsValid(anchor))
+            b2DestroyBody(anchor);
+        records_.erase(found);
+    }
+}
+
 void PhysicsWorld::eraseRecord(std::size_t index)
 {
     if (index >= records_.size())
         return;
 
-    if (b2Body_IsValid(records_[index].id))
-        b2DestroyBody(records_[index].id);
-    records_.erase(records_.begin()+static_cast<std::ptrdiff_t>(index));
+    const b2BodyId body = records_[index].id;
+    removeMechanismsForBody(body);
+
+    const auto found = std::find_if(records_.begin(), records_.end(),
+        [body](const BodyRecord& record) { return record.id == body; });
+    if (found == records_.end())
+        return;
+
+    if (b2Body_IsValid(body))
+        b2DestroyBody(body);
+    records_.erase(found);
 }
 
 void PhysicsWorld::deleteAt(int index)
 {
     if (index < 0 || static_cast<std::size_t>(index) >= records_.size())
         return;
-
-    const int group = records_[static_cast<std::size_t>(index)].groupId;
     if (!records_[static_cast<std::size_t>(index)].selectable)
         return;
 
-    if (group < 0)
+    const int group = records_[static_cast<std::size_t>(index)].groupId;
+    std::vector<b2BodyId> victims;
+    for (const BodyRecord& record : records_)
     {
-        eraseRecord(static_cast<std::size_t>(index));
-        return;
+        if (!record.selectable || !b2Body_IsValid(record.id))
+            continue;
+        if (group < 0 ? record.id == records_[static_cast<std::size_t>(index)].id
+                      : record.groupId == group)
+            victims.push_back(record.id);
     }
 
-    for (std::size_t i = records_.size(); i > 0; --i)
+    for (b2BodyId victim : victims)
     {
-        const std::size_t current = i-1;
-        if (records_[current].groupId == group)
-            eraseRecord(current);
+        const auto found = std::find_if(records_.begin(), records_.end(),
+            [victim](const BodyRecord& record) { return record.id == victim; });
+        if (found != records_.end())
+            eraseRecord(static_cast<std::size_t>(found - records_.begin()));
     }
 }
 
 void PhysicsWorld::clearDynamic()
 {
-    for (std::size_t i = records_.size(); i > 0; --i)
-        if (records_[i-1].selectable)
-            eraseRecord(i-1);
+    std::vector<b2BodyId> victims;
+    for (const BodyRecord& record : records_)
+        if (record.selectable && b2Body_IsValid(record.id))
+            victims.push_back(record.id);
+
+    for (b2BodyId victim : victims)
+    {
+        const auto found = std::find_if(records_.begin(), records_.end(),
+            [victim](const BodyRecord& record) { return record.id == victim; });
+        if (found != records_.end())
+            eraseRecord(static_cast<std::size_t>(found - records_.begin()));
+    }
+
+    // Remove any free-standing toggle devices left behind after their linked props were cleared.
+    for (MechanismRecord& mechanism : mechanisms_)
+        if (b2Joint_IsValid(mechanism.joint))
+            b2DestroyJoint(mechanism.joint);
+    mechanisms_.clear();
 }
 
 bool PhysicsWorld::saveToFile(const std::string& path) const
@@ -520,11 +1043,14 @@ bool PhysicsWorld::saveToFile(const std::string& path) const
         return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
-    constexpr std::uint32_t version = 1;
+    constexpr std::uint32_t version = 2;
     constexpr std::uint32_t endianMarker = 0x01020304U;
+    const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
     std::vector<SavedBody> saved;
+    std::vector<b2BodyId> savedBodyIds;
     saved.reserve(records_.size());
+    savedBodyIds.reserve(records_.size());
 
     for (const BodyRecord& record : records_)
     {
@@ -559,21 +1085,63 @@ bool PhysicsWorld::saveToFile(const std::string& path) const
         body.savedVelocity = record.savedVelocity;
         body.savedAngularVelocity = record.savedAngularVelocity;
         saved.push_back(body);
+        savedBodyIds.push_back(record.id);
     }
 
     if (saved.size() > 10000)
         return false;
 
+    std::vector<SavedMechanism> savedMechanisms;
+    savedMechanisms.reserve(mechanisms_.size());
+
+    const auto savedIndexFor = [&savedBodyIds](b2BodyId id) -> std::int32_t
+    {
+        if (!b2Body_IsValid(id))
+            return -1;
+        const auto found = std::find(savedBodyIds.begin(), savedBodyIds.end(), id);
+        return found == savedBodyIds.end()
+            ? -1
+            : static_cast<std::int32_t>(found - savedBodyIds.begin());
+    };
+
+    for (const MechanismRecord& mechanism : mechanisms_)
+    {
+        SavedMechanism savedMechanism;
+        savedMechanism.kind = static_cast<std::uint8_t>(mechanism.kind);
+        savedMechanism.firstIndex = savedIndexFor(mechanism.bodyA);
+        savedMechanism.secondIndex = savedIndexFor(mechanism.bodyB);
+        if (mechanism.kind == MechanismKind::Piston)
+            savedMechanism.firstIndex = -1; // The fixed piston anchor is recreated from its position.
+        savedMechanism.anchorX = mechanism.anchorX;
+        savedMechanism.anchorY = mechanism.anchorY;
+        savedMechanism.restLength = mechanism.restLength;
+        savedMechanism.phase = mechanism.phase;
+        savedMechanism.pressed = mechanism.pressed ? 1U : 0U;
+        savedMechanism.active = mechanism.active ? 1U : 0U;
+        savedMechanisms.push_back(savedMechanism);
+    }
+
+    if (savedMechanisms.size() > 5000)
+        return false;
+
     const std::uint32_t count = static_cast<std::uint32_t>(saved.size());
+    const std::uint32_t mechanismCount = static_cast<std::uint32_t>(savedMechanisms.size());
     output.write(magic, sizeof(magic));
     if (!output.good() ||
         !writeValue(output, version) ||
         !writeValue(output, endianMarker) ||
+        !writeValue(output, savedMap) ||
         !writeValue(output, count))
         return false;
 
     for (const SavedBody& body : saved)
         if (!writeSavedBody(output, body))
+            return false;
+
+    if (!writeValue(output, mechanismCount))
+        return false;
+    for (const SavedMechanism& mechanism : savedMechanisms)
+        if (!writeSavedMechanism(output, mechanism))
             return false;
 
     output.flush();
@@ -598,16 +1166,54 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
     std::uint32_t version = 0;
     std::uint32_t endianMarker = 0;
     std::uint32_t count = 0;
+    std::uint8_t savedMapValue = static_cast<std::uint8_t>(MapKind::TestRange);
+
     if (!readValue(input, version) ||
         !readValue(input, endianMarker) ||
-        !readValue(input, count) ||
-        version != 1 || endianMarker != 0x01020304U || count > 10000)
+        (version != 1 && version != 2) ||
+        endianMarker != 0x01020304U)
+        return false;
+
+    if (version >= 2 && !readValue(input, savedMapValue))
+        return false;
+    if (savedMapValue > static_cast<std::uint8_t>(MapKind::Laboratory) ||
+        !readValue(input, count) || count > 10000)
         return false;
 
     std::vector<SavedBody> saved(count);
     for (SavedBody& body : saved)
         if (!readSavedBody(input, body))
             return false;
+
+    std::vector<SavedMechanism> savedMechanisms;
+    if (version >= 2)
+    {
+        std::uint32_t mechanismCount = 0;
+        if (!readValue(input, mechanismCount) || mechanismCount > 5000)
+            return false;
+
+        savedMechanisms.resize(mechanismCount);
+        for (SavedMechanism& mechanism : savedMechanisms)
+        {
+            if (!readSavedMechanism(input, mechanism))
+                return false;
+
+            if (mechanism.firstIndex >= static_cast<std::int32_t>(saved.size()) ||
+                mechanism.secondIndex >= static_cast<std::int32_t>(saved.size()))
+                return false;
+
+            const MechanismKind kind = static_cast<MechanismKind>(mechanism.kind);
+            if ((kind == MechanismKind::Rod || kind == MechanismKind::Rope ||
+                 kind == MechanismKind::Spring) &&
+                (mechanism.firstIndex < 0 || mechanism.secondIndex < 0 ||
+                 mechanism.firstIndex == mechanism.secondIndex))
+                return false;
+            if (kind == MechanismKind::Piston && mechanism.secondIndex < 0)
+                return false;
+            if (kind == MechanismKind::Button && mechanism.firstIndex < 0)
+                return false;
+        }
+    }
 
     for (std::size_t i = 0; i < saved.size(); ++i)
     {
@@ -638,7 +1244,7 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
     if (input.peek() != std::char_traits<char>::eof())
         return false;
 
-    clearDynamic();
+    setMap(static_cast<MapKind>(savedMapValue), false);
     nextGroupId_ = 1;
     std::vector<int> loadedIndices;
     loadedIndices.reserve(saved.size());
@@ -725,6 +1331,34 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
         b2Body_SetAngularVelocity(record.id, 0.0f);
         b2Body_SetType(record.id, b2_staticBody);
         record.frozen = true;
+    }
+
+    for (const SavedMechanism& savedMechanism : savedMechanisms)
+    {
+        const MechanismKind kind = static_cast<MechanismKind>(savedMechanism.kind);
+        const b2BodyId first = savedMechanism.firstIndex >= 0
+            ? records_[static_cast<std::size_t>(loadedIndices[static_cast<std::size_t>(savedMechanism.firstIndex)])].id
+            : b2_nullBodyId;
+        const b2BodyId second = savedMechanism.secondIndex >= 0
+            ? records_[static_cast<std::size_t>(loadedIndices[static_cast<std::size_t>(savedMechanism.secondIndex)])].id
+            : b2_nullBodyId;
+
+        if (!createMechanism(kind, savedMechanism.anchorX, savedMechanism.anchorY,
+                             first, second, savedMechanism.restLength))
+            continue;
+
+        MechanismRecord& restored = mechanisms_.back();
+        restored.phase = savedMechanism.phase;
+        restored.pressed = savedMechanism.pressed != 0;
+        restored.active = savedMechanism.active != 0;
+
+        if (b2Joint_IsValid(restored.joint))
+        {
+            if (kind == MechanismKind::Spring)
+                b2DistanceJoint_EnableSpring(restored.joint, restored.active);
+            else if (kind == MechanismKind::Piston)
+                b2DistanceJoint_EnableMotor(restored.joint, restored.active);
+        }
     }
 
     return true;
