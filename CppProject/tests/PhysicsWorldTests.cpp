@@ -727,6 +727,49 @@ int main()
     for (std::size_t i = 0; i < 3; ++i)
         CHECK(b2Joint_IsValid(powerWorld.mechanisms()[i].joint));
 
+    // A wheel motor receives power through a closed switch link and stops
+    // when that conductive path is opened.
+    PhysicsWorld batteryMotorWorld;
+    batteryMotorWorld.setMap(MapKind::Laboratory, false);
+    const int batteryIndex = batteryMotorWorld.spawnBattery(-4.0f, 6.0f);
+    const int conductiveBlock = batteryMotorWorld.spawnBox(0.0f, 6.0f);
+    const int poweredWheel = batteryMotorWorld.spawnWheel(4.0f, 6.0f);
+    CHECK(batteryIndex >= 0 && conductiveBlock >= 0 && poweredWheel >= 0);
+    CHECK(batteryMotorWorld.records()[static_cast<std::size_t>(batteryIndex)].powerSource);
+    CHECK(batteryMotorWorld.spawnMechanism(
+        MechanismKind::Switch, -2.0f, 6.0f) == 0);
+    CHECK(batteryMotorWorld.spawnMechanism(
+        MechanismKind::Motor, 2.0f, 6.0f) == 1);
+    CHECK(batteryMotorWorld.mechanisms()[0].active);
+    CHECK(batteryMotorWorld.mechanisms()[0].pressed);
+
+    batteryMotorWorld.step(1.0f / 60.0f, 4);
+    CHECK(batteryMotorWorld.mechanisms()[1].active);
+    const float chargeAfterFirstStep =
+        batteryMotorWorld.records()[static_cast<std::size_t>(batteryIndex)].batteryCharge;
+    CHECK(chargeAfterFirstStep < 100.0f);
+
+    CHECK(batteryMotorWorld.interactAt(-2.0f, 6.0f));
+    CHECK(!batteryMotorWorld.mechanisms()[0].active);
+    batteryMotorWorld.step(1.0f / 60.0f, 4);
+    CHECK(!batteryMotorWorld.mechanisms()[1].active);
+
+    CHECK(batteryMotorWorld.interactAt(-2.0f, 6.0f));
+    batteryMotorWorld.step(1.0f / 60.0f, 4);
+    CHECK(batteryMotorWorld.mechanisms()[1].active);
+    CHECK(batteryMotorWorld.records()[static_cast<std::size_t>(batteryIndex)].batteryCharge <
+          chargeAfterFirstStep);
+
+    std::vector<std::uint8_t> batterySnapshot;
+    CHECK(batteryMotorWorld.saveToSnapshot(batterySnapshot));
+    PhysicsWorld restoredBatteryMotor;
+    CHECK(restoredBatteryMotor.loadFromSnapshot(batterySnapshot));
+    bool restoredBatteryFound = false;
+    for (const BodyRecord& record : restoredBatteryMotor.records())
+        if (record.powerSource && record.batteryCharge > 0.0f)
+            restoredBatteryFound = true;
+    CHECK(restoredBatteryFound);
+
     PhysicsWorld ropeVariantWorld;
     ropeVariantWorld.setMap(MapKind::Laboratory, false);
     const int ropeFirst = ropeVariantWorld.spawnBox(-1.0f, 0.0f);

@@ -915,6 +915,59 @@ void PhysicsWorld::setMechanismsEnabled(bool enabled)
     }
 }
 
+int PhysicsWorld::findPowerSourceIndex(b2BodyId start) const
+{
+    if (!b2Body_IsValid(start))
+        return -1;
+
+    std::vector<b2BodyId> pending{start};
+    std::vector<b2BodyId> visited;
+    visited.reserve(mechanisms_.size() + 1);
+
+    for (std::size_t cursor = 0; cursor < pending.size(); ++cursor)
+    {
+        const b2BodyId current = pending[cursor];
+        if (std::any_of(visited.begin(), visited.end(),
+            [current](b2BodyId id) { return sameBodyId(id, current); }))
+            continue;
+        visited.push_back(current);
+
+        const auto body = std::find_if(records_.begin(), records_.end(),
+            [current](const BodyRecord& record)
+            {
+                return b2Body_IsValid(record.id) &&
+                       sameBodyId(record.id, current);
+            });
+        if (body != records_.end() && body->powerSource &&
+            body->batteryCharge > 0.001f)
+            return static_cast<int>(body - records_.begin());
+
+        for (const MechanismRecord& link : mechanisms_)
+        {
+            if (!link.active ||
+                (link.kind != MechanismKind::Wire &&
+                 link.kind != MechanismKind::Switch))
+                continue;
+
+            b2BodyId next = b2_nullBodyId;
+            if (b2Body_IsValid(link.bodyA) && sameBodyId(link.bodyA, current))
+                next = link.bodyB;
+            else if (b2Body_IsValid(link.bodyB) && sameBodyId(link.bodyB, current))
+                next = link.bodyA;
+
+            if (!b2Body_IsValid(next))
+                continue;
+
+            const bool queued = std::any_of(pending.begin(), pending.end(),
+                [next](b2BodyId id) { return sameBodyId(id, next); });
+            if (!queued)
+                pending.push_back(next);
+        }
+    }
+
+    return -1;
+}
+
 void PhysicsWorld::updateMechanisms(float dt)
 {
     for (MechanismRecord& mechanism : mechanisms_)
@@ -1344,6 +1397,7 @@ bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
         connection.anchorX = x;
         connection.anchorY = y;
         connection.active = true;
+        connection.pressed = kind == MechanismKind::Switch;
         mechanisms_.push_back(connection);
         return true;
     }
