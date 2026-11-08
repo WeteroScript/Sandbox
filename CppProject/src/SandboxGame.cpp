@@ -1753,6 +1753,33 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
 
     if (body.bucketKind != BucketKind::None)
         drawBucket(body, x, y, angle);
+
+    if (body.powerSource)
+    {
+        const SDL_FPoint center = worldToScreen(x, y);
+        const SDL_FRect casing{center.x - 7.0f, center.y - 10.0f, 14.0f, 20.0f};
+        const SDL_FRect cap{center.x - 3.5f, center.y - 13.0f, 7.0f, 3.0f};
+        setColor(renderer_, makeColor(37, 47, 59, 245));
+        SDL_RenderFillRect(renderer_, &casing);
+        SDL_RenderFillRect(renderer_, &cap);
+        setColor(renderer_, makeColor(188, 207, 221));
+        SDL_RenderRect(renderer_, &casing);
+        const float charge = std::clamp(body.batteryCharge / 100.0f, 0.0f, 1.0f);
+        const int bars = static_cast<int>(std::ceil(charge * 3.0f));
+        const SDL_Color chargeColor = charge > 0.30f
+            ? makeColor(93, 211, 137)
+            : charge > 0.0f ? makeColor(229, 175, 79)
+                            : makeColor(207, 84, 76);
+        setColor(renderer_, chargeColor);
+        for (int bar = 0; bar < bars; ++bar)
+        {
+            const SDL_FRect indicator{
+                center.x - 3.5f,
+                center.y + 5.0f - static_cast<float>(bar) * 5.0f,
+                7.0f, 3.5f};
+            SDL_RenderFillRect(renderer_, &indicator);
+        }
+    }
 }
 
 void SandboxGame::drawButton(const SDL_FRect& rect, const char* label, bool active)
@@ -2318,6 +2345,47 @@ void SandboxGame::drawMechanisms()
             continue;
         }
 
+        if (mechanism.kind == MechanismKind::Wire ||
+            mechanism.kind == MechanismKind::Switch)
+        {
+            if (!b2Body_IsValid(mechanism.bodyA) ||
+                !b2Body_IsValid(mechanism.bodyB))
+                continue;
+            const b2Pos start = b2Body_GetPosition(mechanism.bodyA);
+            const b2Pos finish = b2Body_GetPosition(mechanism.bodyB);
+            const SDL_FPoint a = worldToScreen(
+                static_cast<float>(start.x), static_cast<float>(start.y));
+            const SDL_FPoint b = worldToScreen(
+                static_cast<float>(finish.x), static_cast<float>(finish.y));
+            setColor(renderer_, mechanism.kind == MechanismKind::Switch
+                ? (mechanism.active ? makeColor(96, 211, 145)
+                                    : makeColor(219, 159, 82))
+                : makeColor(98, 184, 223));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            if (mechanism.kind == MechanismKind::Wire)
+            {
+                drawFilledCircle(renderer_, a.x, a.y, 3.5f, makeColor(173, 226, 244));
+                drawFilledCircle(renderer_, b.x, b.y, 3.5f, makeColor(173, 226, 244));
+            }
+            else
+            {
+                const SDL_FRect base{
+                    anchor.x - 9.0f, anchor.y - 6.0f, 18.0f, 12.0f};
+                setColor(renderer_, makeColor(35, 45, 56, 245));
+                SDL_RenderFillRect(renderer_, &base);
+                setColor(renderer_, mechanism.active
+                    ? makeColor(105, 231, 159) : makeColor(236, 174, 94));
+                SDL_RenderRect(renderer_, &base);
+                const float leverX = anchor.x + (mechanism.active ? 5.0f : -5.0f);
+                SDL_RenderLine(renderer_, anchor.x, anchor.y,
+                               leverX, anchor.y - 7.0f);
+                drawFilledCircle(renderer_, leverX, anchor.y - 7.0f, 3.0f,
+                    mechanism.active ? makeColor(105, 231, 159)
+                                     : makeColor(236, 174, 94));
+            }
+            continue;
+        }
+
         if (!b2Body_IsValid(mechanism.bodyB))
             continue;
 
@@ -2450,6 +2518,20 @@ void SandboxGame::drawMechanisms()
             drawFilledCircle(renderer_, b.x, b.y, 6.0f,
                              active ? makeColor(109, 190, 208)
                                     : makeColor(116, 122, 130));
+        }
+        else if (mechanism.kind == MechanismKind::Motor)
+        {
+            setColor(renderer_, makeColor(59, 72, 86));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            drawFilledCircle(renderer_, b.x, b.y, 11.0f,
+                active ? makeColor(75, 195, 140) : makeColor(91, 106, 121));
+            drawFilledCircle(renderer_, b.x, b.y, 5.0f, makeColor(210, 222, 231));
+            const SDL_FRect motorCase{a.x - 8.0f, a.y - 8.0f, 16.0f, 16.0f};
+            setColor(renderer_, active ? makeColor(68, 164, 126)
+                                       : makeColor(67, 81, 97));
+            SDL_RenderFillRect(renderer_, &motorCase);
+            setColor(renderer_, makeColor(192, 208, 220));
+            SDL_RenderRect(renderer_, &motorCase);
         }
     }
 }

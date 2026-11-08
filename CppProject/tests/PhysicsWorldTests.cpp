@@ -248,11 +248,13 @@ int main()
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
 
-    // Version-2 and version-3 scenes remain readable after material data (v4) and battery data (v5).
+    // Older scene formats remain readable after material data (v4) and battery data (v5).
     const std::filesystem::path legacyV2Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
     const std::filesystem::path legacyV3Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v3.scene";
+    const std::filesystem::path legacyV4Path =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v4.scene";
     {
         std::ifstream input(savePath, std::ios::binary);
         CHECK(input.good());
@@ -262,6 +264,7 @@ int main()
         };
         constexpr std::size_t headerSize = 21;
         constexpr std::size_t currentBodySize = 114;
+        constexpr std::size_t legacyV4BodySize = 109;
         constexpr std::size_t legacyV3BodySize = 103;
         constexpr std::size_t legacyV2BodySize = 94;
         constexpr std::size_t mechanismSize = 27;
@@ -322,6 +325,7 @@ int main()
 
         CHECK(makeLegacy(2, legacyV2BodySize, false, legacyV2Path));
         CHECK(makeLegacy(3, legacyV3BodySize, true, legacyV3Path));
+        CHECK(makeLegacy(4, legacyV4BodySize, true, legacyV4Path));
     }
 
     PhysicsWorld legacyV2World;
@@ -338,9 +342,17 @@ int main()
     CHECK(legacyV3World.mechanisms().size() == world.mechanisms().size());
     CHECK(legacyV3World.surfaces().size() == world.surfaces().size());
 
+    PhysicsWorld legacyV4World;
+    CHECK(legacyV4World.loadFromFile(legacyV4Path.string()));
+    CHECK(legacyV4World.map() == MapKind::Laboratory);
+    CHECK(legacyV4World.dynamicCount() == world.dynamicCount());
+    CHECK(legacyV4World.mechanisms().size() == world.mechanisms().size());
+    CHECK(legacyV4World.surfaces().size() == world.surfaces().size());
+
     std::error_code legacyCleanupError;
     std::filesystem::remove(legacyV2Path, legacyCleanupError);
     std::filesystem::remove(legacyV3Path, legacyCleanupError);
+    std::filesystem::remove(legacyV4Path, legacyCleanupError);
 
     const std::filesystem::path duplicateMechanismPath =
         std::filesystem::temp_directory_path() / "sandbox_cpp_duplicate_mechanism.scene";
