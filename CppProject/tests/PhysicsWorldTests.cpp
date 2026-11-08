@@ -344,7 +344,7 @@ int main()
     PhysicsWorld fluidWorld;
     fluidWorld.setMap(MapKind::Laboratory, false);
     const int dryWaterIndex = fluidWorld.spawnBall(-8.2f, -3.2f);
-    const int partialWaterIndex = fluidWorld.spawnBall(-7.2f, -3.2f);
+    const int partialWaterIndex = fluidWorld.spawnBall(-7.0f, -4.4f);
     const int dryLavaIndex = fluidWorld.spawnBall(1.7f, -4.0f);
     const int partialLavaIndex = fluidWorld.spawnBall(3.0f, -4.0f);
     CHECK(dryWaterIndex >= 0 && partialWaterIndex >= 0);
@@ -360,13 +360,81 @@ int main()
     const float partialLavaVelocity =
         b2Body_GetLinearVelocity(fluidWorld.records()[static_cast<std::size_t>(partialLavaIndex)].id).y;
     CHECK(partialWaterVelocity > dryWaterVelocity + 0.006f);
-    // The circle has only a narrow cap inside the water; the AABB method
-    // overestimated the buoyancy by roughly a factor of two for this case.
+    // The circle touches only the corner of the water rectangle. Its true
+    // circular overlap is much smaller than the old bounding-square estimate.
     CHECK(partialWaterVelocity - dryWaterVelocity < 0.015f);
     CHECK(partialLavaVelocity > dryLavaVelocity + 0.001f);
 
+    // Removing either endpoint must destroy the constraint and preserve the
+    // unrelated endpoint for every two-body mechanism type.
+    PhysicsWorld cleanupWorld;
+    cleanupWorld.setMap(MapKind::Laboratory, false);
+    for (MechanismKind kind : {
+             MechanismKind::Rod, MechanismKind::Rope, MechanismKind::Spring})
+    {
+        cleanupWorld.setMap(MapKind::Laboratory, false);
+        const int firstIndex = cleanupWorld.spawnBox(-1.0f, 0.0f);
+        const int secondIndex = cleanupWorld.spawnBox(1.0f, 0.0f);
+        CHECK(firstIndex >= 0 && secondIndex >= 0);
+        const b2BodyId firstBody = cleanupWorld.records()[
+            static_cast<std::size_t>(firstIndex)].id;
+        const b2BodyId secondBody = cleanupWorld.records()[
+            static_cast<std::size_t>(secondIndex)].id;
+
+        CHECK(cleanupWorld.spawnMechanism(kind, 0.0f, 0.0f) == 0);
+        CHECK(cleanupWorld.mechanisms().size() == 1);
+        const b2JointId linkedJoint = cleanupWorld.mechanisms()[0].joint;
+        CHECK(b2Joint_IsValid(linkedJoint));
+        CHECK(b2Body_IsValid(firstBody) && b2Body_IsValid(secondBody));
+
+        cleanupWorld.deleteAt(firstIndex);
+        CHECK(cleanupWorld.mechanisms().empty());
+        CHECK(!b2Joint_IsValid(linkedJoint));
+        CHECK(!b2Body_IsValid(firstBody));
+        CHECK(b2Body_IsValid(secondBody));
+        CHECK(cleanupWorld.dynamicCount() == 1);
+    }
+
+    // A button is a body-linked mechanism even though it has no physics joint.
+    cleanupWorld.setMap(MapKind::Laboratory, false);
+    const int buttonBodyIndex = cleanupWorld.spawnBox(0.0f, 0.0f);
+    CHECK(buttonBodyIndex >= 0);
+    const b2BodyId buttonBody = cleanupWorld.records()[
+        static_cast<std::size_t>(buttonBodyIndex)].id;
+    CHECK(cleanupWorld.spawnMechanism(MechanismKind::Button, 0.0f, 1.0f) == 0);
+    CHECK(cleanupWorld.mechanisms().size() == 1);
+    CHECK(cleanupWorld.mechanisms()[0].kind == MechanismKind::Button);
+    cleanupWorld.deleteAt(buttonBodyIndex);
+    CHECK(cleanupWorld.mechanisms().empty());
+    CHECK(!b2Body_IsValid(buttonBody));
+    CHECK(cleanupWorld.dynamicCount() == 0);
+
+    // Multiple pistons attached to one item must each release and delete
+    // their own hidden static anchor when that item is removed.
+    cleanupWorld.setMap(MapKind::Laboratory, false);
+    const std::size_t mapBodyCount = cleanupWorld.records().size();
+    const int pistonTargetIndex = cleanupWorld.spawnBox(2.0f, 0.0f);
+    CHECK(pistonTargetIndex >= 0);
+    const b2BodyId pistonTarget = cleanupWorld.records()[
+        static_cast<std::size_t>(pistonTargetIndex)].id;
+    CHECK(cleanupWorld.spawnMechanism(MechanismKind::Piston, 0.0f, 0.0f) == 0);
+    CHECK(cleanupWorld.spawnMechanism(MechanismKind::Piston, 0.0f, 1.0f) == 1);
+    CHECK(cleanupWorld.mechanisms().size() == 2);
+    const b2BodyId firstPistonAnchor = cleanupWorld.mechanisms()[0].bodyA;
+    const b2BodyId secondPistonAnchor = cleanupWorld.mechanisms()[1].bodyA;
+    CHECK(b2Body_IsValid(firstPistonAnchor));
+    CHECK(b2Body_IsValid(secondPistonAnchor));
+    CHECK(cleanupWorld.records().size() == mapBodyCount + 3);
+    cleanupWorld.deleteAt(pistonTargetIndex);
+    CHECK(cleanupWorld.mechanisms().empty());
+    CHECK(!b2Body_IsValid(pistonTarget));
+    CHECK(!b2Body_IsValid(firstPistonAnchor));
+    CHECK(!b2Body_IsValid(secondPistonAnchor));
+    CHECK(cleanupWorld.records().size() == mapBodyCount);
+    CHECK(cleanupWorld.dynamicCount() == 0);
+
     std::error_code error;
     std::filesystem::remove(savePath, error);
-    std::cout << "Physics, maps, character cloning/persistence, partial fluids, invalid-save rejection and mechanisms passed.\n";
+    std::cout << "Physics, maps, character persistence, exact fluid immersion, malformed saves, mechanism deletion and piston-anchor cleanup passed.\n";
     return 0;
 }
