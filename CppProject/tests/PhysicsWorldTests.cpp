@@ -699,6 +699,19 @@ int main()
     CHECK(!b2Body_IsValid(acidTargetId));
 
     // Every rope style creates a real two-body joint and survives save/load.
+    // Electrical toggle distributes power to powered actuators and restores it on tap.
+    PhysicsWorld powerWorld;
+    CHECK(powerWorld.spawnBox(0.0f, 0.0f) >= 0);
+    CHECK(powerWorld.spawnMechanism(MechanismKind::Piston, 0.0f, 0.0f) == 0);
+    CHECK(powerWorld.spawnMechanism(MechanismKind::Toggle, 5.0f, 5.0f) == 1);
+    CHECK(powerWorld.mechanisms()[0].active);
+    CHECK(powerWorld.interactAt(5.0f, 5.0f));
+    CHECK(!powerWorld.mechanisms()[0].active);
+    CHECK(powerWorld.interactAt(5.0f, 5.0f));
+    CHECK(powerWorld.mechanisms()[0].active);
+    powerWorld.step(1.0f / 60.0f);
+    CHECK(b2Joint_IsValid(powerWorld.mechanisms()[0].joint));
+
     PhysicsWorld ropeVariantWorld;
     ropeVariantWorld.setMap(MapKind::Laboratory, false);
     const int ropeFirst = ropeVariantWorld.spawnBox(-1.0f, 0.0f);
@@ -891,6 +904,6 @@ int main()
 
     std::error_code error;
     std::filesystem::remove(savePath, error);
-    std::cout << "Physics, materials, impact fracture, rotation, maps, character persistence, fluid immersion, save compatibility, malformed saves and mechanism cleanup passed.\n";
+    std::cout << "Physics, materials, impact fracture, powered actuators, rotation, maps, character persistence, fluid immersion, save compatibility and mechanism cleanup passed.\n";
     return 0;
 }
