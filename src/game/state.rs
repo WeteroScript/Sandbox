@@ -241,5 +241,6 @@ impl GameState {
         self.pending_spawn = None;
         self.spawn_count = 1;
         self.spawn_placing = false;
+        self.tool_mode = ToolMode::Grab;
     }
 }
