@@ -1073,6 +1073,110 @@ void SandboxGame::loadScene(bool silent)
         noticeTimer_ = 3.0f;
 }
 
+bool SandboxGame::captureHistorySnapshot(
+    std::vector<std::uint8_t>& snapshot)
+{
+    if (physics_.saveToSnapshot(snapshot))
+        return true;
+
+    notice_ = "Undo history unavailable";
+    noticeTimer_ = 2.5f;
+    return false;
+}
+
+void SandboxGame::pushUndoSnapshot(std::vector<std::uint8_t>&& snapshot)
+{
+    if (snapshot.empty())
+        return;
+
+    undoHistory_.push_back(std::move(snapshot));
+    if (undoHistory_.size() > kHistoryLimit)
+        undoHistory_.erase(undoHistory_.begin());
+    redoHistory_.clear();
+}
+
+void SandboxGame::finishDragHistory()
+{
+    if (dragChanged_ && !dragStartSnapshot_.empty())
+        pushUndoSnapshot(std::move(dragStartSnapshot_));
+    else
+        dragStartSnapshot_.clear();
+
+    dragChanged_ = false;
+}
+
+void SandboxGame::undoScene()
+{
+    if (undoHistory_.empty())
+    {
+        notice_ = "Nothing to undo";
+        noticeTimer_ = 1.8f;
+        return;
+    }
+
+    std::vector<std::uint8_t> current;
+    if (!captureHistorySnapshot(current))
+        return;
+
+    std::vector<std::uint8_t> previous = std::move(undoHistory_.back());
+    undoHistory_.pop_back();
+    if (!physics_.loadFromSnapshot(previous))
+    {
+        undoHistory_.push_back(std::move(previous));
+        notice_ = "Undo restore failed";
+        noticeTimer_ = 2.5f;
+        return;
+    }
+
+    redoHistory_.push_back(std::move(current));
+    if (redoHistory_.size() > kHistoryLimit)
+        redoHistory_.erase(redoHistory_.begin());
+
+    grabbedIndex_ = -1;
+    dragStartSnapshot_.clear();
+    dragChanged_ = false;
+    accumulator_ = 0.0f;
+    clearConfirmTimer_ = 0.0f;
+    notice_ = "Undo";
+    noticeTimer_ = 1.8f;
+}
+
+void SandboxGame::redoScene()
+{
+    if (redoHistory_.empty())
+    {
+        notice_ = "Nothing to redo";
+        noticeTimer_ = 1.8f;
+        return;
+    }
+
+    std::vector<std::uint8_t> current;
+    if (!captureHistorySnapshot(current))
+        return;
+
+    std::vector<std::uint8_t> next = std::move(redoHistory_.back());
+    redoHistory_.pop_back();
+    if (!physics_.loadFromSnapshot(next))
+    {
+        redoHistory_.push_back(std::move(next));
+        notice_ = "Redo restore failed";
+        noticeTimer_ = 2.5f;
+        return;
+    }
+
+    undoHistory_.push_back(std::move(current));
+    if (undoHistory_.size() > kHistoryLimit)
+        undoHistory_.erase(undoHistory_.begin());
+
+    grabbedIndex_ = -1;
+    dragStartSnapshot_.clear();
+    dragChanged_ = false;
+    accumulator_ = 0.0f;
+    clearConfirmTimer_ = 0.0f;
+    notice_ = "Redo";
+    noticeTimer_ = 1.8f;
+}
+
 void SandboxGame::update(float deltaTime)
 {
     noticeTimer_ = std::max(0.0f, noticeTimer_ - deltaTime);
@@ -1508,6 +1612,8 @@ void SandboxGame::drawUi()
         drawButton(layout.quantityUp, "+", false);
         drawButton(layout.saveButton, "SAVE", false);
         drawButton(layout.loadButton, "LOAD", false);
+        drawButton(layout.undoButton, "UNDO", !undoHistory_.empty());
+        drawButton(layout.redoButton, "REDO", !redoHistory_.empty());
         drawButton(layout.clearButton,
                    clearConfirmTimer_ > 0.0f ? "SURE?" : "CLEAR",
                    clearConfirmTimer_ > 0.0f);
@@ -1538,7 +1644,7 @@ void SandboxGame::drawUi()
     std::snprintf(
         status,
         sizeof(status),
-        "%s   OBJECTS %zu   AWAKE %d   FPS %.0f   |   M MAP   1-5 TOOLS   SPACE PAUSE",
+        "%s   OBJECTS %zu   AWAKE %d   FPS %.0f   |   M MAP   1-5 TOOLS   CTRL+Z/Y UNDO/REDO",
         mapLabel,
         physics_.dynamicCount(),
         physics_.awakeBodyCount(),
