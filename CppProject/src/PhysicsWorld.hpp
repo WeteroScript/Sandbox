@@ -1,11 +1,17 @@
 #pragma once
+
 #include <SDL3/SDL.h>
 #include <box2d/box2d.h>
+
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-enum class BodyShape { Box, Circle };
+enum class BodyShape : std::uint8_t { Box, Circle };
+enum class MapKind : std::uint8_t { TestRange, City, Laboratory };
+enum class SurfaceKind : std::uint8_t { Water, Lava };
+enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle };
 
 struct BodyRecord
 {
@@ -29,18 +35,51 @@ struct BodyRecord
     float savedAngularVelocity = 0.0f;
 };
 
+struct SurfaceZone
+{
+    SurfaceKind kind = SurfaceKind::Water;
+    float x = 0.0f;
+    float y = 0.0f;
+    float halfWidth = 1.0f;
+    float halfHeight = 1.0f;
+};
+
+struct MechanismRecord
+{
+    MechanismKind kind = MechanismKind::Rod;
+    b2BodyId bodyA = b2_nullBodyId;
+    b2BodyId bodyB = b2_nullBodyId;
+    b2JointId joint = b2_nullJointId;
+    float anchorX = 0.0f;
+    float anchorY = 0.0f;
+    float restLength = 0.0f;
+    float phase = 0.0f;
+    bool pressed = false;
+    bool wasPressed = false;
+    bool active = true;
+};
+
 class PhysicsWorld
 {
 public:
     PhysicsWorld();
     ~PhysicsWorld();
+
     PhysicsWorld(const PhysicsWorld&) = delete;
     PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
     void step(float deltaTime, int subSteps = 4);
+    void setMap(MapKind map, bool addStarterObjects = true);
+    MapKind map() const { return map_; }
+
     int spawnBox(float x, float y);
     int spawnBall(float x, float y);
+    int spawnBarrel(float x, float y);
+    int spawnPlatform(float x, float y);
     int spawnRagdoll(float x, float y);
+    int spawnMechanism(MechanismKind kind, float x, float y);
+    bool interactAt(float x, float y);
+
     int pickBody(float worldX, float worldY) const;
     void updateGrab(int index, float targetX, float targetY, float deltaTime);
     void toggleFreeze(int index);
@@ -52,13 +91,19 @@ public:
     bool loadFromFile(const std::string& path);
 
     const std::vector<BodyRecord>& records() const { return records_; }
+    const std::vector<SurfaceZone>& surfaces() const { return surfaces_; }
+    const std::vector<MechanismRecord>& mechanisms() const { return mechanisms_; }
     std::size_t dynamicCount() const;
     int awakeBodyCount() const;
 
 private:
     b2WorldId world_ = b2_nullWorldId;
     std::vector<BodyRecord> records_;
+    std::vector<SurfaceZone> surfaces_;
+    std::vector<MechanismRecord> mechanisms_;
     int nextGroupId_ = 1;
+    MapKind map_ = MapKind::TestRange;
+    bool mechanismsEnabled_ = true;
 
     int createBox(float x, float y, float halfWidth, float halfHeight, float angle,
                   SDL_Color color, bool isStatic, bool selectable,
@@ -72,6 +117,18 @@ private:
     void connectHingeLocal(b2BodyId bodyA, b2BodyId bodyB,
                            b2Vec2 localAnchorA, b2Vec2 localAnchorB,
                            float lowerAngle, float upperAngle);
-    void setFrozen(BodyRecord& record, bool frozen);
+
+    void clearWorldBodies();
+    void buildMapGeometry();
+    void addSurface(SurfaceKind kind, float x, float y, float halfWidth, float halfHeight);
+    void updateSurfaces(float deltaTime);
+    void updateMechanisms(float deltaTime);
+    void setMechanismsEnabled(bool enabled);
+    int nearestDynamicBody(float x, float y, float maxDistance, int excluded = -1) const;
+    bool createMechanism(MechanismKind kind, float x, float y,
+                         b2BodyId bodyA, b2BodyId bodyB,
+                         float restLength = 0.0f);
     void eraseRecord(std::size_t index);
+    void removeMechanismsForBody(b2BodyId body);
+    void setFrozen(BodyRecord& record, bool frozen);
 };
