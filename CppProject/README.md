@@ -15,7 +15,7 @@ The active game is a touch-first Android application. The project is developed i
 - Dynamic boxes, balls, barrels, platforms, Melon and Robot ragdolls.
 - Water buoyancy, current-relative drag, angular damping and surface waves.
 - Lava updrafts and hot currents; acid exposure gradually dissolves immersed props.
-- Filled water, lava and acid buckets in the MISC catalogue. Tap a placed bucket to empty it into a finite puddle; nearby puddles of the same liquid join together.
+- Filled water, lava and acid buckets in the RAZNOE (Разное) catalogue. Tap a placed bucket to empty it into a finite puddle; nearby puddles of the same liquid join together.
 - Rod, rope, spring, piston, button and toggle mechanisms.
 - GRAB, FREEZE, CLONE, DELETE and ROTATE touch tools.
 - Three catalogue sections: PROPS, MECH and RAZNOE (Разное).
