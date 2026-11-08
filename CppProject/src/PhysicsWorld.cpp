@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <sstream>
 #include <cstring>
 #include <type_traits>
 #include <set>
@@ -1375,6 +1376,26 @@ bool PhysicsWorld::saveToFile(const std::string& path) const
     std::ofstream output(path, std::ios::binary | std::ios::trunc);
     if (!output)
         return false;
+    return saveToStream(output);
+}
+
+bool PhysicsWorld::saveToSnapshot(std::vector<std::uint8_t>& snapshot) const
+{
+    std::ostringstream output(std::ios::binary | std::ios::out);
+    if (!saveToStream(output))
+        return false;
+
+    const std::string bytes = output.str();
+    if (bytes.empty())
+        return false;
+    snapshot.assign(bytes.begin(), bytes.end());
+    return true;
+}
+
+bool PhysicsWorld::saveToStream(std::ostream& output) const
+{
+    if (!b2World_IsValid(world_))
+        return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
     constexpr std::uint32_t version = 2;
@@ -1490,6 +1511,23 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
 
     std::ifstream input(path, std::ios::binary);
     if (!input)
+        return false;
+    return loadFromStream(input);
+}
+
+bool PhysicsWorld::loadFromSnapshot(const std::vector<std::uint8_t>& snapshot)
+{
+    if (snapshot.empty())
+        return false;
+
+    const std::string bytes(snapshot.begin(), snapshot.end());
+    std::istringstream input(bytes, std::ios::binary | std::ios::in);
+    return loadFromStream(input);
+}
+
+bool PhysicsWorld::loadFromStream(std::istream& input)
+{
+    if (!b2World_IsValid(world_))
         return false;
 
     constexpr char expectedMagic[8] = {'S','B','X','2','D','S','C','N'};

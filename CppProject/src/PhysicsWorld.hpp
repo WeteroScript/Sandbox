@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -91,6 +92,8 @@ public:
 
     bool saveToFile(const std::string& path) const;
     bool loadFromFile(const std::string& path);
+    bool saveToSnapshot(std::vector<std::uint8_t>& snapshot) const;
+    bool loadFromSnapshot(const std::vector<std::uint8_t>& snapshot);
 
     const std::vector<BodyRecord>& records() const { return records_; }
     const std::vector<SurfaceZone>& surfaces() const { return surfaces_; }
@@ -120,6 +123,8 @@ private:
                            b2Vec2 localAnchorA, b2Vec2 localAnchorB,
                            float lowerAngle, float upperAngle);
 
+    bool saveToStream(std::ostream& output) const;
+    bool loadFromStream(std::istream& input);
     void clearWorldBodies();
     void buildMapGeometry();
     void addSurface(SurfaceKind kind, float x, float y, float halfWidth, float halfHeight);
