@@ -49,6 +49,8 @@ pub enum MapKind {
     TestRange,
     City,
     Laboratory,
+    Lava,
+    Water,
 }
 
 impl MapKind {
@@ -56,7 +58,9 @@ impl MapKind {
         match self {
             Self::TestRange => Self::City,
             Self::City => Self::Laboratory,
-            Self::Laboratory => Self::TestRange,
+            Self::Laboratory => Self::Lava,
+            Self::Lava => Self::Water,
+            Self::Water => Self::TestRange,
         }
     }
 
@@ -65,6 +69,8 @@ impl MapKind {
             Self::TestRange => "TEST RANGE",
             Self::City => "CITY",
             Self::Laboratory => "LABORATORY",
+            Self::Lava => "LAVA PIT",
+            Self::Water => "WATER PARK",
         }
     }
 }
@@ -239,6 +245,7 @@ impl PhysicsWorld {
         );
 
         self.update_joint_damage(dt);
+        self.update_map_effects(dt);
         self.update_props(dt);
 
         for explosion in &mut self.explosions {
@@ -759,6 +766,62 @@ impl PhysicsWorld {
         self.remove_broken_joints();
     }
 
+    fn update_map_effects(&mut self, delta_time: f32) {
+        match self.map {
+            MapKind::Water => {
+                let submerged: Vec<RigidBodyHandle> = self
+                    .bodies
+                    .iter()
+                    .filter_map(|(handle, body)| {
+                        let position = body.translation();
+                        (body.is_dynamic()
+                            && position.y > 870.0
+                            && position.y < 1420.0
+                            && position.x > 40.0
+                            && position.x < 2360.0)
+                            .then_some(handle)
+                    })
+                    .collect();
+
+                for handle in submerged {
+                    if let Some(body) = self.bodies.get_mut(handle) {
+                        let mass = body.mass().max(0.1);
+                        let velocity = *body.linvel();
+                        let drag = velocity * (-mass * 1.9);
+                        let buoyancy = mass * 1020.0;
+                        body.add_force(vector![drag.x, drag.y - buoyancy], true);
+                        body.add_torque(-body.angvel() * mass * 1.6, true);
+                    }
+                }
+            }
+            MapKind::Lava => {
+                let mut damaged = false;
+                for joint in &mut self.joints {
+                    let parent_in_lava = self
+                        .bodies
+                        .get(joint.parent)
+                        .map(|body| body.translation().y > 1080.0)
+                        .unwrap_or(false);
+                    let child_in_lava = self
+                        .bodies
+                        .get(joint.child)
+                        .map(|body| body.translation().y > 1080.0)
+                        .unwrap_or(false);
+
+                    if parent_in_lava || child_in_lava {
+                        joint.health -= 150.0 * delta_time;
+                        damaged |= joint.health <= 0.0;
+                    }
+                }
+
+                if damaged {
+                    self.remove_broken_joints();
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn update_joint_damage(&mut self, delta_time: f32) {
         let mut broken = false;
 
@@ -862,6 +925,16 @@ impl PhysicsWorld {
                 self.create_static_box(vector![2060.0, 980.0], vector![42.0, 220.0]);
                 self.create_static_box(vector![1200.0, 920.0], vector![300.0, 38.0]);
             }
+            MapKind::Lava => {
+                self.create_static_box(vector![430.0, 970.0], vector![210.0, 24.0]);
+                self.create_static_box(vector![1200.0, 880.0], vector![170.0, 24.0]);
+                self.create_static_box(vector![1970.0, 970.0], vector![210.0, 24.0]);
+            }
+            MapKind::Water => {
+                self.create_static_box(vector![390.0, 1030.0], vector![175.0, 20.0]);
+                self.create_static_box(vector![2010.0, 1030.0], vector![175.0, 20.0]);
+                self.create_static_box(vector![1200.0, 1110.0], vector![260.0, 18.0]);
+            }
         }
     }
 
@@ -886,6 +959,8 @@ impl PhysicsWorld {
                 MapKind::TestRange => [115, 123, 132, 255],
                 MapKind::City => [92, 103, 114, 255],
                 MapKind::Laboratory => [75, 124, 118, 255],
+                MapKind::Lava => [116, 65, 49, 255],
+                MapKind::Water => [63, 111, 143, 255],
             },
             kind: PropKind::Static,
             active: true,

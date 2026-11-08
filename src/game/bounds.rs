@@ -51,6 +51,22 @@ pub fn install_environment(world: &mut PhysicsWorld, map: MapKind) {
                 [224, 67, 36, 220],
             );
         }
+        MapKind::Lava => {
+            create_sensor_zone(
+                world,
+                vector![1200.0, 1135.0],
+                vector![1180.0, 75.0],
+                [238, 74, 28, 105],
+            );
+        }
+        MapKind::Water => {
+            create_sensor_zone(
+                world,
+                vector![1200.0, 1050.0],
+                vector![1180.0, 160.0],
+                [48, 143, 205, 82],
+            );
+        }
     }
 }
 

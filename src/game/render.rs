@@ -954,6 +954,8 @@ impl Renderer {
             MapKind::TestRange => Color::from_rgba(29, 38, 50, 255),
             MapKind::City => Color::from_rgba(42, 49, 62, 255),
             MapKind::Laboratory => Color::from_rgba(25, 49, 53, 255),
+            MapKind::Lava => Color::from_rgba(46, 29, 29, 255),
+            MapKind::Water => Color::from_rgba(20, 46, 67, 255),
         };
 
         draw_rectangle(0.0, 0.0, 2400.0, 1215.0, color);
@@ -1008,6 +1010,32 @@ impl Renderer {
                     8.0,
                     Color::from_rgba(235, 55, 75, 220),
                 );
+            }
+            MapKind::Lava => {
+                draw_rectangle(0.0, 1080.0, 2400.0, 135.0, Color::from_rgba(124, 42, 25, 245));
+                draw_rectangle(0.0, 1072.0, 2400.0, 10.0, Color::from_rgba(255, 128, 48, 255));
+                for x in (120..2400).step_by(240) {
+                    let phase = (x as f32 * 0.017).sin().abs();
+                    draw_circle(
+                        x as f32,
+                        1057.0 - phase * 18.0,
+                        8.0 + phase * 10.0,
+                        Color::from_rgba(244, 103, 38, 185),
+                    );
+                }
+            }
+            MapKind::Water => {
+                draw_rectangle(0.0, 870.0, 2400.0, 345.0, Color::from_rgba(28, 111, 164, 190));
+                draw_rectangle(0.0, 862.0, 2400.0, 9.0, Color::from_rgba(105, 198, 224, 210));
+                for x in (100..2400).step_by(180) {
+                    let phase = (x as f32 * 0.013).sin().abs();
+                    draw_circle(
+                        x as f32,
+                        990.0 + phase * 170.0,
+                        4.0 + phase * 5.0,
+                        Color::from_rgba(180, 225, 242, 105),
+                    );
+                }
             }
         }
     }
