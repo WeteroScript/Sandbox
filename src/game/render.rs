@@ -828,9 +828,12 @@ impl Renderer {
         height: f32,
         color: Color,
     ) {
-        if !state.physics.is_detached(handle) {
-            self.draw_box_body(state, handle, width, height, color);
-        }
+        let part_color = if state.physics.is_detached(handle) {
+            Color::new(color.r * 0.82, color.g * 0.82, color.b * 0.82, color.a)
+        } else {
+            color
+        };
+        self.draw_box_body(state, handle, width, height, part_color);
     }
 
     fn draw_circle_body(

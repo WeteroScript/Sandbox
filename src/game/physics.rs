@@ -184,6 +184,7 @@ pub struct PhysicsWorld {
     pub map: MapKind,
     pub weapon: WeaponKind,
     joints: Vec<JointHealth>,
+    total_joint_capacity: f32,
     detached_parts: Vec<RigidBodyHandle>,
     spawn_index: u32,
 }
@@ -214,6 +215,7 @@ impl PhysicsWorld {
             map,
             weapon: WeaponKind::Pistol,
             joints: Vec::new(),
+            total_joint_capacity: 0.0,
             detached_parts: Vec::new(),
             spawn_index: 0,
         };
@@ -404,14 +406,12 @@ impl PhysicsWorld {
     }
 
     pub fn joint_health_ratio(&self) -> f32 {
-        if self.joints.is_empty() {
+        if self.total_joint_capacity <= 0.0 {
             return 0.0;
         }
 
         let current: f32 = self.joints.iter().map(|joint| joint.health.max(0.0)).sum();
-        let maximum: f32 = self.joints.iter().map(|joint| joint.max_health).sum();
-
-        (current / maximum).clamp(0.0, 1.0)
+        (current / self.total_joint_capacity).clamp(0.0, 1.0)
     }
 
     pub fn is_detached(&self, handle: RigidBodyHandle) -> bool {
@@ -1148,6 +1148,7 @@ impl PhysicsWorld {
             .build();
         let handle = self.impulse_joints.insert(parent, child, joint, true);
         let max_health = self.character.joint_strength();
+        self.total_joint_capacity += max_health;
 
         self.joints.push(JointHealth {
             handle,
