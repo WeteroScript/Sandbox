@@ -249,10 +249,11 @@ int main()
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
 
-    // Version-2 scenes used 94-byte body records and version-3 scenes used
-    // 103-byte records. Rebuild both older layouts from the current v4 snapshot.
+    // Version-2 and version-3 scenes remain readable after adding material data in v4.
     const std::filesystem::path legacyV2Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
+    const std::filesystem::path legacyV3Path =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v3.scene";
     {
         std::ifstream input(savePath, std::ios::binary);
         CHECK(input.good());
@@ -262,7 +263,8 @@ int main()
         };
         constexpr std::size_t headerSize = 21;
         constexpr std::size_t currentBodySize = 109;
-        constexpr std::size_t legacyBodySize = 94;
+        constexpr std::size_t legacyV3BodySize = 103;
+        constexpr std::size_t legacyV2BodySize = 94;
         constexpr std::size_t mechanismSize = 27;
         CHECK(currentBytes.size() >= headerSize);
 
@@ -281,68 +283,47 @@ int main()
             static_cast<std::size_t>(mechanismCount) * mechanismSize;
         CHECK(currentBytes.size() >= mechanismEnd + sizeof(std::uint32_t));
 
-        std::vector<char> legacyBytes;
-        legacyBytes.reserve(
-            21 + static_cast<std::size_t>(bodyCount) * legacyBodySize +
-            sizeof(std::uint32_t) +
-            static_cast<std::size_t>(mechanismCount) * mechanismSize);
-        legacyBytes.insert(legacyBytes.end(),
-                           currentBytes.begin(), currentBytes.begin() + 21);
-        const std::uint32_t legacyVersion = 2;
-        std::memcpy(legacyBytes.data() + 8, &legacyVersion, sizeof(legacyVersion));
-
-        for (std::size_t i = 0; i < bodyCount; ++i)
+        const auto makeLegacy = [&](std::uint32_t version,
+                                    std::size_t legacyBodySize,
+                                    bool retainSurfaces,
+                                    const std::filesystem::path& path)
         {
-            const std::size_t bodyStart = headerSize + i * currentBodySize;
-            legacyBytes.insert(
-                legacyBytes.end(),
-                currentBytes.begin() + static_cast<std::ptrdiff_t>(bodyStart),
-                currentBytes.begin() + static_cast<std::ptrdiff_t>(
-                    bodyStart + legacyBodySize));
-        }
-        legacyBytes.insert(
-            legacyBytes.end(),
-            currentBytes.begin() + static_cast<std::ptrdiff_t>(mechanismCountOffset),
-            currentBytes.begin() + static_cast<std::ptrdiff_t>(mechanismEnd));
-
-        std::ofstream output(legacyV2Path, std::ios::binary | std::ios::trunc);
-        CHECK(output.good());
-        output.write(legacyBytes.data(),
-                     static_cast<std::streamsize>(legacyBytes.size()));
-        CHECK(output.good());
-    }
-
-        const std::filesystem::path legacyV3Path =
-            std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v3.scene";
-        {
-            std::vector<char> legacyV3Bytes;
-            constexpr std::size_t legacyV3BodySize = 103;
-            legacyV3Bytes.reserve(
-                headerSize + static_cast<std::size_t>(bodyCount) * legacyV3BodySize +
+            std::vector<char> legacyBytes;
+            legacyBytes.reserve(
+                headerSize + static_cast<std::size_t>(bodyCount) * legacyBodySize +
                 currentBytes.size() - mechanismCountOffset);
-            legacyV3Bytes.insert(legacyV3Bytes.end(),
-                                 currentBytes.begin(), currentBytes.begin() + headerSize);
-            const std::uint32_t legacyVersion3 = 3;
-            std::memcpy(legacyV3Bytes.data() + 8, &legacyVersion3, sizeof(legacyVersion3));
+            legacyBytes.insert(legacyBytes.end(),
+                               currentBytes.begin(), currentBytes.begin() + headerSize);
+            std::memcpy(legacyBytes.data() + 8, &version, sizeof(version));
+
             for (std::size_t i = 0; i < bodyCount; ++i)
             {
                 const std::size_t bodyStart = headerSize + i * currentBodySize;
-                legacyV3Bytes.insert(
-                    legacyV3Bytes.end(),
+                legacyBytes.insert(
+                    legacyBytes.end(),
                     currentBytes.begin() + static_cast<std::ptrdiff_t>(bodyStart),
                     currentBytes.begin() + static_cast<std::ptrdiff_t>(
-                        bodyStart + legacyV3BodySize));
+                        bodyStart + legacyBodySize));
             }
-            legacyV3Bytes.insert(
-                legacyV3Bytes.end(),
+
+            const std::size_t endOffset = retainSurfaces
+                ? currentBytes.size() : mechanismEnd;
+            legacyBytes.insert(
+                legacyBytes.end(),
                 currentBytes.begin() + static_cast<std::ptrdiff_t>(mechanismCountOffset),
-                currentBytes.end());
-            std::ofstream output(legacyV3Path, std::ios::binary | std::ios::trunc);
+                currentBytes.begin() + static_cast<std::ptrdiff_t>(endOffset));
+
+            std::ofstream output(path, std::ios::binary | std::ios::trunc);
             CHECK(output.good());
-            output.write(legacyV3Bytes.data(),
-                         static_cast<std::streamsize>(legacyV3Bytes.size()));
+            output.write(legacyBytes.data(),
+                         static_cast<std::streamsize>(legacyBytes.size()));
             CHECK(output.good());
-        }
+            return true;
+        };
+
+        CHECK(makeLegacy(2, legacyV2BodySize, false, legacyV2Path));
+        CHECK(makeLegacy(3, legacyV3BodySize, true, legacyV3Path));
+    }
 
     PhysicsWorld legacyV2World;
     CHECK(legacyV2World.loadFromFile(legacyV2Path.string()));
@@ -350,12 +331,14 @@ int main()
     CHECK(legacyV2World.dynamicCount() == world.dynamicCount());
     CHECK(legacyV2World.mechanisms().size() == world.mechanisms().size());
     CHECK(legacyV2World.surfaces().size() == 2);
+
     PhysicsWorld legacyV3World;
     CHECK(legacyV3World.loadFromFile(legacyV3Path.string()));
     CHECK(legacyV3World.map() == MapKind::Laboratory);
     CHECK(legacyV3World.dynamicCount() == world.dynamicCount());
     CHECK(legacyV3World.mechanisms().size() == world.mechanisms().size());
     CHECK(legacyV3World.surfaces().size() == world.surfaces().size());
+
     std::error_code legacyCleanupError;
     std::filesystem::remove(legacyV2Path, legacyCleanupError);
     std::filesystem::remove(legacyV3Path, legacyCleanupError);
