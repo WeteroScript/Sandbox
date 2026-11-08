@@ -1,6 +1,7 @@
 #include "PhysicsWorld.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 
 #define CHECK(condition) \
@@ -141,6 +142,47 @@ int main()
     world.deleteAt(robotIndex);
     CHECK(world.dynamicCount() == initialCount);
 
+    const std::filesystem::path robotSavePath =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_robot_test.scene";
+    const int savedRobotGroup = world.spawnRobot(9.0f, 4.0f);
+    CHECK(savedRobotGroup >= 0);
+    CHECK(world.saveToFile(robotSavePath.string()));
+    CHECK(world.loadFromFile(robotSavePath.string()));
+    CHECK(world.dynamicCount() == initialCount + 6);
+
+    int loadedRobotGroup = -1;
+    int loadedRobotTorsoJoints = -1;
+    bool loadedRobotHeadIsBox = false;
+    for (const BodyRecord& body : world.records())
+    {
+        if (body.groupId < 0)
+            continue;
+        loadedRobotGroup = body.groupId;
+        if (body.partIndex == 0)
+            loadedRobotTorsoJoints = b2Body_GetJointCount(body.id);
+        if (body.partIndex == 1)
+            loadedRobotHeadIsBox = body.shape == BodyShape::Box;
+    }
+    CHECK(loadedRobotGroup >= 0);
+    CHECK(loadedRobotTorsoJoints == 5);
+    CHECK(loadedRobotHeadIsBox);
+
+    const std::filesystem::path corruptSavePath =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_corrupt_test.scene";
+    {
+        std::ofstream corrupt(corruptSavePath, std::ios::binary | std::ios::trunc);
+        const char partialHeader[] = {'S','B','X','2','D','S','C','N',2,0};
+        corrupt.write(partialHeader, sizeof(partialHeader));
+    }
+    const std::size_t beforeRejectedLoad = world.dynamicCount();
+    const MapKind mapBeforeRejectedLoad = world.map();
+    CHECK(!world.loadFromFile(corruptSavePath.string()));
+    CHECK(world.dynamicCount() == beforeRejectedLoad);
+    CHECK(world.map() == mapBeforeRejectedLoad);
+    std::error_code cleanupError;
+    std::filesystem::remove(robotSavePath, cleanupError);
+    std::filesystem::remove(corruptSavePath, cleanupError);
+
     world.setMap(MapKind::Laboratory, true);
     CHECK(world.map() == MapKind::Laboratory);
     CHECK(world.dynamicCount() == initialCount);
@@ -245,6 +287,6 @@ int main()
 
     std::error_code error;
     std::filesystem::remove(savePath, error);
-    std::cout << "Physics, maps, characters, partial fluids, mechanisms and scene persistence checks passed.\n";
+    std::cout << "Physics, maps, character cloning/persistence, partial fluids, invalid-save rejection and mechanisms passed.\n";
     return 0;
 }

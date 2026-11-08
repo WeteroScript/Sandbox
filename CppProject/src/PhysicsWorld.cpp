@@ -1275,9 +1275,14 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
                 (mechanism.firstIndex < 0 || mechanism.secondIndex < 0 ||
                  mechanism.firstIndex == mechanism.secondIndex))
                 return false;
-            if (kind == MechanismKind::Piston && mechanism.secondIndex < 0)
+            if (kind == MechanismKind::Piston &&
+                (mechanism.firstIndex != -1 || mechanism.secondIndex < 0))
                 return false;
-            if (kind == MechanismKind::Button && mechanism.firstIndex < 0)
+            if (kind == MechanismKind::Button &&
+                (mechanism.firstIndex < 0 || mechanism.secondIndex != -1))
+                return false;
+            if (kind == MechanismKind::Toggle &&
+                (mechanism.firstIndex != -1 || mechanism.secondIndex != -1))
                 return false;
         }
     }
