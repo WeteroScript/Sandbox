@@ -169,6 +169,23 @@ impl SpawnCategory {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolMode {
+    Grab,
+    Freeze,
+    Duplicate,
+}
+
+impl ToolMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Grab => "GRAB",
+            Self::Freeze => "FREEZE",
+            Self::Duplicate => "CLONE",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameMode {
     MainMenu,
     Playing,
@@ -188,6 +205,7 @@ pub struct GameState {
     pub pending_spawn: Option<SpawnItem>,
     pub spawn_count: u32,
     pub spawn_placing: bool,
+    pub tool_mode: ToolMode,
 }
 
 impl GameState {
@@ -210,6 +228,7 @@ impl GameState {
             pending_spawn: None,
             spawn_count: 1,
             spawn_placing: false,
+            tool_mode: ToolMode::Grab,
         }
     }
 
