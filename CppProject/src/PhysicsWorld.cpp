@@ -2180,15 +2180,11 @@ void PhysicsWorld::clearDynamic()
 
     mechanisms_.clear();
 
-    for (const std::uint64_t key : removedBodies)
+    for (const BodyRecord& record : records_)
     {
-        const auto found = std::find_if(records_.begin(), records_.end(),
-            [key](const BodyRecord& record)
-            {
-                return bodyIdKey(record.id) == key && b2Body_IsValid(record.id);
-            });
-        if (found != records_.end() && b2Body_IsValid(found->id))
-            b2DestroyBody(found->id);
+        if (removedBodies.contains(bodyIdKey(record.id)) &&
+            b2Body_IsValid(record.id))
+            b2DestroyBody(record.id);
     }
 
     records_.erase(
