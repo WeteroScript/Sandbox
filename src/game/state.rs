@@ -27,7 +27,7 @@ impl CameraState {
             target: self.center,
             zoom: macroquad::prelude::vec2(
                 2.0 * self.zoom / macroquad::prelude::screen_width(),
-                -2.0 * self.zoom / macroquad::prelude::screen_height(),
+                2.0 * self.zoom / macroquad::prelude::screen_height(),
             ),
             ..Default::default()
         }

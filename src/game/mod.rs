@@ -112,8 +112,7 @@ impl Game {
                 }
 
                 self.state.physics.step(delta_time);
-                self.mechanisms
-                    .step(&mut self.state.physics, delta_time);
+                self.mechanisms.step(&mut self.state.physics, delta_time);
 
                 if self.input.pause_pressed() {
                     self.state.mode = GameMode::Paused;
@@ -276,11 +275,8 @@ impl Game {
 
         for handle in ragdoll_handles {
             if let Some(position) = self.state.physics.body_position(handle) {
-                let distance = vec2(
-                    position.translation.x,
-                    position.translation.y,
-                )
-                .distance(world_position);
+                let distance =
+                    vec2(position.translation.x, position.translation.y).distance(world_position);
 
                 if distance <= 72.0 {
                     nearest = Self::nearest_body(nearest, handle, distance);
@@ -305,11 +301,8 @@ impl Game {
                 continue;
             };
 
-            let distance = vec2(
-                position.translation.x,
-                position.translation.y,
-            )
-            .distance(world_position);
+            let distance =
+                vec2(position.translation.x, position.translation.y).distance(world_position);
 
             let hit_radius = prop.half_width.max(prop.half_height) + 28.0;
 
@@ -336,10 +329,8 @@ impl Game {
         let zoom = self.state.camera.zoom.max(0.1);
 
         vec2(
-            self.state.camera.center.x
-                + (position.x - screen_width() * 0.5) / zoom,
-            self.state.camera.center.y
-                - (position.y - screen_height() * 0.5) / zoom,
+            self.state.camera.center.x + (position.x - screen_width() * 0.5) / zoom,
+            self.state.camera.center.y + (position.y - screen_height() * 0.5) / zoom,
         )
     }
 
@@ -352,9 +343,7 @@ impl Game {
 
         match item {
             SpawnItem::Pistol => {
-                self.state
-                    .physics
-                    .spawn_weapon(position, WeaponKind::Pistol);
+                self.state.physics.spawn_weapon(position, WeaponKind::Pistol);
             }
             SpawnItem::SilencedPistol => {
                 self.state
@@ -367,24 +356,16 @@ impl Game {
                     .spawn_weapon(position, WeaponKind::HeavyPistol);
             }
             SpawnItem::Rifle => {
-                self.state
-                    .physics
-                    .spawn_weapon(position, WeaponKind::Rifle);
+                self.state.physics.spawn_weapon(position, WeaponKind::Rifle);
             }
             SpawnItem::Shotgun => {
-                self.state
-                    .physics
-                    .spawn_weapon(position, WeaponKind::Shotgun);
+                self.state.physics.spawn_weapon(position, WeaponKind::Shotgun);
             }
             SpawnItem::Bat => {
-                self.state
-                    .physics
-                    .spawn_weapon(position, WeaponKind::Bat);
+                self.state.physics.spawn_weapon(position, WeaponKind::Bat);
             }
             SpawnItem::Katana => {
-                self.state
-                    .physics
-                    .spawn_weapon(position, WeaponKind::Katana);
+                self.state.physics.spawn_weapon(position, WeaponKind::Katana);
             }
             SpawnItem::Melon | SpawnItem::MelonHead => {
                 self.state
@@ -396,39 +377,31 @@ impl Game {
                     .physics
                     .spawn_character_prop(position, CharacterKind::Robot);
             }
-            SpawnItem::Box => {
-                self.state.physics.spawn_box(
-                    position,
-                    rapier2d::prelude::Vector::new(34.0, 34.0),
-                );
-            }
+            SpawnItem::Box => self.state.physics.spawn_box(
+                position,
+                rapier2d::prelude::Vector::new(34.0, 34.0),
+            ),
             SpawnItem::Grenade => self.state.physics.spawn_grenade(),
             SpawnItem::Barrel => self.state.physics.spawn_barrel(),
             SpawnItem::Platform => self.state.physics.spawn_platform(position),
-            SpawnItem::Rod => {
-                self.mechanisms
-                    .spawn_rod(&self.state.physics, Vec2::new(780.0, 180.0));
-            }
-            SpawnItem::Rope => {
-                self.mechanisms
-                    .spawn_rope(&self.state.physics, Vec2::new(780.0, 180.0));
-            }
-            SpawnItem::Spring => {
-                self.mechanisms
-                    .spawn_spring(&self.state.physics, Vec2::new(780.0, 180.0));
-            }
-            SpawnItem::Piston => {
-                self.mechanisms
-                    .spawn_piston(&self.state.physics, Vec2::new(780.0, 180.0));
-            }
-            SpawnItem::Button => {
-                self.mechanisms
-                    .spawn_button(&self.state.physics, Vec2::new(780.0, 180.0));
-            }
-            SpawnItem::Toggle => {
-                self.mechanisms
-                    .spawn_toggle(&self.state.physics, Vec2::new(780.0, 180.0));
-            }
+            SpawnItem::Rod => self
+                .mechanisms
+                .spawn_rod(&self.state.physics, Vec2::new(780.0, 180.0)),
+            SpawnItem::Rope => self
+                .mechanisms
+                .spawn_rope(&self.state.physics, Vec2::new(780.0, 180.0)),
+            SpawnItem::Spring => self
+                .mechanisms
+                .spawn_spring(&self.state.physics, Vec2::new(780.0, 180.0)),
+            SpawnItem::Piston => self
+                .mechanisms
+                .spawn_piston(&self.state.physics, Vec2::new(780.0, 180.0)),
+            SpawnItem::Button => self
+                .mechanisms
+                .spawn_button(&self.state.physics, Vec2::new(780.0, 180.0)),
+            SpawnItem::Toggle => self
+                .mechanisms
+                .spawn_toggle(&self.state.physics, Vec2::new(780.0, 180.0)),
         }
     }
 
