@@ -14,15 +14,19 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 ## Implemented foundation
 
 - Fixed-step physics at 60 Hz with a bounded frame accumulator.
-- Arena floor and side walls.
-- Dynamic boxes and balls.
+- Three switchable maps: Test Range, City, and Laboratory.
+- Arena floor, side walls, and map-specific static geometry.
+- Dynamic boxes, balls, barrels, and platforms.
+- Water buoyancy/drag zones and animated lava-flow zones.
 - Six-part ragdoll connected with revolute joints.
 - GRAB, FREEZE, CLONE, and DELETE tools.
 - Group freeze, clone, and delete for ragdolls.
+- Rod and rope distance constraints, spring joints, motorized pistons, proximity buttons, and interactive toggles.
+- Two-category spawn catalogue for props and mechanisms.
 - Spawn panel for boxes, balls, and Melon ragdolls.
 - Spawn quantity from 1 to 10 and tap-to-place workflow.
 - Mouse and touch interaction, including two-finger camera pan and pinch zoom.
-- Versioned scene save/load with body transforms, velocities, dimensions, colors, freeze state, and ragdoll joint links.
+- Versioned scene save/load with map selection, body transforms, velocities, dimensions, colors, freeze state, ragdoll joint links, and mechanism connections.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
 - Mouse-wheel zoom, pause, and simulation speed controls.
 - Physics grid and FPS/object counters.
@@ -64,6 +68,8 @@ The output is under `app/build/outputs/apk/debug/`. The GitHub Actions APK workf
 - `4`: DELETE.
 - `Space` or `Escape`: pause.
 - `Tab`: toggle spawn panel.
+- `M`: cycle Test Range, City, and Laboratory.
+- Tap a toggle or button in the scene to activate it.
 - `F5`: save scene.
 - `F9`: load scene.
 - `-` / `+`: change simulation speed.

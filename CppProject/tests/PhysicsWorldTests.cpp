@@ -16,15 +16,16 @@ int main()
     PhysicsWorld world;
     const std::size_t initialCount = world.dynamicCount();
     CHECK(initialCount == 8);
+    CHECK(world.map() == MapKind::TestRange);
+    CHECK(world.surfaces().empty());
 
     int ragdollIndex = -1;
     int ragdollGroup = -1;
     int torsoJointCount = -1;
 
-    const auto& initialRecords = world.records();
-    for (std::size_t i = 0; i < initialRecords.size(); ++i)
+    for (std::size_t i = 0; i < world.records().size(); ++i)
     {
-        const BodyRecord& body = initialRecords[i];
+        const BodyRecord& body = world.records()[i];
         if (body.groupId >= 0)
         {
             ragdollIndex = static_cast<int>(i);
@@ -93,8 +94,89 @@ int main()
     world.deleteAt(clonedRagdoll);
     CHECK(world.dynamicCount() == initialCount);
 
+    world.setMap(MapKind::Laboratory, true);
+    CHECK(world.map() == MapKind::Laboratory);
+    CHECK(world.dynamicCount() == initialCount);
+    CHECK(world.surfaces().size() == 2);
+    CHECK(world.surfaces()[0].kind == SurfaceKind::Water);
+    CHECK(world.surfaces()[1].kind == SurfaceKind::Lava);
+
+    CHECK(world.spawnBarrel(4.0f, 3.0f) >= 0);
+    CHECK(world.spawnPlatform(6.0f, 3.0f) >= 0);
+    CHECK(world.dynamicCount() == initialCount + 2);
+
+    CHECK(world.spawnMechanism(MechanismKind::Spring, 0.0f, 0.0f) >= 0);
+    CHECK(world.spawnMechanism(MechanismKind::Piston, 1.0f, 1.0f) >= 0);
+    CHECK(world.spawnMechanism(MechanismKind::Button, -2.0f, 0.0f) >= 0);
+    CHECK(world.spawnMechanism(MechanismKind::Toggle, 0.0f, 2.0f) >= 0);
+    CHECK(world.mechanisms().size() == 4);
+
+    bool foundSpring = false;
+    bool foundPiston = false;
+    for (const MechanismRecord& mechanism : world.mechanisms())
+    {
+        if (mechanism.kind == MechanismKind::Spring)
+        {
+            foundSpring = true;
+            CHECK(b2Joint_IsValid(mechanism.joint));
+        }
+        else if (mechanism.kind == MechanismKind::Piston)
+        {
+            foundPiston = true;
+            CHECK(b2Joint_IsValid(mechanism.joint));
+        }
+    }
+    CHECK(foundSpring);
+    CHECK(foundPiston);
+
+    CHECK(world.interactAt(0.0f, 2.0f));
+    CHECK(world.interactAt(0.0f, 2.0f));
+    CHECK(world.saveToFile(savePath.string()));
+
+    world.setMap(MapKind::City, true);
+    CHECK(world.map() == MapKind::City);
+    CHECK(world.surfaces().size() == 1);
+    CHECK(world.mechanisms().empty());
+
+    CHECK(world.loadFromFile(savePath.string()));
+    CHECK(world.map() == MapKind::Laboratory);
+    CHECK(world.surfaces().size() == 2);
+    CHECK(world.dynamicCount() == initialCount + 2);
+    CHECK(world.mechanisms().size() == 4);
+
+    foundSpring = false;
+    foundPiston = false;
+    bool foundButton = false;
+    bool foundToggle = false;
+    for (const MechanismRecord& mechanism : world.mechanisms())
+    {
+        if (mechanism.kind == MechanismKind::Spring)
+        {
+            foundSpring = true;
+            CHECK(b2Joint_IsValid(mechanism.joint));
+            CHECK(!mechanism.active);
+        }
+        else if (mechanism.kind == MechanismKind::Piston)
+        {
+            foundPiston = true;
+            CHECK(b2Joint_IsValid(mechanism.joint));
+            CHECK(!mechanism.active);
+        }
+        else if (mechanism.kind == MechanismKind::Button)
+        {
+            foundButton = true;
+        }
+        else if (mechanism.kind == MechanismKind::Toggle)
+        {
+            foundToggle = true;
+        }
+    }
+    CHECK(foundSpring && foundPiston && foundButton && foundToggle);
+
+    world.step(1.0f / 60.0f, 4);
+
     std::error_code error;
     std::filesystem::remove(savePath, error);
-    std::cout << "Physics and scene persistence checks passed.\n";
+    std::cout << "Physics, maps, surfaces, mechanisms and scene persistence checks passed.\n";
     return 0;
 }
