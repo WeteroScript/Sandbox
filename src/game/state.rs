@@ -112,8 +112,16 @@ impl SpawnCategory {
             Self::Weapons => &["RIFLE", "SHOTGUN", "BAT", "KATANA"],
             Self::Melons => &["MELON", "ROBOT", "MELON HEAD"],
             Self::Mechanisms => &[
-                "BOX", "GRENADE", "BARREL", "PLATFORM", "ROD", "ROPE",
-                "SPRING", "PISTON", "BUTTON", "TOGGLE",
+                "BOX",
+                "GRENADE",
+                "BARREL",
+                "PLATFORM",
+                "ROD",
+                "ROPE",
+                "SPRING",
+                "PISTON",
+                "BUTTON",
+                "TOGGLE",
             ],
         }
     }
@@ -124,18 +132,24 @@ impl SpawnCategory {
                 SpawnItem::Pistol,
                 SpawnItem::SilencedPistol,
                 SpawnItem::HeavyPistol,
-            ].get(index).copied(),
+            ]
+            .get(index)
+            .copied(),
             Self::Weapons => [
                 SpawnItem::Rifle,
                 SpawnItem::Shotgun,
                 SpawnItem::Bat,
                 SpawnItem::Katana,
-            ].get(index).copied(),
+            ]
+            .get(index)
+            .copied(),
             Self::Melons => [
                 SpawnItem::Melon,
                 SpawnItem::Robot,
                 SpawnItem::MelonHead,
-            ].get(index).copied(),
+            ]
+            .get(index)
+            .copied(),
             Self::Mechanisms => [
                 SpawnItem::Box,
                 SpawnItem::Grenade,
@@ -147,7 +161,9 @@ impl SpawnCategory {
                 SpawnItem::Piston,
                 SpawnItem::Button,
                 SpawnItem::Toggle,
-            ].get(index).copied(),
+            ]
+            .get(index)
+            .copied(),
         }
     }
 }
@@ -180,6 +196,7 @@ impl GameState {
         let map = MapKind::TestRange;
         let mut physics = PhysicsWorld::new(character, map);
         bounds::install_bounds(&mut physics);
+        bounds::install_environment(&mut physics, map);
 
         Self {
             mode: GameMode::MainMenu,
@@ -199,6 +216,7 @@ impl GameState {
     pub fn rebuild_world(&mut self) {
         self.physics = PhysicsWorld::new(self.character, self.map);
         bounds::install_bounds(&mut self.physics);
+        bounds::install_environment(&mut self.physics, self.map);
         self.camera = CameraState::new();
         self.elapsed = 0.0;
         self.pending_spawn = None;
