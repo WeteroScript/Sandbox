@@ -40,6 +40,13 @@ bool finite(float value)
     return std::isfinite(value);
 }
 
+bool sameBodyId(b2BodyId a, b2BodyId b)
+{
+    return a.index1 == b.index1 &&
+           a.world0 == b.world0 &&
+           a.generation == b.generation;
+}
+
 struct SavedBody
 {
     BodyShape shape = BodyShape::Box;
@@ -408,7 +415,7 @@ void PhysicsWorld::updateMechanisms(float dt)
     }
 }
 
-int PhysicsWorld::spawnMechanism(MechanismKind kind, float x, float y)
+PhysicsWorld::~PhysicsWorld()
 {
     if (b2World_IsValid(world_))
         b2DestroyWorld(world_);
@@ -581,7 +588,7 @@ bool PhysicsWorld::createMechanism(MechanismKind kind, float x, float y,
             return false;
         bodyA = records_[static_cast<std::size_t>(anchorIndex)].id;
     }
-    else if (!b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB) || bodyA == bodyB)
+    else if (!b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB) || sameBodyId(bodyA, bodyB))
     {
         return false;
     }
@@ -945,14 +952,14 @@ void PhysicsWorld::removeMechanismsForBody(b2BodyId body)
     {
         const std::size_t index = i - 1;
         const MechanismRecord& mechanism = mechanisms_[index];
-        if (mechanism.bodyA != body && mechanism.bodyB != body)
+        if (!sameBodyId(mechanism.bodyA, body) && !sameBodyId(mechanism.bodyB, body))
             continue;
 
         if (b2Joint_IsValid(mechanism.joint))
             b2DestroyJoint(mechanism.joint);
 
         if (mechanism.kind == MechanismKind::Piston &&
-            b2Body_IsValid(mechanism.bodyA) && mechanism.bodyA != body)
+            b2Body_IsValid(mechanism.bodyA) && !sameBodyId(mechanism.bodyA, body))
             pistonAnchors.push_back(mechanism.bodyA);
 
         mechanisms_.erase(mechanisms_.begin() + static_cast<std::ptrdiff_t>(index));
@@ -961,7 +968,7 @@ void PhysicsWorld::removeMechanismsForBody(b2BodyId body)
     for (b2BodyId anchor : pistonAnchors)
     {
         const auto found = std::find_if(records_.begin(), records_.end(),
-            [anchor](const BodyRecord& record) { return record.id == anchor; });
+            [anchor](const BodyRecord& record) { return sameBodyId(record.id, anchor); });
         if (found == records_.end())
             continue;
 
@@ -980,7 +987,7 @@ void PhysicsWorld::eraseRecord(std::size_t index)
     removeMechanismsForBody(body);
 
     const auto found = std::find_if(records_.begin(), records_.end(),
-        [body](const BodyRecord& record) { return record.id == body; });
+        [body](const BodyRecord& record) { return sameBodyId(record.id, body); });
     if (found == records_.end())
         return;
 
@@ -1002,7 +1009,7 @@ void PhysicsWorld::deleteAt(int index)
     {
         if (!record.selectable || !b2Body_IsValid(record.id))
             continue;
-        if (group < 0 ? record.id == records_[static_cast<std::size_t>(index)].id
+        if (group < 0 ? sameBodyId(record.id, records_[static_cast<std::size_t>(index)].id)
                       : record.groupId == group)
             victims.push_back(record.id);
     }
@@ -1010,7 +1017,7 @@ void PhysicsWorld::deleteAt(int index)
     for (b2BodyId victim : victims)
     {
         const auto found = std::find_if(records_.begin(), records_.end(),
-            [victim](const BodyRecord& record) { return record.id == victim; });
+            [victim](const BodyRecord& record) { return sameBodyId(record.id, victim); });
         if (found != records_.end())
             eraseRecord(static_cast<std::size_t>(found - records_.begin()));
     }
@@ -1103,7 +1110,8 @@ bool PhysicsWorld::saveToFile(const std::string& path) const
     {
         if (!b2Body_IsValid(id))
             return -1;
-        const auto found = std::find(savedBodyIds.begin(), savedBodyIds.end(), id);
+        const auto found = std::find_if(savedBodyIds.begin(), savedBodyIds.end(),
+            [id](b2BodyId candidate) { return sameBodyId(candidate, id); });
         return found == savedBodyIds.end()
             ? -1
             : static_cast<std::int32_t>(found - savedBodyIds.begin());
