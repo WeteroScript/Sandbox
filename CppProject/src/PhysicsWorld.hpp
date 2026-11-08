@@ -2,6 +2,7 @@
 #include <SDL3/SDL.h>
 #include <box2d/box2d.h>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 enum class BodyShape { Box, Circle };
@@ -13,8 +14,15 @@ struct BodyRecord
     float halfWidth = 0.5f;
     float halfHeight = 0.5f;
     float radius = 0.5f;
+    float density = 1.0f;
     SDL_Color color{220, 220, 220, 255};
     int groupId = -1;
+    int partIndex = -1;
+    int parentPart = -1;
+    b2Vec2 parentAnchor{0.0f, 0.0f};
+    b2Vec2 childAnchor{0.0f, 0.0f};
+    float jointLowerAngle = 0.0f;
+    float jointUpperAngle = 0.0f;
     bool selectable = true;
     bool frozen = false;
     b2Vec2 savedVelocity{0.0f, 0.0f};
@@ -40,6 +48,9 @@ public:
     void deleteAt(int index);
     void clearDynamic();
 
+    bool saveToFile(const std::string& path) const;
+    bool loadFromFile(const std::string& path);
+
     const std::vector<BodyRecord>& records() const { return records_; }
     std::size_t dynamicCount() const;
     int awakeBodyCount() const;
@@ -51,11 +62,16 @@ private:
 
     int createBox(float x, float y, float halfWidth, float halfHeight, float angle,
                   SDL_Color color, bool isStatic, bool selectable,
-                  int groupId = -1, float density = 1.0f);
+                  int groupId = -1, float density = 1.0f,
+                  int partIndex = -1);
     int createCircle(float x, float y, float radius, SDL_Color color,
-                     bool selectable, int groupId = -1, float density = 1.0f);
-    void connectHinge(b2BodyId a, b2BodyId b, float x, float y,
+                     bool selectable, int groupId = -1, float density = 1.0f,
+                     float angle = 0.0f, int partIndex = -1);
+    void connectHinge(int parentIndex, int childIndex, float x, float y,
                       float lowerAngle, float upperAngle);
+    void connectHingeLocal(b2BodyId bodyA, b2BodyId bodyB,
+                           b2Vec2 localAnchorA, b2Vec2 localAnchorB,
+                           float lowerAngle, float upperAngle);
     void setFrozen(BodyRecord& record, bool frozen);
     void eraseRecord(std::size_t index);
 };
