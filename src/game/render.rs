@@ -172,32 +172,42 @@ impl Renderer {
 
     fn draw_tool_buttons(&self, state: &GameState) {
         let buttons = [
-            (ToolMode::Grab, 20.0),
-            (ToolMode::Freeze, 122.0),
-            (ToolMode::Duplicate, 224.0),
+            (ToolMode::Grab, 16.0),
+            (ToolMode::Freeze, 98.0),
+            (ToolMode::Duplicate, 180.0),
+            (ToolMode::Delete, 262.0),
         ];
         let top = screen_height() - 58.0;
 
         for (tool, left) in buttons {
             let active = state.tool_mode == tool;
-            let background = if active {
+            let background = if active && tool == ToolMode::Delete {
+                Color::from_rgba(155, 57, 57, 245)
+            } else if active {
                 Color::from_rgba(55, 133, 93, 245)
             } else {
                 Color::from_rgba(42, 52, 66, 235)
             };
-            draw_rectangle(left, top, 94.0, 42.0, background);
+            draw_rectangle(left, top, 74.0, 42.0, background);
             draw_rectangle_lines(
                 left,
                 top,
-                94.0,
+                74.0,
                 42.0,
                 2.0,
                 Color::from_rgba(220, 230, 236, 105),
             );
 
             let label = tool.label();
-            let width = measure_text(label, None, 16, 1.0).width;
-            draw_text(label, left + (94.0 - width) * 0.5, top + 27.0, 16.0, WHITE);
+            let font_size = if tool == ToolMode::Delete { 12 } else { 14 };
+            let width = measure_text(label, None, font_size, 1.0).width;
+            draw_text(
+                label,
+                left + (74.0 - width) * 0.5,
+                top + 27.0,
+                font_size as f32,
+                WHITE,
+            );
         }
     }
 
@@ -1132,6 +1142,26 @@ impl Renderer {
             16.0,
             YELLOW,
         );
+        self.draw_speed_controls(state);
+    }
+
+    fn draw_speed_controls(&self, state: &GameState) {
+        let center = screen_width() * 0.5;
+        let top = 10.0;
+        let button_color = Color::from_rgba(58, 72, 88, 245);
+        let label_background = Color::from_rgba(36, 45, 57, 235);
+
+        draw_rectangle(center - 78.0, top, 36.0, 40.0, button_color);
+        draw_rectangle(center - 39.0, top, 78.0, 40.0, label_background);
+        draw_rectangle(center + 42.0, top, 36.0, 40.0, button_color);
+        draw_rectangle_lines(center - 78.0, top, 36.0, 40.0, 1.5, GRAY);
+        draw_rectangle_lines(center + 42.0, top, 36.0, 40.0, 1.5, GRAY);
+
+        draw_text("-", center - 66.0, 38.0, 27.0, WHITE);
+        let label = format!("{:.2}x", state.simulation_speed());
+        let width = measure_text(&label, None, 18, 1.0).width;
+        draw_text(&label, center - width * 0.5, 36.0, 18.0, WHITE);
+        draw_text("+", center + 52.0, 37.0, 25.0, WHITE);
     }
 
     fn draw_button(
