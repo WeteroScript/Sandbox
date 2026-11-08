@@ -53,34 +53,50 @@ bool sameBodyId(b2BodyId a, b2BodyId b)
 
 struct Point2 { float x = 0.0f; float y = 0.0f; };
 
-float polygonArea(const std::vector<Point2>& points)
+struct Polygon2
 {
-    if (points.size() < 3) return 0.0f;
+    std::array<Point2, 12> points{};
+    std::size_t count = 0;
+};
+
+float polygonArea(const Polygon2& polygon)
+{
+    if (polygon.count < 3) return 0.0f;
     double sum = 0.0;
-    for (std::size_t i = 0; i < points.size(); ++i)
+    for (std::size_t i = 0; i < polygon.count; ++i)
     {
-        const Point2& a = points[i];
-        const Point2& b = points[(i + 1) % points.size()];
+        const Point2& a = polygon.points[i];
+        const Point2& b = polygon.points[(i + 1) % polygon.count];
         sum += static_cast<double>(a.x) * b.y -
                static_cast<double>(b.x) * a.y;
     }
     return static_cast<float>(std::abs(sum) * 0.5);
 }
 
-std::vector<Point2> clipPolygon(
-    const std::vector<Point2>& input, int axis, float boundary, bool keepGreater)
+Polygon2 clipPolygon(const Polygon2& input, int axis,
+                     float boundary, bool keepGreater)
 {
-    std::vector<Point2> output;
-    if (input.empty()) return output;
-    const auto coordinate = [axis](const Point2& p) { return axis == 0 ? p.x : p.y; };
+    Polygon2 output;
+    if (input.count == 0) return output;
+    const auto coordinate = [axis](const Point2& p)
+    {
+        return axis == 0 ? p.x : p.y;
+    };
     const auto inside = [&](const Point2& p)
     {
         return keepGreater ? coordinate(p) >= boundary : coordinate(p) <= boundary;
     };
-    Point2 previous = input.back();
-    bool previousInside = inside(previous);
-    for (const Point2& current : input)
+    const auto append = [&](Point2 point)
     {
+        if (output.count < output.points.size())
+            output.points[output.count++] = point;
+    };
+
+    Point2 previous = input.points[input.count - 1];
+    bool previousInside = inside(previous);
+    for (std::size_t i = 0; i < input.count; ++i)
+    {
+        const Point2 current = input.points[i];
         const bool currentInside = inside(current);
         if (currentInside != previousInside)
         {
@@ -90,13 +106,13 @@ std::vector<Point2> clipPolygon(
             if (std::abs(denominator) > 0.000001f)
             {
                 const float t = (boundary - a) / denominator;
-                output.push_back({
+                append({
                     previous.x + (current.x - previous.x) * t,
                     previous.y + (current.y - previous.y) * t
                 });
             }
         }
-        if (currentInside) output.push_back(current);
+        if (currentInside) append(current);
         previous = current;
         previousInside = currentInside;
     }
@@ -117,17 +133,28 @@ float circleRectangleArea(float cx, float cy, float radius,
     const float x1 = std::min(right, cx+radius);
     if (x1 <= x0) return 0.0f;
 
-    std::vector<float> cuts{x0, x1};
+    // At most six split points are needed: two x limits and two crossings
+    // for each horizontal edge of the liquid rectangle.
+    std::array<float, 6> cuts{};
+    std::size_t cutCount = 0;
+    cuts[cutCount++] = x0;
+    cuts[cutCount++] = x1;
     for (float edgeY : {bottom, top})
     {
         const float dy = edgeY - cy;
         if (std::abs(dy) >= radius) continue;
         const float dx = std::sqrt(std::max(0.0f, r2-dy*dy));
         for (float crossing : {cx-dx, cx+dx})
-            if (crossing > x0 && crossing < x1) cuts.push_back(crossing);
+            if (crossing > x0 && crossing < x1)
+                cuts[cutCount++] = crossing;
     }
-    std::sort(cuts.begin(), cuts.end());
-    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+    std::sort(cuts.begin(), cuts.begin() + static_cast<std::ptrdiff_t>(cutCount));
+    std::size_t uniqueCount = 0;
+    for (std::size_t i = 0; i < cutCount; ++i)
+    {
+        if (uniqueCount == 0 || cuts[i] != cuts[uniqueCount - 1])
+            cuts[uniqueCount++] = cuts[i];
+    }
 
     const auto heightAt = [&](float x)
     {
@@ -139,7 +166,7 @@ float circleRectangleArea(float cx, float cy, float radius,
 
     double area = 0.0;
     constexpr int slices = 24;
-    for (std::size_t part = 1; part < cuts.size(); ++part)
+    for (std::size_t part = 1; part < uniqueCount; ++part)
     {
         const float a = cuts[part-1], b = cuts[part];
         const float step = (b-a) / static_cast<float>(slices);
@@ -166,17 +193,21 @@ float bodyRectangleOverlap(const BodyRecord& record, float x, float y,
     }
 
     const float c=static_cast<float>(rotation.c), s=static_cast<float>(rotation.s);
-    const std::array<Point2,4> corners{{
-        {x-c*record.halfWidth+s*record.halfHeight,
-         y-s*record.halfWidth-c*record.halfHeight},
-        {x+c*record.halfWidth+s*record.halfHeight,
-         y+s*record.halfWidth-c*record.halfHeight},
-        {x+c*record.halfWidth-s*record.halfHeight,
-         y+s*record.halfWidth+c*record.halfHeight},
-        {x-c*record.halfWidth-s*record.halfHeight,
-         y-s*record.halfWidth+c*record.halfHeight}
-    }};
-    std::vector<Point2> clipped(corners.begin(),corners.end());
+    Polygon2 clipped;
+    clipped.count = 4;
+    clipped.points[0] = {
+        x-c*record.halfWidth+s*record.halfHeight,
+        y-s*record.halfWidth-c*record.halfHeight};
+    clipped.points[1] = {
+        x+c*record.halfWidth+s*record.halfHeight,
+        y+s*record.halfWidth-c*record.halfHeight};
+    clipped.points[2] = {
+        x+c*record.halfWidth-s*record.halfHeight,
+        y+s*record.halfWidth+c*record.halfHeight};
+    clipped.points[3] = {
+        x-c*record.halfWidth-s*record.halfHeight,
+        y-s*record.halfWidth+c*record.halfHeight};
+
     clipped=clipPolygon(clipped,0,left,true);
     clipped=clipPolygon(clipped,0,right,false);
     clipped=clipPolygon(clipped,1,bottom,true);
