@@ -157,7 +157,10 @@ impl Game {
             return;
         };
 
-        if pointer.y <= 62.0 {
+        if pointer.y <= 62.0
+            || (pointer.x <= 330.0 && pointer.y >= screen_height() - 66.0)
+            || (pointer.x >= screen_width() - 155.0 && pointer.y >= screen_height() - 175.0)
+        {
             return;
         }
 
@@ -342,6 +345,7 @@ impl Game {
         if self.state.mode != GameMode::Playing
             || self.state.spawn_menu_open
             || self.state.pending_spawn.is_some()
+            || self.state.tool_mode != state::ToolMode::Grab
         {
             return;
         }
