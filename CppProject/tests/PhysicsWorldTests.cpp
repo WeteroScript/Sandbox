@@ -1343,11 +1343,11 @@ int main()
         surfaceWearWorld.records()[static_cast<std::size_t>(wornBarrelIndex)];
     CHECK(wornBarrel.impactDamage > 0.0f);
     CHECK(wornBarrel.impactDamage <= 0.92f);
-    CHECK(expectedWearMarkCount > 0);
-    CHECK(expectedWearMarkCount <= kMaxImpactMarks);
+    CHECK(wornBarrel.impactMarkCount > 0);
+    CHECK(wornBarrel.impactMarkCount <= kMaxImpactMarks);
     const float expectedWearDamage = wornBarrel.impactDamage;
     const auto expectedWearMarks = wornBarrel.impactMarks;
-    const std::uint8_t expectedWearMarkCount = expectedWearMarkCount;
+    const std::uint8_t expectedWearMarkCount = wornBarrel.impactMarkCount;
 
     std::vector<std::uint8_t> surfaceWearSnapshot;
     CHECK(surfaceWearWorld.saveToSnapshot(surfaceWearSnapshot));
