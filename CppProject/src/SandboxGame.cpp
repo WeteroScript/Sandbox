@@ -2954,7 +2954,10 @@ void SandboxGame::drawMechanisms()
     {
         const SDL_FPoint anchor = worldToScreen(mechanism.anchorX, mechanism.anchorY);
         const bool active = mechanism.active;
-        if (outsideViewport(anchor, anchor, 24.0f))
+        const bool standaloneControl =
+            mechanism.kind == MechanismKind::Toggle ||
+            mechanism.kind == MechanismKind::Button;
+        if (standaloneControl && outsideViewport(anchor, anchor, 24.0f))
             continue;
 
         if (mechanism.kind == MechanismKind::Toggle)
