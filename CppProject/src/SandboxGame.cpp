@@ -2785,7 +2785,11 @@ void SandboxGame::drawSurfaces()
             std::max(0.0f, bottomRight.x - topLeft.x),
             std::max(0.0f, bottomRight.y - topLeft.y)
         };
-        if (rect.w <= 0.0f || rect.h <= 0.0f)
+        if (rect.w <= 0.0f || rect.h <= 0.0f ||
+            rect.x + rect.w < -18.0f ||
+            rect.x > static_cast<float>(outputWidth_) + 18.0f ||
+            rect.y + rect.h < -18.0f ||
+            rect.y > static_cast<float>(outputHeight_) + 18.0f)
             continue;
 
         if (zone.kind == SurfaceKind::Water)
@@ -2934,10 +2938,24 @@ void SandboxGame::drawSurfaces()
 
 void SandboxGame::drawMechanisms()
 {
+    const float viewportWidth = static_cast<float>(outputWidth_);
+    const float viewportHeight = static_cast<float>(outputHeight_);
+    const auto outsideViewport = [&](SDL_FPoint a, SDL_FPoint b, float padding)
+    {
+        const float left = std::min(a.x, b.x);
+        const float right = std::max(a.x, b.x);
+        const float top = std::min(a.y, b.y);
+        const float bottom = std::max(a.y, b.y);
+        return right < -padding || left > viewportWidth + padding ||
+               bottom < -padding || top > viewportHeight + padding;
+    };
+
     for (const MechanismRecord& mechanism : physics_.mechanisms())
     {
         const SDL_FPoint anchor = worldToScreen(mechanism.anchorX, mechanism.anchorY);
         const bool active = mechanism.active;
+        if (outsideViewport(anchor, anchor, 24.0f))
+            continue;
 
         if (mechanism.kind == MechanismKind::Toggle)
         {
@@ -2989,6 +3007,8 @@ void SandboxGame::drawMechanisms()
                 static_cast<float>(start.x), static_cast<float>(start.y));
             const SDL_FPoint b = worldToScreen(
                 static_cast<float>(finish.x), static_cast<float>(finish.y));
+            if (outsideViewport(a, b, 16.0f))
+                continue;
             setColor(renderer_, mechanism.kind == MechanismKind::Switch
                 ? (mechanism.active ? makeColor(96, 211, 145)
                                     : makeColor(219, 159, 82))
@@ -3038,6 +3058,8 @@ void SandboxGame::drawMechanisms()
 
         const SDL_FPoint a = worldToScreen(static_cast<float>(start.x), static_cast<float>(start.y));
         const SDL_FPoint b = worldToScreen(static_cast<float>(finish.x), static_cast<float>(finish.y));
+        if (outsideViewport(a, b, 20.0f))
+            continue;
         const float dx = b.x - a.x;
         const float dy = b.y - a.y;
         const float length = std::max(1.0f, std::sqrt(dx * dx + dy * dy));

@@ -1324,6 +1324,20 @@ int main()
     CHECK(melonFallMarked);
     CHECK(fallJointCountAfter == fallJointCount);
 
+    // Gentle contacts do not create cosmetic wear on non-fracturing props.
+    PhysicsWorld gentleSurfaceWorld;
+    gentleSurfaceWorld.setMap(MapKind::TestRange, false);
+    const int gentleBarrel = gentleSurfaceWorld.spawnBarrel(0.0f, 5.0f);
+    const int gentlePropBall = gentleSurfaceWorld.spawnBall(-2.0f, 5.0f);
+    CHECK(gentleBarrel >= 0 && gentlePropBall >= 0);
+    b2Body_SetLinearVelocity(
+        gentleSurfaceWorld.records()[static_cast<std::size_t>(gentlePropBall)].id,
+        {2.0f, 0.0f});
+    for (int i = 0; i < 60; ++i)
+        gentleSurfaceWorld.step(1.0f / 60.0f, 4);
+    CHECK(gentleSurfaceWorld.records()[static_cast<std::size_t>(gentleBarrel)].impactDamage == 0.0f);
+    CHECK(gentleSurfaceWorld.records()[static_cast<std::size_t>(gentleBarrel)].impactMarkCount == 0);
+
     // Non-fracturing props receive localized surface wear only from hard hits.
     PhysicsWorld surfaceWearWorld;
     surfaceWearWorld.setMap(MapKind::TestRange, false);
