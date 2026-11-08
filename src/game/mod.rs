@@ -41,9 +41,16 @@ impl Game {
             spawn_ui_active,
             self.drag_body.is_some(),
             spawn_dialog_was_open,
+            self.state.tool_mode,
         );
 
         self.handle_spawn_dialog();
+
+        if let Some(tool_mode) = self.input.tool_mode_pressed() {
+            self.state.tool_mode = tool_mode;
+            self.drag_body = None;
+        }
+        self.update_tool_interaction();
 
         if !spawn_dialog_was_open
             && matches!(self.state.mode, GameMode::Playing | GameMode::Paused)
@@ -131,6 +138,38 @@ impl Game {
                     self.state.spawn_placing = false;
                 }
             }
+        }
+    }
+
+    fn update_tool_interaction(&mut self) {
+        if self.state.mode != GameMode::Playing
+            || self.state.spawn_menu_open
+            || self.state.pending_spawn.is_some()
+            || self.input.tool_mode_pressed().is_some()
+            || self.state.tool_mode == state::ToolMode::Grab
+        {
+            return;
+        }
+
+        let Some(pointer) = self.input.pointer_pressed() else {
+            return;
+        };
+
+        if pointer.y <= 62.0 {
+            return;
+        }
+
+        let world_position = self.screen_to_world(pointer);
+        let Some(handle) = self.find_body_at(world_position) else {
+            return;
+        };
+
+        match self.state.tool_mode {
+            state::ToolMode::Freeze => self.state.physics.toggle_freeze(handle),
+            state::ToolMode::Duplicate => {
+                self.state.physics.duplicate_body(handle);
+            }
+            state::ToolMode::Grab => {}
         }
     }
 
@@ -328,6 +367,11 @@ impl Game {
     }
 
     fn update_dragging(&mut self) {
+        if self.state.tool_mode != state::ToolMode::Grab {
+            self.drag_body = None;
+            return;
+        }
+
         if self.state.pending_spawn.is_some() {
             self.drag_body = None;
             return;
@@ -413,7 +457,7 @@ impl Game {
             let Some(body) = self.state.physics.bodies.get(prop.body) else {
                 continue;
             };
-            if !body.is_dynamic() {
+            if !body.is_dynamic() && !self.state.physics.is_frozen(prop.body) {
                 continue;
             }
 
