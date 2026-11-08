@@ -298,8 +298,7 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
           readValue(in, b.jointLowerAngle) && readValue(in, b.jointUpperAngle) &&
           readValue(in, frozen) &&
           readValue(in, b.savedVelocity.x) && readValue(in, b.savedVelocity.y) &&
-          readValue(in, b.savedAngularVelocity) &&
-          readValue(in, b.bucketKind) && readValue(in, b.bucketVolume)))
+          readValue(in, b.savedAngularVelocity)))
         return false;
 
     if (version >= 3)
@@ -313,9 +312,7 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         b.bucketKind = static_cast<BucketKind>(bucketKind);
     }
 
-    if (shape > static_cast<std::uint8_t>(BodyShape::Circle) || frozen > 1 ||
-        (b.bucketKind != 255 && b.bucketKind > static_cast<std::uint8_t>(SurfaceKind::Acid)) ||
-        b.bucketVolume < 0.0f || b.bucketVolume > 2.0f)
+    if (shape > static_cast<std::uint8_t>(BodyShape::Circle) || frozen > 1)
         return false;
 
     b.shape = static_cast<BodyShape>(shape);
