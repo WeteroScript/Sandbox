@@ -1238,7 +1238,9 @@ void SandboxGame::drawGrid()
 void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                           float angle, SDL_Color tint, MaterialKind material,
                           float impactDamage, float impactLocalX,
-                          float impactLocalY, bool outline)
+                          float impactLocalY,
+                          const std::array<ImpactMark, kMaxImpactMarks>& impactMarks,
+                          std::uint8_t impactMarkCount, bool outline)
 {
     const float c = std::cos(angle), s = std::sin(angle);
     const auto point = [&](float lx, float ly)
@@ -1467,33 +1469,75 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                 }
         }
 
-        // Stress marks are surface cracks, not a numeric health display.
-        if (impactDamage > 0.025f)
+        // Each impact keeps its own local crack cluster; nearby hits merge
+        // in physics, while separate hits remain visible at separate locations.
+        const auto drawImpactCrack = [&](float localX, float localY,
+                                         float strength)
         {
-            const Uint8 alpha=static_cast<Uint8>(
-                70.0f + std::clamp(impactDamage,0.0f,1.0f)*145.0f);
-            setColor(renderer_,SDL_Color{30,35,42,alpha});
-            const float impactX = std::clamp(impactLocalX,
-                -halfWidth * 0.82f, halfWidth * 0.82f);
-            const float impactY = std::clamp(impactLocalY,
-                -halfHeight * 0.82f, halfHeight * 0.82f);
-            const SDL_FPoint crack0=point(impactX,impactY);
-            const SDL_FPoint crack1=point(impactX+halfWidth*0.16f,
-                                          impactY+halfHeight*0.22f);
-            const SDL_FPoint crack2=point(impactX+halfWidth*0.02f,
-                                          impactY+halfHeight*0.43f);
-            const SDL_FPoint crack3=point(impactX+halfWidth*0.25f,
-                                          impactY+halfHeight*0.64f);
-            SDL_RenderLine(renderer_,crack0.x,crack0.y,crack1.x,crack1.y);
-            SDL_RenderLine(renderer_,crack1.x,crack1.y,crack2.x,crack2.y);
-            SDL_RenderLine(renderer_,crack2.x,crack2.y,crack3.x,crack3.y);
-            const SDL_FPoint branch=point(
+            const float severity = std::clamp(strength, 0.0f, 1.0f);
+            const float impactX = std::clamp(
+                localX, -halfWidth * 0.82f, halfWidth * 0.82f);
+            const float impactY = std::clamp(
+                localY, -halfHeight * 0.82f, halfHeight * 0.82f);
+            const Uint8 alpha = static_cast<Uint8>(
+                70.0f + severity * 145.0f);
+            setColor(renderer_, SDL_Color{30, 35, 42, alpha});
+            const SDL_FPoint crack0 = point(impactX, impactY);
+            const SDL_FPoint crack1 = point(
+                std::clamp(impactX + halfWidth * 0.16f,
+                           -halfWidth * 0.88f, halfWidth * 0.88f),
+                std::clamp(impactY + halfHeight * 0.22f,
+                           -halfHeight * 0.88f, halfHeight * 0.88f));
+            const SDL_FPoint crack2 = point(
+                std::clamp(impactX + halfWidth * 0.02f,
+                           -halfWidth * 0.88f, halfWidth * 0.88f),
+                std::clamp(impactY + halfHeight * 0.43f,
+                           -halfHeight * 0.88f, halfHeight * 0.88f));
+            const SDL_FPoint crack3 = point(
+                std::clamp(impactX + halfWidth * 0.25f,
+                           -halfWidth * 0.88f, halfWidth * 0.88f),
+                std::clamp(impactY + halfHeight * 0.64f,
+                           -halfHeight * 0.88f, halfHeight * 0.88f));
+            SDL_RenderLine(renderer_, crack0.x, crack0.y, crack1.x, crack1.y);
+            SDL_RenderLine(renderer_, crack1.x, crack1.y, crack2.x, crack2.y);
+            SDL_RenderLine(renderer_, crack2.x, crack2.y, crack3.x, crack3.y);
+            const SDL_FPoint branch = point(
                 std::clamp(impactX - halfWidth * 0.34f,
-                           -halfWidth * 0.82f, halfWidth * 0.82f),
+                           -halfWidth * 0.88f, halfWidth * 0.88f),
                 std::clamp(impactY + halfHeight * 0.24f,
-                           -halfHeight * 0.82f, halfHeight * 0.82f));
-            SDL_RenderLine(renderer_,crack1.x,crack1.y,branch.x,branch.y);
+                           -halfHeight * 0.88f, halfHeight * 0.88f));
+            SDL_RenderLine(renderer_, crack1.x, crack1.y, branch.x, branch.y);
+
+            if (material == MaterialKind::Glass)
+            {
+                const SDL_FPoint branchA = point(
+                    std::clamp(impactX - halfWidth * 0.30f,
+                               -halfWidth * 0.88f, halfWidth * 0.88f),
+                    std::clamp(impactY - halfHeight * 0.38f,
+                               -halfHeight * 0.88f, halfHeight * 0.88f));
+                const SDL_FPoint branchB = point(
+                    std::clamp(impactX + halfWidth * 0.48f,
+                               -halfWidth * 0.88f, halfWidth * 0.88f),
+                    std::clamp(impactY - halfHeight * 0.12f,
+                               -halfHeight * 0.88f, halfHeight * 0.88f));
+                setColor(renderer_, SDL_Color{205, 240, 251,
+                    static_cast<Uint8>(std::min(225.0f, 95.0f + severity * 125.0f))});
+                SDL_RenderLine(renderer_, crack0.x, crack0.y,
+                               branchA.x, branchA.y);
+                SDL_RenderLine(renderer_, crack1.x, crack1.y,
+                               branchB.x, branchB.y);
+            }
+        };
+
+        if (impactMarkCount > 0)
+        {
+            for (std::size_t mark = 0; mark < impactMarkCount; ++mark)
+                drawImpactCrack(impactMarks[mark].localX,
+                                impactMarks[mark].localY,
+                                impactMarks[mark].strength);
         }
+        else if (impactDamage > 0.025f)
+            drawImpactCrack(impactLocalX, impactLocalY, impactDamage);
     }
 
     if(outline)
@@ -1507,7 +1551,10 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
 
 void SandboxGame::drawCircle(float x, float y, float radius, float angle,
                              SDL_Color tint, MaterialKind material,
-                             float impactDamage, bool outline)
+                             float impactDamage, float impactLocalX,
+                             float impactLocalY,
+                             const std::array<ImpactMark, kMaxImpactMarks>& impactMarks,
+                             std::uint8_t impactMarkCount, bool outline)
 {
     constexpr int segments=64;
     std::array<SDL_Vertex,segments+1> vertices{};
@@ -1703,15 +1750,67 @@ void SandboxGame::drawCircle(float x, float y, float radius, float angle,
         SDL_RenderLine(renderer_,shineA.x,shineA.y,shineB.x,shineB.y);
     }
 
-    if (impactDamage > 0.025f)
+    const auto drawCircleImpact = [&](float localX, float localY,
+                                      float strength)
     {
-        setColor(renderer_,SDL_Color{30,35,42,190});
-        const SDL_FPoint crackA=point(-radius*0.08f,radius*0.08f);
-        const SDL_FPoint crackB=point(radius*0.22f,radius*0.30f);
-        const SDL_FPoint crackC=point(radius*0.10f,radius*0.58f);
-        SDL_RenderLine(renderer_,crackA.x,crackA.y,crackB.x,crackB.y);
-        SDL_RenderLine(renderer_,crackB.x,crackB.y,crackC.x,crackC.y);
+        const float severity = std::clamp(strength, 0.0f, 1.0f);
+        const float limit = radius * 0.90f;
+        const float ix = std::clamp(localX, -limit, limit);
+        const float iy = std::clamp(localY, -limit, limit);
+        const float distance = std::hypot(ix, iy);
+        const float nx = distance > 0.001f ? ix / distance : 0.0f;
+        const float ny = distance > 0.001f ? iy / distance : 1.0f;
+        const float tx = -ny;
+        const float ty = nx;
+        const float crackLength = radius * (0.22f + severity * 0.34f);
+        const auto surfacePoint = [&](float px, float py)
+        {
+            const float pxClamped = std::clamp(px, -radius * 0.90f,
+                                                radius * 0.90f);
+            const float pyClamped = std::clamp(py, -radius * 0.90f,
+                                                radius * 0.90f);
+            return point(pxClamped, pyClamped);
+        };
+
+        const SDL_FPoint origin = surfacePoint(ix, iy);
+        const SDL_FPoint middle = surfacePoint(
+            ix - nx * crackLength * 0.42f + tx * crackLength * 0.10f,
+            iy - ny * crackLength * 0.42f + ty * crackLength * 0.10f);
+        const SDL_FPoint inner = surfacePoint(
+            ix - nx * crackLength, iy - ny * crackLength);
+        const SDL_FPoint branchA = surfacePoint(
+            ix - nx * crackLength * 0.40f + tx * crackLength * 0.36f,
+            iy - ny * crackLength * 0.40f + ty * crackLength * 0.36f);
+        const SDL_FPoint branchB = surfacePoint(
+            ix - nx * crackLength * 0.58f - tx * crackLength * 0.28f,
+            iy - ny * crackLength * 0.58f - ty * crackLength * 0.28f);
+
+        const Uint8 alpha = static_cast<Uint8>(85.0f + severity * 145.0f);
+        setColor(renderer_, SDL_Color{30, 35, 42, alpha});
+        SDL_RenderLine(renderer_, origin.x, origin.y, middle.x, middle.y);
+        SDL_RenderLine(renderer_, middle.x, middle.y, inner.x, inner.y);
+        SDL_RenderLine(renderer_, middle.x, middle.y, branchA.x, branchA.y);
+        SDL_RenderLine(renderer_, middle.x, middle.y, branchB.x, branchB.y);
+        if (material == MaterialKind::Glass || material == MaterialKind::Ice)
+        {
+            const SDL_FPoint glint = surfacePoint(
+                ix - nx * crackLength * 0.75f + tx * crackLength * 0.12f,
+                iy - ny * crackLength * 0.75f + ty * crackLength * 0.12f);
+            setColor(renderer_, SDL_Color{224, 246, 255,
+                static_cast<Uint8>(90.0f + severity * 130.0f)});
+            SDL_RenderLine(renderer_, middle.x, middle.y, glint.x, glint.y);
+        }
+    };
+
+    if (impactMarkCount > 0)
+    {
+        for (std::size_t mark = 0; mark < impactMarkCount; ++mark)
+            drawCircleImpact(impactMarks[mark].localX,
+                             impactMarks[mark].localY,
+                             impactMarks[mark].strength);
     }
+    else if (impactDamage > 0.025f)
+        drawCircleImpact(impactLocalX, impactLocalY, impactDamage);
 
     const SDL_FPoint highlight=point(-radius*0.30f,radius*0.34f);
     drawFilledCircle(renderer_,highlight.x,highlight.y,
@@ -2031,11 +2130,13 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
     }
     else if (body.shape == BodyShape::Circle)
         drawCircle(x, y, body.radius, angle, tint, body.material,
-                   drawableImpact, selected);
+                   drawableImpact, body.impactLocalX, body.impactLocalY,
+                   body.impactMarks, body.impactMarkCount, selected);
     else
         drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint,
                 body.material, drawableImpact, body.impactLocalX,
-                body.impactLocalY, selected);
+                body.impactLocalY, body.impactMarks,
+                body.impactMarkCount, selected);
 
     // The blue steel mannequin gets a compact mechanical visual language:
     // a glassy visor, chest module, status lamps and joint-side limb bands.

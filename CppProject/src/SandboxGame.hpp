@@ -138,10 +138,15 @@ private:
     void drawBox(float x, float y, float halfWidth, float halfHeight,
                  float angle, SDL_Color tint, MaterialKind material,
                  float impactDamage, float impactLocalX,
-                 float impactLocalY, bool outline);
+                 float impactLocalY,
+                 const std::array<ImpactMark, kMaxImpactMarks>& impactMarks,
+                 std::uint8_t impactMarkCount, bool outline);
     void drawCircle(float x, float y, float radius, float angle,
                     SDL_Color tint, MaterialKind material,
-                    float impactDamage, bool outline);
+                    float impactDamage, float impactLocalX,
+                    float impactLocalY,
+                    const std::array<ImpactMark, kMaxImpactMarks>& impactMarks,
+                    std::uint8_t impactMarkCount, bool outline);
     void drawUi();
     void drawButton(const SDL_FRect& rect, const char* label, bool active);
     bool pointInRect(float x, float y, const SDL_FRect& rect) const;
