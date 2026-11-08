@@ -25,6 +25,7 @@ pub struct InputState {
     spawn_tab: Option<usize>,
     spawn_item: Option<usize>,
     tool_mode_pressed: Option<ToolMode>,
+    speed_adjustment: Option<i8>,
     previous_touches: Vec<(u64, Vec2)>,
 }
 
@@ -47,6 +48,7 @@ impl InputState {
             spawn_tab: None,
             spawn_item: None,
             tool_mode_pressed: None,
+            speed_adjustment: None,
             previous_touches: Vec::new(),
         }
     }
@@ -77,6 +79,11 @@ impl InputState {
 
         self.spawn_tab = None;
         self.spawn_item = None;
+        self.speed_adjustment = if spawn_menu_open || spawn_dialog_open {
+            None
+        } else {
+            self.started_pointer().and_then(Self::speed_button_at)
+        };
         self.tool_mode_pressed = if spawn_menu_open || spawn_dialog_open {
             None
         } else if is_key_pressed(KeyCode::G) {
@@ -169,6 +176,7 @@ impl InputState {
     pub fn spawn_tab(&self) -> Option<usize> { self.spawn_tab }
     pub fn spawn_item(&self) -> Option<usize> { self.spawn_item }
     pub fn tool_mode_pressed(&self) -> Option<ToolMode> { self.tool_mode_pressed }
+    pub fn speed_adjustment(&self) -> Option<i8> { self.speed_adjustment }
 
     pub fn pointer_pressed(&self) -> Option<Vec2> {
         self.started_pointer()
@@ -302,20 +310,21 @@ impl InputState {
             return None;
         }
 
-        let index = [20.0_f32, 122.0, 224.0]
+        let index = [16.0_f32, 98.0, 180.0, 262.0]
             .iter()
-            .position(|left| position.x >= *left && position.x <= *left + 94.0)?;
+            .position(|left| position.x >= *left && position.x <= *left + 74.0)?;
 
         Some(match index {
             0 => ToolMode::Grab,
             1 => ToolMode::Freeze,
-            _ => ToolMode::Duplicate,
+            2 => ToolMode::Duplicate,
+            _ => ToolMode::Delete,
         })
     }
 
     fn in_tool_bar(position: Vec2) -> bool {
-        position.x >= 20.0
-            && position.x <= 318.0
+        position.x >= 16.0
+            && position.x <= 336.0
             && position.y >= screen_height() - 58.0
             && position.y <= screen_height() - 16.0
     }
@@ -326,6 +335,21 @@ impl InputState {
 
     fn in_top_bar(position: Vec2) -> bool {
         position.y <= 62.0
+    }
+
+    fn speed_button_at(position: Vec2) -> Option<i8> {
+        if position.y > 58.0 {
+            return None;
+        }
+
+        let center = screen_width() * 0.5;
+        if position.x >= center - 78.0 && position.x <= center - 42.0 {
+            Some(-1)
+        } else if position.x >= center + 42.0 && position.x <= center + 78.0 {
+            Some(1)
+        } else {
+            None
+        }
     }
 
     fn previous_position(&self, id: u64) -> Option<Vec2> {
