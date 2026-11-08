@@ -559,6 +559,105 @@ void PhysicsWorld::addSurface(SurfaceKind kind, float x, float y,
     surfaces_.push_back(SurfaceZone{kind, x, y, halfWidth, halfHeight});
 }
 
+void PhysicsWorld::addPouredLiquid(
+    SurfaceKind kind, float x, float y, float volume)
+{
+    if (!std::isfinite(volume) || volume <= 0.0f)
+        return;
+
+    const float halfWidth = std::clamp(0.48f + volume * 0.31f, 0.55f, 8.0f);
+    const float halfHeight = std::clamp(0.12f + volume * 0.025f, 0.14f, 0.85f);
+
+    // Join nearby puddles of the same liquid instead of creating hundreds
+    // of tiny overlapping zones on the mobile physics world.
+    for (SurfaceZone& zone : surfaces_)
+    {
+        if (zone.kind != kind || zone.volume <= 0.0f)
+            continue;
+        const float dx = zone.x - x;
+        const float dy = zone.y - y;
+        const float reachX = zone.halfWidth + halfWidth;
+        const float reachY = zone.halfHeight + halfHeight;
+        if (dx * dx / (reachX * reachX) +
+            dy * dy / (reachY * reachY) > 0.36f)
+            continue;
+
+        const float totalVolume = zone.volume + volume;
+        zone.x = (zone.x * zone.volume + x * volume) / totalVolume;
+        zone.y = (zone.y * zone.volume + y * volume) / totalVolume;
+        zone.volume = totalVolume;
+        zone.halfWidth = std::clamp(
+            0.48f + totalVolume * 0.31f, 0.55f, 8.0f);
+        zone.halfHeight = std::clamp(
+            0.12f + totalVolume * 0.025f, 0.14f, 0.85f);
+        return;
+    }
+
+    if (surfaces_.size() >= 128)
+    {
+        const auto oldestPuddle = std::find_if(
+            surfaces_.begin(), surfaces_.end(),
+            [](const SurfaceZone& zone) { return zone.volume > 0.0f; });
+        if (oldestPuddle == surfaces_.end())
+            return;
+        surfaces_.erase(oldestPuddle);
+    }
+
+    surfaces_.push_back(SurfaceZone{
+        kind, x, y, halfWidth, halfHeight, volume});
+}
+
+int PhysicsWorld::spawnBucket(BucketKind kind, float x, float y)
+{
+    if (kind == BucketKind::None)
+        return -1;
+
+    const int index = createBox(
+        x, y, 0.43f, 0.52f, 0.0f,
+        {135, 151, 164, 255}, false, true, -1, 0.95f);
+    if (index < 0)
+        return -1;
+
+    BodyRecord& bucket = records_[static_cast<std::size_t>(index)];
+    bucket.bucketKind = kind;
+    bucket.bucketVolume = 4.5f;
+    return index;
+}
+
+bool PhysicsWorld::pourBucket(int index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= records_.size())
+        return false;
+
+    BodyRecord& bucket = records_[static_cast<std::size_t>(index)];
+    if (bucket.bucketKind == BucketKind::None ||
+        bucket.bucketVolume <= 0.01f ||
+        !b2Body_IsValid(bucket.id))
+        return false;
+
+    SurfaceKind liquid = SurfaceKind::Water;
+    switch (bucket.bucketKind)
+    {
+        case BucketKind::Water: liquid = SurfaceKind::Water; break;
+        case BucketKind::Lava: liquid = SurfaceKind::Lava; break;
+        case BucketKind::Acid: liquid = SurfaceKind::Acid; break;
+        case BucketKind::None: return false;
+    }
+
+    const b2Pos position = b2Body_GetPosition(bucket.id);
+    const float puddleY = static_cast<float>(position.y) -
+                          bucket.halfHeight - 0.18f;
+    addPouredLiquid(
+        liquid,
+        static_cast<float>(position.x),
+        puddleY,
+        bucket.bucketVolume
+    );
+    bucket.bucketVolume = 0.0f;
+    b2Body_ApplyLinearImpulseToCenter(bucket.id, {0.0f, 0.7f}, true);
+    return true;
+}
+
 void PhysicsWorld::updateSurfaces(float dt)
 {
     static float environmentTime = 0.0f;
@@ -1002,6 +1101,11 @@ int PhysicsWorld::spawnMechanism(MechanismKind kind, float x, float y)
 
 bool PhysicsWorld::interactAt(float x, float y)
 {
+    const int touchedBody = pickBody(x, y);
+    if (touchedBody >= 0 &&
+        records_[static_cast<std::size_t>(touchedBody)].bucketKind != BucketKind::None)
+        return pourBucket(touchedBody);
+
     int closest = -1;
     float distanceSquared = 1.25f * 1.25f;
 
@@ -1257,6 +1361,21 @@ void PhysicsWorld::cloneAt(int index)
     const b2Pos p = b2Body_GetPosition(selected.id);
     const b2Rot q = b2Body_GetRotation(selected.id);
     const float angle = std::atan2(q.s, q.c);
+
+    if (selected.bucketKind != BucketKind::None)
+    {
+        const int copy = spawnBucket(
+            selected.bucketKind,
+            static_cast<float>(p.x) + 1.0f,
+            static_cast<float>(p.y) + 0.8f);
+        if (copy >= 0)
+        {
+            BodyRecord& clone = records_[static_cast<std::size_t>(copy)];
+            clone.bucketVolume = selected.bucketVolume;
+            clone.acidExposure = selected.acidExposure;
+        }
+        return;
+    }
 
     if (selected.shape == BodyShape::Circle)
         createCircle(static_cast<float>(p.x)+1.0f, static_cast<float>(p.y)+0.8f,
