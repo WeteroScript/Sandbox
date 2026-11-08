@@ -569,7 +569,7 @@ void PhysicsWorld::addPouredLiquid(
         return;
 
     const float halfWidth = std::clamp(0.48f + volume * 0.31f, 0.55f, 8.0f);
-    const float halfHeight = std::clamp(0.12f + volume * 0.025f, 0.14f, 0.85f);
+    const float halfHeight = std::clamp(0.34f + volume * 0.05f, 0.40f, 1.0f);
 
     // Join nearby puddles of the same liquid instead of creating hundreds
     // of tiny overlapping zones on the mobile physics world.
@@ -711,7 +711,7 @@ void PhysicsWorld::updateSurfaces(float dt)
                     waveForce = std::sin(environmentTime * 1.7f + x) * 0.75f;
                     break;
                 case SurfaceKind::Acid:
-                    buoyancyScale = 15.1f;
+                    buoyancyScale = 17.2f;
                     dragScale = 3.4f;
                     currentX = std::sin(environmentTime * 0.9f + x) * 0.045f;
                     immersedInAcid = true;

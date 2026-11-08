@@ -260,7 +260,7 @@ int main()
         };
         constexpr std::size_t bodyCountOffset = 17;
         constexpr std::size_t bodyDataOffset = 21;
-        constexpr std::size_t savedBodySize = 94;
+        constexpr std::size_t savedBodySize = 103;
         constexpr std::size_t savedMechanismSize = 27;
         CHECK(bytes.size() >= bodyCountOffset + sizeof(std::uint32_t));
         std::uint32_t bodyCount = 0;
@@ -517,6 +517,86 @@ int main()
     // circular overlap is much smaller than the old bounding-square estimate.
     CHECK(partialWaterVelocity - dryWaterVelocity < 0.018f);
     CHECK(partialLavaVelocity > dryLavaVelocity + 0.001f);
+
+    // Buckets spill finite pools, and poured liquid plus remaining bucket
+    // contents survive the version-3 scene format.
+    PhysicsWorld bucketWorld;
+    bucketWorld.setMap(MapKind::TestRange, false);
+    const int waterBucketIndex =
+        bucketWorld.spawnBucket(BucketKind::Water, -6.0f, 5.0f);
+    const int lavaBucketIndex =
+        bucketWorld.spawnBucket(BucketKind::Lava, 0.0f, 5.0f);
+    const int acidBucketIndex =
+        bucketWorld.spawnBucket(BucketKind::Acid, 6.0f, 5.0f);
+    CHECK(waterBucketIndex >= 0 && lavaBucketIndex >= 0 && acidBucketIndex >= 0);
+    CHECK(bucketWorld.records()[static_cast<std::size_t>(waterBucketIndex)].bucketVolume > 4.0f);
+    CHECK(bucketWorld.interactAt(-6.0f, 5.0f));
+    CHECK(bucketWorld.interactAt(0.0f, 5.0f));
+    CHECK(bucketWorld.interactAt(6.0f, 5.0f));
+    CHECK(bucketWorld.records()[static_cast<std::size_t>(waterBucketIndex)].bucketVolume == 0.0f);
+    CHECK(bucketWorld.surfaces().size() == 3);
+    CHECK(bucketWorld.surfaces()[0].kind == SurfaceKind::Water);
+    CHECK(bucketWorld.surfaces()[1].kind == SurfaceKind::Lava);
+    CHECK(bucketWorld.surfaces()[2].kind == SurfaceKind::Acid);
+    CHECK(bucketWorld.surfaces()[0].volume > 4.0f);
+
+    std::vector<std::uint8_t> bucketSnapshot;
+    CHECK(bucketWorld.saveToSnapshot(bucketSnapshot));
+    PhysicsWorld restoredBuckets;
+    CHECK(restoredBuckets.loadFromSnapshot(bucketSnapshot));
+    CHECK(restoredBuckets.surfaces().size() == 3);
+    CHECK(restoredBuckets.surfaces()[0].kind == SurfaceKind::Water);
+    CHECK(restoredBuckets.surfaces()[1].kind == SurfaceKind::Lava);
+    CHECK(restoredBuckets.surfaces()[2].kind == SurfaceKind::Acid);
+    std::size_t restoredBucketCount = 0;
+    for (const BodyRecord& record : restoredBuckets.records())
+    {
+        if (record.bucketKind != BucketKind::None)
+            ++restoredBucketCount;
+    }
+    CHECK(restoredBucketCount == 3);
+
+    // Moving bodies lose horizontal momentum in water faster than in air.
+    PhysicsWorld waterDragWorld;
+    waterDragWorld.setMap(MapKind::TestRange, false);
+    const int dragBucket = waterDragWorld.spawnBucket(BucketKind::Water, -5.0f, 5.0f);
+    CHECK(dragBucket >= 0);
+    CHECK(waterDragWorld.interactAt(-5.0f, 5.0f));
+    const int wetBall = waterDragWorld.spawnBall(-4.0f, 4.3f);
+    CHECK(wetBall >= 0);
+    const b2BodyId wetBallId =
+        waterDragWorld.records()[static_cast<std::size_t>(wetBall)].id;
+    b2Body_SetLinearVelocity(wetBallId, {8.0f, 0.0f});
+
+    PhysicsWorld airDragWorld;
+    airDragWorld.setMap(MapKind::TestRange, false);
+    const int dryBall = airDragWorld.spawnBall(-4.0f, 4.3f);
+    CHECK(dryBall >= 0);
+    const b2BodyId dryBallId =
+        airDragWorld.records()[static_cast<std::size_t>(dryBall)].id;
+    b2Body_SetLinearVelocity(dryBallId, {8.0f, 0.0f});
+
+    for (int i = 0; i < 30; ++i)
+    {
+        waterDragWorld.step(1.0f / 60.0f, 4);
+        airDragWorld.step(1.0f / 60.0f, 4);
+    }
+    CHECK(b2Body_GetLinearVelocity(wetBallId).x <
+          b2Body_GetLinearVelocity(dryBallId).x - 1.0f);
+
+    // Acid exposure accumulates while immersed and removes a dissolved prop.
+    PhysicsWorld acidWorld;
+    acidWorld.setMap(MapKind::TestRange, false);
+    const int acidBucket = acidWorld.spawnBucket(BucketKind::Acid, -5.0f, 5.0f);
+    CHECK(acidBucket >= 0);
+    CHECK(acidWorld.interactAt(-5.0f, 5.0f));
+    const int acidTarget = acidWorld.spawnBox(-4.2f, 4.3f);
+    CHECK(acidTarget >= 0);
+    const b2BodyId acidTargetId =
+        acidWorld.records()[static_cast<std::size_t>(acidTarget)].id;
+    for (int i = 0; i < 540 && b2Body_IsValid(acidTargetId); ++i)
+        acidWorld.step(1.0f / 60.0f, 4);
+    CHECK(!b2Body_IsValid(acidTargetId));
 
     // Removing either endpoint must destroy the constraint and preserve the
     // unrelated endpoint for every two-body mechanism type.
