@@ -1024,54 +1024,68 @@ impl PhysicsWorld {
             density * 0.75,
         );
 
-        self.connect(head, torso, point![0.0, 27.0], point![0.0, -44.0]);
+        self.connect(
+            head,
+            torso,
+            point![0.0, 27.0],
+            point![0.0, -43.0],
+            [-0.65, 0.65],
+        );
         self.connect(
             torso,
             left_upper_arm,
             point![-24.0, -28.0],
-            point![0.0, -32.0],
+            point![19.0, -24.0],
+            [-1.45, 1.45],
         );
         self.connect(
             torso,
             right_upper_arm,
             point![24.0, -28.0],
-            point![0.0, -32.0],
+            point![-19.0, -24.0],
+            [-1.45, 1.45],
         );
         self.connect(
             left_upper_arm,
             left_lower_arm,
             point![0.0, 32.0],
-            point![0.0, -28.0],
+            point![27.0, -14.0],
+            [-2.0, 2.0],
         );
         self.connect(
             right_upper_arm,
             right_lower_arm,
             point![0.0, 32.0],
-            point![0.0, -28.0],
+            point![-27.0, -14.0],
+            [-2.0, 2.0],
         );
         self.connect(
             torso,
             left_upper_leg,
             point![-13.0, 44.0],
-            point![0.0, -38.0],
+            point![2.0, -28.0],
+            [-1.3, 1.3],
         );
         self.connect(
             torso,
             right_upper_leg,
             point![13.0, 44.0],
-            point![0.0, -38.0],
+            point![-2.0, -28.0],
+            [-1.3, 1.3],
         );
         self.connect(
             left_upper_leg,
             left_lower_leg,
             point![0.0, 38.0],
-            point![0.0, -34.0],
+            point![3.0, -18.0],
+            [-1.65, 1.65],
         );
         self.connect(
             right_upper_leg,
             right_lower_leg,
             point![0.0, 38.0],
-            point![0.0, -34.0],
+            point![-3.0, -18.0],
+            [-1.65, 1.65],
         );
 
         self.ragdoll = Ragdoll {
@@ -1097,8 +1111,8 @@ impl PhysicsWorld {
         let body = self.bodies.insert(
             RigidBodyBuilder::dynamic()
                 .translation(position)
-                .linear_damping(0.22)
-                .angular_damping(0.38)
+                .linear_damping(0.35)
+                .angular_damping(0.72)
                 .ccd_enabled(true)
                 .build(),
         );
@@ -1108,8 +1122,8 @@ impl PhysicsWorld {
             PartShape::Box(width, height) => ColliderBuilder::cuboid(width, height),
         }
         .density(density)
-        .friction(0.68)
-        .restitution(0.04)
+        .friction(0.82)
+        .restitution(0.015)
         .build();
 
         self.colliders
@@ -1124,10 +1138,13 @@ impl PhysicsWorld {
         child: RigidBodyHandle,
         parent_anchor: Point<Real>,
         child_anchor: Point<Real>,
+        limits: [Real; 2],
     ) {
         let joint = RevoluteJointBuilder::new()
             .local_anchor1(parent_anchor)
             .local_anchor2(child_anchor)
+            .limits(limits)
+            .contacts_enabled(false)
             .build();
         let handle = self.impulse_joints.insert(parent, child, joint, true);
         let max_health = self.character.joint_strength();
