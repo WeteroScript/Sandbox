@@ -173,6 +173,7 @@ pub enum ToolMode {
     Grab,
     Freeze,
     Duplicate,
+    Delete,
 }
 
 impl ToolMode {
@@ -181,6 +182,7 @@ impl ToolMode {
             Self::Grab => "GRAB",
             Self::Freeze => "FREEZE",
             Self::Duplicate => "CLONE",
+            Self::Delete => "DELETE",
         }
     }
 }
@@ -206,6 +208,7 @@ pub struct GameState {
     pub spawn_count: u32,
     pub spawn_placing: bool,
     pub tool_mode: ToolMode,
+    simulation_speed_index: usize,
 }
 
 impl GameState {
@@ -229,7 +232,17 @@ impl GameState {
             spawn_count: 1,
             spawn_placing: false,
             tool_mode: ToolMode::Grab,
+            simulation_speed_index: 2,
         }
+    }
+
+    pub fn simulation_speed(&self) -> f32 {
+        [0.25, 0.5, 1.0, 2.0][self.simulation_speed_index.min(3)]
+    }
+
+    pub fn adjust_simulation_speed(&mut self, direction: i8) {
+        self.simulation_speed_index = (self.simulation_speed_index as i8 + direction)
+            .clamp(0, 3) as usize;
     }
 
     pub fn rebuild_world(&mut self) {
