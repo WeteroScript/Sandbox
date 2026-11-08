@@ -69,16 +69,14 @@ impl InputState {
 
         if spawn_menu_open {
             if let Some(position) = self.started_pointer() {
-                let width = screen_width();
-                let panel_x = width - 300.0;
+                let panel_x = screen_width() - 300.0;
 
                 if position.x >= panel_x {
                     if position.y >= 58.0 && position.y < 116.0 {
-                        let tab_width = 300.0 / 4.0;
+                        let tab_width = 75.0;
                         self.spawn_tab = Some(((position.x - panel_x) / tab_width) as usize);
                     } else if position.y >= 126.0 {
                         let item = ((position.y - 126.0) / 58.0) as usize;
-
                         if item < 16 {
                             self.spawn_item = Some(item);
                         }
@@ -102,15 +100,12 @@ impl InputState {
         if is_key_down(KeyCode::A) || is_key_down(KeyCode::Left) {
             movement.x -= 1.0;
         }
-
         if is_key_down(KeyCode::D) || is_key_down(KeyCode::Right) {
             movement.x += 1.0;
         }
-
         if is_key_down(KeyCode::W) || is_key_down(KeyCode::Up) {
             movement.y -= 1.0;
         }
-
         if is_key_down(KeyCode::S) || is_key_down(KeyCode::Down) {
             movement.y += 1.0;
         }
@@ -124,56 +119,30 @@ impl InputState {
         self.update_camera_gesture(spawn_menu_open, dragging);
     }
 
-    pub fn play_pressed(&self) -> bool {
-        self.play
+    pub fn play_pressed(&self) -> bool { self.play }
+    pub fn settings_pressed(&self) -> bool { self.settings }
+    pub fn pause_pressed(&self) -> bool { self.pause }
+    pub fn back_pressed(&self) -> bool { self.back }
+    pub fn damage_pressed(&self) -> bool { self.damage }
+    pub fn select_character_pressed(&self) -> bool { self.select_character }
+    pub fn select_map_pressed(&self) -> bool { self.select_map }
+    pub fn next_weapon_pressed(&self) -> bool { self.next_weapon }
+    pub fn action(&self) -> Action { self.action }
+    pub fn movement(&self) -> Vec2 { self.movement }
+    pub fn camera_pan(&self) -> Vec2 { self.camera_pan }
+    pub fn camera_zoom(&self) -> f32 { self.camera_zoom }
+    pub fn drag_pointer(&self) -> Option<Vec2> { self.drag_pointer }
+    pub fn spawn_tab(&self) -> Option<usize> { self.spawn_tab }
+    pub fn spawn_item(&self) -> Option<usize> { self.spawn_item }
+
+    pub fn pointer_pressed(&self) -> Option<Vec2> {
+        self.started_pointer()
     }
 
-    pub fn settings_pressed(&self) -> bool {
-        self.settings
-    }
-
-    pub fn pause_pressed(&self) -> bool {
-        self.pause
-    }
-
-    pub fn back_pressed(&self) -> bool {
-        self.back
-    }
-
-    pub fn damage_pressed(&self) -> bool {
-        self.damage
-    }
-
-    pub fn select_character_pressed(&self) -> bool {
-        self.select_character
-    }
-
-    pub fn select_map_pressed(&self) -> bool {
-        self.select_map
-    }
-
-    pub fn next_weapon_pressed(&self) -> bool {
-        self.next_weapon
-    }
-
-    pub fn action(&self) -> Action {
-        self.action
-    }
-
-    pub fn movement(&self) -> Vec2 {
-        self.movement
-    }
-
-    pub fn camera_pan(&self) -> Vec2 {
-        self.camera_pan
-    }
-
-    pub fn camera_zoom(&self) -> f32 {
-        self.camera_zoom
-    }
-
-    pub fn drag_pointer(&self) -> Option<Vec2> {
-        self.drag_pointer
+    pub fn map_pointer_pressed(&self) -> Option<Vec2> {
+        self.started_pointer().filter(|position| {
+            position.x < screen_width() - 300.0 && position.y > 62.0
+        })
     }
 
     pub fn spawn_toggle_pressed(&self) -> bool {
@@ -192,17 +161,7 @@ impl InputState {
             .unwrap_or(false)
     }
 
-    pub fn spawn_tab(&self) -> Option<usize> {
-        self.spawn_tab
-    }
-
-    pub fn spawn_item(&self) -> Option<usize> {
-        self.spawn_item
-    }
-
-    pub fn pause_resume_pressed(&self) -> bool {
-        self.play
-    }
+    pub fn pause_resume_pressed(&self) -> bool { self.play }
 
     fn update_drag_pointer(&mut self, spawn_menu_open: bool) {
         self.drag_pointer = None;
@@ -220,23 +179,16 @@ impl InputState {
         let active_touches: Vec<Touch> = touches()
             .into_iter()
             .filter(|touch| {
-                touch.phase == TouchPhase::Started
-                    || touch.phase == TouchPhase::Stationary
-                    || touch.phase == TouchPhase::Moved
+                matches!(
+                    touch.phase,
+                    TouchPhase::Started | TouchPhase::Stationary | TouchPhase::Moved
+                )
             })
             .collect();
 
-        if active_touches.len() != 1 {
-            return;
+        if active_touches.len() == 1 && !self.in_spawn_panel(active_touches[0].position, spawn_menu_open) {
+            self.drag_pointer = Some(active_touches[0].position);
         }
-
-        let position = active_touches[0].position;
-
-        if self.in_spawn_panel(position, spawn_menu_open) {
-            return;
-        }
-
-        self.drag_pointer = Some(position);
     }
 
     fn update_camera_gesture(&mut self, spawn_menu_open: bool, dragging: bool) {
@@ -249,12 +201,10 @@ impl InputState {
             let first = &current_touches[0];
             let second = &current_touches[1];
 
-            let previous_first = self.previous_position(first.id);
-            let previous_second = self.previous_position(second.id);
-
-            if let (Some(previous_first), Some(previous_second)) =
-                (previous_first, previous_second)
-            {
+            if let (Some(previous_first), Some(previous_second)) = (
+                self.previous_position(first.id),
+                self.previous_position(second.id),
+            ) {
                 let previous_distance = previous_first.distance(previous_second);
                 let current_distance = first.position.distance(second.position);
 
@@ -269,8 +219,8 @@ impl InputState {
         } else if !dragging {
             if let Some(touch) = current_touches.first() {
                 if !self.in_spawn_panel(touch.position, spawn_menu_open) {
-                    if let Some(previous_position) = self.previous_position(touch.id) {
-                        self.camera_pan = touch.position - previous_position;
+                    if let Some(previous) = self.previous_position(touch.id) {
+                        self.camera_pan = touch.position - previous;
                     }
                 }
             }
@@ -284,8 +234,8 @@ impl InputState {
 
     fn started_pointer(&self) -> Option<Vec2> {
         if is_mouse_button_pressed(MouseButton::Left) {
-            let position = mouse_position();
-            return Some(vec2(position.0, position.1));
+            let mouse = mouse_position();
+            return Some(vec2(mouse.0, mouse.1));
         }
 
         touches()

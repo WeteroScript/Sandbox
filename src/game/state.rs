@@ -97,15 +97,6 @@ pub enum SpawnCategory {
 }
 
 impl SpawnCategory {
-    pub fn next(self) -> Self {
-        match self {
-            Self::Pistols => Self::Weapons,
-            Self::Weapons => Self::Melons,
-            Self::Melons => Self::Mechanisms,
-            Self::Mechanisms => Self::Pistols,
-        }
-    }
-
     pub fn title(self) -> &'static str {
         match self {
             Self::Pistols => "PISTOLS",
@@ -121,16 +112,8 @@ impl SpawnCategory {
             Self::Weapons => &["RIFLE", "SHOTGUN", "BAT", "KATANA"],
             Self::Melons => &["MELON", "ROBOT", "MELON HEAD"],
             Self::Mechanisms => &[
-                "BOX",
-                "GRENADE",
-                "BARREL",
-                "PLATFORM",
-                "ROD",
-                "ROPE",
-                "SPRING",
-                "PISTON",
-                "BUTTON",
-                "TOGGLE",
+                "BOX", "GRENADE", "BARREL", "PLATFORM", "ROD", "ROPE",
+                "SPRING", "PISTON", "BUTTON", "TOGGLE",
             ],
         }
     }
@@ -141,24 +124,18 @@ impl SpawnCategory {
                 SpawnItem::Pistol,
                 SpawnItem::SilencedPistol,
                 SpawnItem::HeavyPistol,
-            ]
-            .get(index)
-            .copied(),
+            ].get(index).copied(),
             Self::Weapons => [
                 SpawnItem::Rifle,
                 SpawnItem::Shotgun,
                 SpawnItem::Bat,
                 SpawnItem::Katana,
-            ]
-            .get(index)
-            .copied(),
+            ].get(index).copied(),
             Self::Melons => [
                 SpawnItem::Melon,
                 SpawnItem::Robot,
                 SpawnItem::MelonHead,
-            ]
-            .get(index)
-            .copied(),
+            ].get(index).copied(),
             Self::Mechanisms => [
                 SpawnItem::Box,
                 SpawnItem::Grenade,
@@ -170,9 +147,7 @@ impl SpawnCategory {
                 SpawnItem::Piston,
                 SpawnItem::Button,
                 SpawnItem::Toggle,
-            ]
-            .get(index)
-            .copied(),
+            ].get(index).copied(),
         }
     }
 }
@@ -194,6 +169,9 @@ pub struct GameState {
     pub physics: PhysicsWorld,
     pub spawn_menu_open: bool,
     pub spawn_category: SpawnCategory,
+    pub pending_spawn: Option<SpawnItem>,
+    pub spawn_count: u32,
+    pub spawn_placing: bool,
 }
 
 impl GameState {
@@ -212,6 +190,9 @@ impl GameState {
             physics,
             spawn_menu_open: true,
             spawn_category: SpawnCategory::Pistols,
+            pending_spawn: None,
+            spawn_count: 1,
+            spawn_placing: false,
         }
     }
 
@@ -220,5 +201,8 @@ impl GameState {
         bounds::install_bounds(&mut self.physics);
         self.camera = CameraState::new();
         self.elapsed = 0.0;
+        self.pending_spawn = None;
+        self.spawn_count = 1;
+        self.spawn_placing = false;
     }
 }
