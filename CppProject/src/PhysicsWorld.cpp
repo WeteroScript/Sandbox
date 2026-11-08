@@ -556,10 +556,11 @@ void PhysicsWorld::buildMapGeometry()
     }
 }
 
-void PhysicsWorld::addSurface(SurfaceKind kind, float x, float y,
-                              float halfWidth, float halfHeight, bool dynamic)
+void PhysicsWorld::addSurface(
+    SurfaceKind kind, float x, float y, float halfWidth, float halfHeight)
 {
-    surfaces_.push_back(SurfaceZone{kind, x, y, halfWidth, halfHeight, dynamic});
+    surfaces_.push_back(SurfaceZone{
+        kind, x, y, halfWidth, halfHeight, 0.0f});
 }
 
 void PhysicsWorld::addPouredLiquid(
@@ -592,7 +593,7 @@ void PhysicsWorld::addPouredLiquid(
         zone.halfWidth = std::clamp(
             0.48f + totalVolume * 0.31f, 0.55f, 8.0f);
         zone.halfHeight = std::clamp(
-            0.12f + totalVolume * 0.025f, 0.14f, 0.85f);
+            0.34f + totalVolume * 0.05f, 0.40f, 1.0f);
         return;
     }
 
@@ -920,67 +921,6 @@ int PhysicsWorld::spawnBarrel(float x, float y)
             b2Body_SetAngularDamping(barrel.id, 0.7f);
     }
     return index;
-}
-
-int PhysicsWorld::spawnBucket(SurfaceKind kind, float x, float y)
-{
-    const SDL_Color tint = kind == SurfaceKind::Water
-        ? SDL_Color{65, 139, 190, 255}
-        : kind == SurfaceKind::Lava
-            ? SDL_Color{194, 77, 35, 255}
-            : SDL_Color{112, 166, 75, 255};
-    const int index = createBox(x, y, 0.43f, 0.54f, 0.0f,
-                                tint, false, true, -1, 1.65f);
-    if (index >= 0)
-    {
-        BodyRecord& bucket = records_[static_cast<std::size_t>(index)];
-        bucket.bucketKind = static_cast<std::uint8_t>(kind);
-        bucket.bucketVolume = 1.0f;
-        b2Body_SetAngularDamping(bucket.id, 0.42f);
-    }
-    return index;
-}
-
-void PhysicsWorld::spillBucket(BodyRecord& bucket, float dt)
-{
-    if (bucket.bucketKind == 255 || bucket.bucketVolume <= 0.0f ||
-        bucket.frozen || !b2Body_IsValid(bucket.id))
-        return;
-
-    const b2Rot rotation = b2Body_GetRotation(bucket.id);
-    const float angle = std::atan2(rotation.s, rotation.c);
-    if (std::abs(angle) < 0.62f)
-        return;
-
-    const float amount = std::min(bucket.bucketVolume, dt * 0.42f);
-    bucket.bucketVolume -= amount;
-    const b2Pos p = b2Body_GetPosition(bucket.id);
-    const SurfaceKind kind = static_cast<SurfaceKind>(bucket.bucketKind);
-    const float spillX = static_cast<float>(p.x) +
-        std::sin(angle) * 0.62f;
-    const float spillY = static_cast<float>(p.y) - 0.55f;
-
-    const float halfWidth = 0.34f + (1.0f - bucket.bucketVolume) * 0.34f;
-    auto found = std::find_if(surfaces_.begin(), surfaces_.end(),
-        [kind, spillX, spillY](const SurfaceZone& zone)
-        {
-            return zone.dynamic && zone.kind == kind &&
-                   std::abs(zone.x - spillX) < 1.35f &&
-                   std::abs(zone.y - spillY) < 0.75f;
-        });
-    if (found != surfaces_.end())
-    {
-        const float oldArea = found->halfWidth * 2.0f;
-        found->x = (found->x * oldArea + spillX * amount * 2.0f) /
-                   (oldArea + amount * 2.0f);
-        found->halfWidth = std::min(4.5f, found->halfWidth + amount * 0.22f);
-        found->halfHeight = std::min(0.42f, found->halfHeight + amount * 0.025f);
-        found->y = std::min(found->y, spillY);
-    }
-    else
-    {
-        addSurface(kind, spillX, spillY, halfWidth, 0.16f + amount * 0.08f, true);
-    }
 }
 
 int PhysicsWorld::spawnPlatform(float x, float y)

@@ -82,7 +82,6 @@ public:
     int spawnBall(float x, float y);
     int spawnBarrel(float x, float y);
     int spawnPlatform(float x, float y);
-    int spawnBucket(SurfaceKind kind, float x, float y);
     int spawnBucket(BucketKind kind, float x, float y);
     int spawnRagdoll(float x, float y);
     int spawnRobot(float x, float y);
@@ -134,8 +133,7 @@ private:
     bool loadFromStream(std::istream& input);
     void clearWorldBodies();
     void buildMapGeometry();
-    void addSurface(SurfaceKind kind, float x, float y, float halfWidth, float halfHeight, bool dynamic = false);
-    void spillBucket(BodyRecord& bucket, float deltaTime);
+    void addSurface(SurfaceKind kind, float x, float y, float halfWidth, float halfHeight);
     void addPouredLiquid(SurfaceKind kind, float x, float y, float volume);
     bool pourBucket(int index);
     void updateSurfaces(float deltaTime);
