@@ -1011,6 +1011,8 @@ void PhysicsWorld::updateMechanisms(float dt)
         }
     }
 
+    std::vector<float> pendingBatteryDrain(records_.size(), 0.0f);
+
     const auto findPowerSourceIndex = [&](b2BodyId endpoint) -> int
     {
         if (!hasMotor || !b2Body_IsValid(endpoint))
@@ -1051,9 +1053,7 @@ void PhysicsWorld::updateMechanisms(float dt)
             {
                 b2RevoluteJoint_SetTargetMotorSpeed(mechanism.joint, 10.0f);
                 b2RevoluteJoint_SetMaxMotorTorque(mechanism.joint, 36.0f);
-                BodyRecord& battery = records_[static_cast<std::size_t>(batteryIndex)];
-                battery.batteryCharge = std::max(
-                    0.0f, battery.batteryCharge - dt * 1.4f);
+                pendingBatteryDrain[static_cast<std::size_t>(batteryIndex)] += dt * 1.4f;
             }
         }
 
@@ -1077,6 +1077,17 @@ void PhysicsWorld::updateMechanisms(float dt)
         if (pressed && !mechanism.wasPressed)
             setMechanismsEnabled(!mechanismsEnabled_);
         mechanism.wasPressed = pressed;
+    }
+
+    // Defer charge consumption until every motor has resolved its source.
+    // This keeps shared-battery motors from depending on mechanism iteration order.
+    for (std::size_t i = 0; i < pendingBatteryDrain.size(); ++i)
+    {
+        if (pendingBatteryDrain[i] <= 0.0f || !records_[i].powerSource)
+            continue;
+
+        records_[i].batteryCharge = std::max(
+            0.0f, records_[i].batteryCharge - pendingBatteryDrain[i]);
     }
 }
 

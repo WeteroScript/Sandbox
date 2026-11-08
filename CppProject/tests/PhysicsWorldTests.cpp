@@ -856,6 +856,33 @@ int main()
         }
     CHECK(foundEmptyBattery);
 
+    // Multiple motors on one conductive network resolve power before shared
+    // battery drain is applied, so neither motor is starved by iteration order.
+    PhysicsWorld sharedBatteryWorld;
+    sharedBatteryWorld.setMap(MapKind::Laboratory, false);
+    const int sharedBatteryIndex = sharedBatteryWorld.spawnBattery(-12.0f, 6.0f);
+    CHECK(sharedBatteryIndex >= 0);
+    CHECK(sharedBatteryWorld.spawnBox(-8.0f, 6.0f) >= 0);
+    CHECK(sharedBatteryWorld.spawnBox(-4.0f, 6.0f) >= 0);
+    CHECK(sharedBatteryWorld.spawnBox(0.0f, 6.0f) >= 0);
+    CHECK(sharedBatteryWorld.spawnWheel(4.0f, 6.0f) >= 0);
+    CHECK(sharedBatteryWorld.spawnWheel(8.0f, 6.0f) >= 0);
+    CHECK(sharedBatteryWorld.spawnMechanism(MechanismKind::Wire, -10.0f, 6.0f) == 0);
+    CHECK(sharedBatteryWorld.spawnMechanism(MechanismKind::Wire, -6.0f, 6.0f) == 1);
+    CHECK(sharedBatteryWorld.spawnMechanism(MechanismKind::Wire, -2.0f, 6.0f) == 2);
+    CHECK(sharedBatteryWorld.spawnMechanism(MechanismKind::Wire, 2.0f, 6.0f) == 3);
+    CHECK(sharedBatteryWorld.spawnMechanism(MechanismKind::Motor, 2.0f, 6.0f) == 4);
+    CHECK(sharedBatteryWorld.spawnMechanism(MechanismKind::Motor, 6.0f, 6.0f) == 5);
+    CHECK(sharedBatteryWorld.setBatteryCharge(sharedBatteryIndex, 0.04f));
+    sharedBatteryWorld.step(1.0f / 30.0f, 1);
+    CHECK(sharedBatteryWorld.mechanisms()[4].active);
+    CHECK(sharedBatteryWorld.mechanisms()[5].active);
+    CHECK(sharedBatteryWorld.records()[
+        static_cast<std::size_t>(sharedBatteryIndex)].batteryCharge <= 0.001f);
+    sharedBatteryWorld.step(1.0f / 30.0f, 1);
+    CHECK(!sharedBatteryWorld.mechanisms()[4].active);
+    CHECK(!sharedBatteryWorld.mechanisms()[5].active);
+
     PhysicsWorld ropeVariantWorld;
     ropeVariantWorld.setMap(MapKind::Laboratory, false);
     const int ropeFirst = ropeVariantWorld.spawnBox(-1.0f, 0.0f);
