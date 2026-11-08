@@ -38,7 +38,7 @@ pub fn install_environment(world: &mut PhysicsWorld, map: MapKind) {
         MapKind::City => {
             create_sensor_zone(
                 world,
-                vector![650.0, 586.0],
+                vector![1200.0, 1190.0],
                 vector![210.0, 42.0],
                 [38, 124, 184, 205],
             );
@@ -46,7 +46,7 @@ pub fn install_environment(world: &mut PhysicsWorld, map: MapKind) {
         MapKind::Laboratory => {
             create_sensor_zone(
                 world,
-                vector![640.0, 610.0],
+                vector![1200.0, 1190.0],
                 vector![260.0, 32.0],
                 [224, 67, 36, 220],
             );
