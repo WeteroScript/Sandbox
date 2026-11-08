@@ -1,3 +1,9 @@
+## Unity rewrite
+
+Новая реализация на C# и Unity 2D находится в каталоге [UnityProject](UnityProject/README.md) и развивается отдельно в ветке `unity-rewrite`. Старая версия на Rust/Macroquad сохранена как рабочий референс, пока новая реализация не достигнет необходимого набора функций.
+
+Для запуска Unity-версии откройте `UnityProject` через Unity Hub, дождитесь компиляции скриптов и выполните меню **Sandbox → Setup Project and Android**. Подробности — в [инструкции Unity-проекта](UnityProject/README.md).
+
 # Sandbox
 
 Мобильная 2D-песочница на Rust, Macroquad и Rapier2D с физикой ragdoll.
