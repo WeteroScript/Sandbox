@@ -20,7 +20,7 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Six-part Melon and Robot ragdolls with revolute joints; robot geometry and colors survive clone/save/load.
 - Water buoyancy/drag and animated lava-flow forces use shape-accurate overlap with liquid zones; circles use circle/rectangle area integration and rotated boxes use polygon clipping.
 - Fluid-overlap calculations use fixed-size geometry buffers to avoid temporary heap allocations during simulation.
-- GRAB, FREEZE, CLONE, and DELETE tools.
+- GRAB, FREEZE, CLONE, DELETE, and ROTATE tools; rotating a ragdoll transforms the complete body group around its centroid and preserves its joint graph.
 - Group freeze, clone, and delete for ragdolls.
 - Rod and rope distance constraints, spring joints, motorized pistons, proximity buttons, and interactive toggles.
 - Two-category spawn catalogue for props and mechanisms.
@@ -70,6 +70,7 @@ The output is under `app/build/outputs/apk/debug/`. The GitHub Actions APK workf
 - `2`: FREEZE.
 - `3`: CLONE.
 - `4`: DELETE.
+- `5`: ROTATE selected object or complete ragdoll by 15 degrees.
 - `Space` or `Escape`: pause.
 - `Tab`: toggle spawn panel.
 - `M`: cycle Test Range, City, and Laboratory.
@@ -82,4 +83,4 @@ The original Rust project remains in the repository as a reference. The previous
 
 ## Physics regression test
 
-CTest covers Melon and Robot joint graphs, character-preserving clone, grouped freeze, scene persistence, mechanism restoration, partial circle immersion, malformed save rejection, duplicate-constraint rejection, mechanism endpoint deletion, and piston-anchor cleanup.
+CTest covers Melon and Robot joint graphs, character-preserving clone, grouped freeze and rotation, scene persistence, mechanism restoration, partial circle immersion, malformed save rejection, duplicate-constraint rejection, mechanism endpoint deletion, and piston-anchor cleanup.
