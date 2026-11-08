@@ -31,7 +31,7 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Mouse and touch interaction, including two-finger camera pan and pinch zoom.
 - Versioned scene save/load with map selection, body transforms, velocities, dimensions, colors, freeze state, ragdoll joint links, and mechanism connections.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
-- Mouse-wheel zoom, pause, and simulation speed controls.
+- Mouse-wheel zoom anchored to the pointer position, pause, and simulation speed controls.
 - Procedural object materials with per-vertex lighting, beveled edges, wood grain, metal panels, fasteners, surface highlights, and contact shadows.
 - Map-specific visual detailing for city facades, laboratory panels, and test-range markings.
 - Physics grid and FPS/object counters.

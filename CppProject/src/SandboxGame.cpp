@@ -350,12 +350,36 @@ void SandboxGame::processEvents()
                 break;
 
             case SDL_EVENT_MOUSE_WHEEL:
-                pixelsPerMeter_ = clampFloat(
-                    pixelsPerMeter_ * std::pow(1.12f, event.wheel.y),
+            {
+                const float oldScale = pixelsPerMeter_;
+                const float newScale = clampFloat(
+                    oldScale * std::pow(1.12f, event.wheel.y),
                     24.0f,
                     100.0f
                 );
+
+                // SDL mouse coordinates are in logical window pixels while
+                // the camera uses renderer output pixels on high-DPI displays.
+                int windowWidth = 0;
+                int windowHeight = 0;
+                SDL_GetWindowSize(window_, &windowWidth, &windowHeight);
+                const float scaleX = windowWidth > 0
+                    ? static_cast<float>(outputWidth_) / windowWidth : 1.0f;
+                const float scaleY = windowHeight > 0
+                    ? static_cast<float>(outputHeight_) / windowHeight : 1.0f;
+                const float mouseX = event.wheel.mouse_x * scaleX;
+                const float mouseY = event.wheel.mouse_y * scaleY;
+
+                // Preserve the exact world point below the cursor while zooming.
+                const float anchorX =
+                    mouseX - static_cast<float>(outputWidth_) * 0.5f;
+                const float anchorY =
+                    mouseY - static_cast<float>(outputHeight_) * 0.5f;
+                cameraX_ += anchorX / oldScale - anchorX / newScale;
+                cameraY_ += -anchorY / oldScale + anchorY / newScale;
+                pixelsPerMeter_ = newScale;
                 break;
+            }
 
             case SDL_EVENT_FINGER_DOWN:
                 SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
