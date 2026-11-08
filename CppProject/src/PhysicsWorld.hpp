@@ -77,6 +77,7 @@ public:
     int spawnBarrel(float x, float y);
     int spawnPlatform(float x, float y);
     int spawnRagdoll(float x, float y);
+    int spawnRobot(float x, float y);
     int spawnMechanism(MechanismKind kind, float x, float y);
     bool interactAt(float x, float y);
 
@@ -131,4 +132,5 @@ private:
     void eraseRecord(std::size_t index);
     void removeMechanismsForBody(b2BodyId body);
     void setFrozen(BodyRecord& record, bool frozen);
+    int spawnCharacter(float x, float y, bool robot);
 };

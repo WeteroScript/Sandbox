@@ -325,13 +325,36 @@ void PhysicsWorld::updateSurfaces(float dt)
             continue;
 
         const b2Pos position = b2Body_GetPosition(record.id);
+        const b2Rot rotation = b2Body_GetRotation(record.id);
         const float x = static_cast<float>(position.x);
         const float y = static_cast<float>(position.y);
 
+        // Use the rotated shape bounds to estimate how much of the object
+        // intersects a liquid zone instead of switching effects at its centre.
+        float extentX = record.radius;
+        float extentY = record.radius;
+        if (record.shape == BodyShape::Box)
+        {
+            const float cosine = std::abs(static_cast<float>(rotation.c));
+            const float sine = std::abs(static_cast<float>(rotation.s));
+            extentX = cosine * record.halfWidth + sine * record.halfHeight;
+            extentY = sine * record.halfWidth + cosine * record.halfHeight;
+        }
+
+        const float bodyArea = std::max(0.0001f, 4.0f * extentX * extentY);
         for (const SurfaceZone& zone : surfaces_)
         {
-            if (std::abs(x - zone.x) > zone.halfWidth ||
-                std::abs(y - zone.y) > zone.halfHeight)
+            const float overlapLeft = std::max(x - extentX, zone.x - zone.halfWidth);
+            const float overlapRight = std::min(x + extentX, zone.x + zone.halfWidth);
+            const float overlapBottom = std::max(y - extentY, zone.y - zone.halfHeight);
+            const float overlapTop = std::min(y + extentY, zone.y + zone.halfHeight);
+            if (overlapRight <= overlapLeft || overlapTop <= overlapBottom)
+                continue;
+
+            const float overlapArea =
+                (overlapRight - overlapLeft) * (overlapTop - overlapBottom);
+            const float immersion = std::clamp(overlapArea / bodyArea, 0.0f, 1.0f);
+            if (immersion <= 0.001f)
                 continue;
 
             const float mass = std::max(0.1f, b2Body_GetMass(record.id));
@@ -339,25 +362,28 @@ void PhysicsWorld::updateSurfaces(float dt)
 
             if (zone.kind == SurfaceKind::Water)
             {
-                const float buoyancy = mass * 15.8f;
+                const float buoyancy = mass * 15.8f * immersion;
                 b2Body_ApplyForceToCenter(record.id, {0.0f, buoyancy}, true);
-                const float drag = std::exp(-1.6f * dt);
-                velocity.x *= drag;
-                velocity.y *= std::exp(-0.35f * dt);
+                velocity.x *= std::exp(-1.6f * dt * immersion);
+                velocity.y *= std::exp(-0.35f * dt * immersion);
                 b2Body_SetLinearVelocity(record.id, velocity);
                 b2Body_SetAngularVelocity(
                     record.id,
-                    b2Body_GetAngularVelocity(record.id) * std::exp(-1.1f * dt)
+                    b2Body_GetAngularVelocity(record.id) *
+                        std::exp(-1.1f * dt * immersion)
                 );
             }
             else
             {
-                const float lift = mass * (5.0f + 1.2f * std::sin(environmentTime * 3.0f + x));
-                const float drift = std::sin(environmentTime * 2.0f + y) * mass * 1.5f;
+                const float lift = mass *
+                    (5.0f + 1.2f * std::sin(environmentTime * 3.0f + x)) * immersion;
+                const float drift =
+                    std::sin(environmentTime * 2.0f + y) * mass * 1.5f * immersion;
                 b2Body_ApplyForceToCenter(record.id, {drift, lift}, true);
                 b2Body_SetAngularVelocity(
                     record.id,
-                    b2Body_GetAngularVelocity(record.id) * std::exp(-0.15f * dt)
+                    b2Body_GetAngularVelocity(record.id) *
+                        std::exp(-0.15f * dt * immersion)
                 );
             }
         }
@@ -784,23 +810,42 @@ void PhysicsWorld::connectHinge(int parentIndex, int childIndex,
 
 int PhysicsWorld::spawnRagdoll(float x, float y)
 {
+    return spawnCharacter(x, y, false);
+}
+
+int PhysicsWorld::spawnRobot(float x, float y)
+{
+    return spawnCharacter(x, y, true);
+}
+
+int PhysicsWorld::spawnCharacter(float x, float y, bool robot)
+{
     const int group = nextGroupId_++;
-    const SDL_Color green{100,190,111,255};
-    const SDL_Color darkGreen{74,157,92,255};
+    const SDL_Color torsoColor = robot
+        ? SDL_Color{70,126,153,255}
+        : SDL_Color{100,190,111,255};
+    const SDL_Color limbColor = robot
+        ? SDL_Color{112,139,153,255}
+        : SDL_Color{74,157,92,255};
+    const SDL_Color headColor = robot
+        ? SDL_Color{143,205,219,255}
+        : SDL_Color{128,213,130,255};
 
     const int torso = createBox(x, y+0.75f, 0.34f, 0.55f, 0.0f,
-                                green, false, true, group, 1.25f, 0);
-    const int head = createCircle(x, y+1.58f, 0.38f,
-                                  {128,213,130,255}, true, group, 0.9f,
-                                  0.0f, 1);
+                                torsoColor, false, true, group, 1.25f, 0);
+    const int head = robot
+        ? createBox(x, y+1.58f, 0.32f, 0.32f, 0.0f,
+                    headColor, false, true, group, 0.9f, 1)
+        : createCircle(x, y+1.58f, 0.38f, headColor,
+                       true, group, 0.9f, 0.0f, 1);
     const int armL = createBox(x-0.54f, y+0.75f, 0.15f, 0.43f, -0.1f,
-                               darkGreen, false, true, group, 0.75f, 2);
+                               limbColor, false, true, group, 0.75f, 2);
     const int armR = createBox(x+0.54f, y+0.75f, 0.15f, 0.43f, 0.1f,
-                               darkGreen, false, true, group, 0.75f, 3);
+                               limbColor, false, true, group, 0.75f, 3);
     const int legL = createBox(x-0.20f, y-0.20f, 0.17f, 0.48f, -0.05f,
-                               darkGreen, false, true, group, 0.9f, 4);
+                               limbColor, false, true, group, 0.9f, 4);
     const int legR = createBox(x+0.20f, y-0.20f, 0.17f, 0.48f, 0.05f,
-                               darkGreen, false, true, group, 0.9f, 5);
+                               limbColor, false, true, group, 0.9f, 5);
 
     if (torso < 0 || head < 0 || armL < 0 || armR < 0 || legL < 0 || legR < 0)
         return group;
@@ -913,6 +958,7 @@ void PhysicsWorld::cloneAt(int index)
         double sx = 0.0;
         double sy = 0.0;
         int count = 0;
+        bool robot = false;
 
         for (const BodyRecord& r : records_)
         {
@@ -921,12 +967,20 @@ void PhysicsWorld::cloneAt(int index)
             const b2Pos p = b2Body_GetPosition(r.id);
             sx += p.x;
             sy += p.y;
+            if (r.partIndex == 1)
+                robot = r.shape == BodyShape::Box;
             ++count;
         }
 
         if (count > 0)
-            spawnRagdoll(static_cast<float>(sx/count)+2.2f,
-                         static_cast<float>(sy/count)+0.4f);
+        {
+            const float cloneX = static_cast<float>(sx / count) + 2.2f;
+            const float cloneY = static_cast<float>(sy / count) + 0.4f;
+            if (robot)
+                spawnRobot(cloneX, cloneY);
+            else
+                spawnRagdoll(cloneX, cloneY);
+        }
         return;
     }
 

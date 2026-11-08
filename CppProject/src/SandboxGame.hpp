@@ -9,7 +9,7 @@
 enum class SandboxTool { Grab, Freeze, Clone, Delete };
 enum class SpawnCategory { Props, Mechanisms };
 enum class SpawnItem {
-    Box, Ball, Barrel, Platform, Ragdoll,
+    Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle
 };
 

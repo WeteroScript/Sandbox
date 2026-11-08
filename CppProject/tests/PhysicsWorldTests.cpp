@@ -94,6 +94,53 @@ int main()
     world.deleteAt(clonedRagdoll);
     CHECK(world.dynamicCount() == initialCount);
 
+    const int robotGroup = world.spawnRobot(8.0f, 4.0f);
+    CHECK(robotGroup >= 0);
+    CHECK(world.dynamicCount() == initialCount + 6);
+
+    int robotIndex = -1;
+    bool robotHeadIsBox = false;
+    int robotTorsoJoints = -1;
+    for (std::size_t i = 0; i < world.records().size(); ++i)
+    {
+        const BodyRecord& body = world.records()[i];
+        if (body.groupId != robotGroup)
+            continue;
+        robotIndex = static_cast<int>(i);
+        if (body.partIndex == 0)
+            robotTorsoJoints = b2Body_GetJointCount(body.id);
+        if (body.partIndex == 1)
+            robotHeadIsBox = body.shape == BodyShape::Box;
+    }
+    CHECK(robotIndex >= 0);
+    CHECK(robotHeadIsBox);
+    CHECK(robotTorsoJoints == 5);
+
+    world.cloneAt(robotIndex);
+    CHECK(world.dynamicCount() == initialCount + 12);
+    int clonedRobotIndex = -1;
+    int clonedRobotGroup = -1;
+    bool clonedRobotHeadIsBox = false;
+    for (std::size_t i = 0; i < world.records().size(); ++i)
+    {
+        const BodyRecord& body = world.records()[i];
+        if (body.groupId < 0 || body.groupId == robotGroup)
+            continue;
+        if (body.partIndex == 1 && body.shape == BodyShape::Box)
+        {
+            clonedRobotGroup = body.groupId;
+            clonedRobotHeadIsBox = true;
+        }
+        if (body.groupId == clonedRobotGroup)
+            clonedRobotIndex = static_cast<int>(i);
+    }
+    CHECK(clonedRobotHeadIsBox);
+    CHECK(clonedRobotIndex >= 0);
+    world.deleteAt(clonedRobotIndex);
+    CHECK(world.dynamicCount() == initialCount + 6);
+    world.deleteAt(robotIndex);
+    CHECK(world.dynamicCount() == initialCount);
+
     world.setMap(MapKind::Laboratory, true);
     CHECK(world.map() == MapKind::Laboratory);
     CHECK(world.dynamicCount() == initialCount);
@@ -175,8 +222,29 @@ int main()
 
     world.step(1.0f / 60.0f, 4);
 
+    PhysicsWorld fluidWorld;
+    fluidWorld.setMap(MapKind::Laboratory, false);
+    const int dryWaterIndex = fluidWorld.spawnBall(-8.2f, -4.0f);
+    const int partialWaterIndex = fluidWorld.spawnBall(-6.9f, -4.0f);
+    const int dryLavaIndex = fluidWorld.spawnBall(1.7f, -4.0f);
+    const int partialLavaIndex = fluidWorld.spawnBall(3.0f, -4.0f);
+    CHECK(dryWaterIndex >= 0 && partialWaterIndex >= 0);
+    CHECK(dryLavaIndex >= 0 && partialLavaIndex >= 0);
+
+    fluidWorld.step(1.0f / 60.0f, 4);
+    const float dryWaterVelocity =
+        b2Body_GetLinearVelocity(fluidWorld.records()[static_cast<std::size_t>(dryWaterIndex)].id).y;
+    const float partialWaterVelocity =
+        b2Body_GetLinearVelocity(fluidWorld.records()[static_cast<std::size_t>(partialWaterIndex)].id).y;
+    const float dryLavaVelocity =
+        b2Body_GetLinearVelocity(fluidWorld.records()[static_cast<std::size_t>(dryLavaIndex)].id).y;
+    const float partialLavaVelocity =
+        b2Body_GetLinearVelocity(fluidWorld.records()[static_cast<std::size_t>(partialLavaIndex)].id).y;
+    CHECK(partialWaterVelocity > dryWaterVelocity + 0.001f);
+    CHECK(partialLavaVelocity > dryLavaVelocity + 0.001f);
+
     std::error_code error;
     std::filesystem::remove(savePath, error);
-    std::cout << "Physics, maps, surfaces, mechanisms and scene persistence checks passed.\n";
+    std::cout << "Physics, maps, characters, partial fluids, mechanisms and scene persistence checks passed.\n";
     return 0;
 }

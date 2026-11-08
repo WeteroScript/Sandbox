@@ -663,7 +663,7 @@ void SandboxGame::handleUiClick(float x, float y)
 
     static constexpr std::array<SpawnItem, 6> propItems{
         SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
-        SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Box
+        SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot
     };
     static constexpr std::array<SpawnItem, 6> mechanismItems{
         SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
@@ -679,9 +679,6 @@ void SandboxGame::handleUiClick(float x, float y)
     {
         if (!pointInRect(x, y, layout.spawnItems[i]))
             continue;
-
-        if (spawnCategory_ == SpawnCategory::Props && i == 5)
-            return;
 
         const SpawnItem clickedItem = items[i];
         if (spawnPlacementActive_ && selectedSpawnItem_ == clickedItem)
@@ -712,12 +709,15 @@ void SandboxGame::handleUiClick(float x, float y)
 void SandboxGame::placeSelected(float worldX, float worldY)
 {
     const bool mechanism = spawnCategory_ == SpawnCategory::Mechanisms;
-    const float spacing = mechanism ? 1.25f :
-        selectedSpawnItem_ == SpawnItem::Ragdoll ? 2.6f : 1.45f;
+    const bool character = selectedSpawnItem_ == SpawnItem::Ragdoll ||
+                           selectedSpawnItem_ == SpawnItem::Robot;
+    const float spacing = mechanism ? 1.25f : character ? 2.6f : 1.45f;
     const int columns = std::max(1, static_cast<int>(std::ceil(std::sqrt(
         static_cast<float>(spawnQuantity_)
     ))));
     const int rows = (spawnQuantity_ + columns - 1) / columns;
+    int created = 0;
+    int failed = 0;
 
     for (int i = 0; i < spawnQuantity_; ++i)
     {
@@ -728,43 +728,64 @@ void SandboxGame::placeSelected(float worldX, float worldY)
         const float y = worldY +
             (static_cast<float>(row) - static_cast<float>(rows - 1) * 0.5f) * spacing;
 
+        int result = -1;
         switch (selectedSpawnItem_)
         {
             case SpawnItem::Box:
-                physics_.spawnBox(x, y);
+                result = physics_.spawnBox(x, y);
                 break;
             case SpawnItem::Ball:
-                physics_.spawnBall(x, y);
+                result = physics_.spawnBall(x, y);
                 break;
             case SpawnItem::Barrel:
-                physics_.spawnBarrel(x, y);
+                result = physics_.spawnBarrel(x, y);
                 break;
             case SpawnItem::Platform:
-                physics_.spawnPlatform(x, y);
+                result = physics_.spawnPlatform(x, y);
                 break;
             case SpawnItem::Ragdoll:
-                physics_.spawnRagdoll(x, y);
+                result = physics_.spawnRagdoll(x, y);
+                break;
+            case SpawnItem::Robot:
+                result = physics_.spawnRobot(x, y);
                 break;
             case SpawnItem::Rod:
-                physics_.spawnMechanism(MechanismKind::Rod, x, y);
+                result = physics_.spawnMechanism(MechanismKind::Rod, x, y);
                 break;
             case SpawnItem::Rope:
-                physics_.spawnMechanism(MechanismKind::Rope, x, y);
+                result = physics_.spawnMechanism(MechanismKind::Rope, x, y);
                 break;
             case SpawnItem::Spring:
-                physics_.spawnMechanism(MechanismKind::Spring, x, y);
+                result = physics_.spawnMechanism(MechanismKind::Spring, x, y);
                 break;
             case SpawnItem::Piston:
-                physics_.spawnMechanism(MechanismKind::Piston, x, y);
+                result = physics_.spawnMechanism(MechanismKind::Piston, x, y);
                 break;
             case SpawnItem::Button:
-                physics_.spawnMechanism(MechanismKind::Button, x, y);
+                result = physics_.spawnMechanism(MechanismKind::Button, x, y);
                 break;
             case SpawnItem::Toggle:
-                physics_.spawnMechanism(MechanismKind::Toggle, x, y);
+                result = physics_.spawnMechanism(MechanismKind::Toggle, x, y);
                 break;
         }
+
+        if (result >= 0)
+            ++created;
+        else
+            ++failed;
     }
+
+    if (failed > 0)
+    {
+        notice_ = mechanism
+            ? "Mechanism needs nearby movable objects"
+            : "Could not create every selected item";
+    }
+    else
+    {
+        notice_ = "Placed " + std::to_string(created) + " item(s)";
+    }
+    noticeTimer_ = 2.5f;
 }
 
 void SandboxGame::cycleMap()
@@ -1111,11 +1132,11 @@ void SandboxGame::drawUi()
         );
 
         static constexpr std::array<const char*, 6> propLabels{
-            "BOX", "BALL", "BARREL", "PLATFORM", "MELON", ""
+            "BOX", "BALL", "BARREL", "PLATFORM", "MELON", "ROBOT"
         };
         static constexpr std::array<SpawnItem, 6> propItems{
             SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
-            SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Box
+            SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot
         };
         static constexpr std::array<const char*, 6> mechanismLabels{
             "ROD", "ROPE", "SPRING", "PISTON", "BUTTON", "TOGGLE"

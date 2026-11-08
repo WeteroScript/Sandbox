@@ -17,13 +17,14 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Three switchable maps: Test Range, City, and Laboratory.
 - Arena floor, side walls, and map-specific static geometry.
 - Dynamic boxes, balls, barrels, and platforms.
-- Water buoyancy/drag zones and animated lava-flow zones.
-- Six-part ragdoll connected with revolute joints.
+- Six-part Melon and Robot ragdolls with revolute joints; robot geometry and colors survive clone/save/load.
+- Water buoyancy/drag and animated lava-flow forces scale with approximate shape-to-zone overlap, including partial immersion.
 - GRAB, FREEZE, CLONE, and DELETE tools.
 - Group freeze, clone, and delete for ragdolls.
 - Rod and rope distance constraints, spring joints, motorized pistons, proximity buttons, and interactive toggles.
 - Two-category spawn catalogue for props and mechanisms.
-- Spawn panel for boxes, balls, and Melon ragdolls.
+- Spawn catalogue for boxes, balls, barrels, platforms, Melon, Robot, and all six mechanisms.
+- Placement feedback when a mechanism cannot find the required nearby movable bodies.
 - Spawn quantity from 1 to 10 and tap-to-place workflow.
 - Mouse and touch interaction, including two-finger camera pan and pinch zoom.
 - Versioned scene save/load with map selection, body transforms, velocities, dimensions, colors, freeze state, ragdoll joint links, and mechanism connections.
@@ -78,4 +79,4 @@ The original Rust project remains in the repository as a reference. The previous
 
 ## Physics regression test
 
-CTest includes a smoke test for ragdoll joints, grouped freeze, scene persistence, clone, and delete.
+CTest covers Melon and Robot joint graphs, character-preserving clone, grouped freeze, scene persistence, mechanism restoration, and partial water/lava overlap.
