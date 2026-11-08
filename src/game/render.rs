@@ -66,15 +66,15 @@ impl Renderer {
 
         draw_rectangle(
             0.0,
-            650.0,
-            width.max(1280.0),
-            height.max(720.0) - 650.0,
+            1215.0,
+            2400.0,
+            300.0,
             Color::from_rgba(67, 75, 81, 255),
         );
         draw_rectangle(
             0.0,
-            645.0,
-            width.max(1280.0),
+            1210.0,
+            2400.0,
             5.0,
             Color::from_rgba(118, 128, 121, 255),
         );
@@ -82,12 +82,13 @@ impl Renderer {
         self.draw_props(state);
         self.draw_explosions(state);
         self.draw_ragdoll(state, &state.physics.ragdoll, state.character);
+        for (ragdoll, character) in &state.physics.spawned_ragdolls {
+            self.draw_ragdoll(state, ragdoll, *character);
+        }
 
         set_default_camera();
         self.draw_top_bar(state);
         self.draw_joint_health(state);
-        self.draw_touch_controls();
-
         if state.spawn_menu_open {
             self.draw_spawn_menu(state);
         } else {
@@ -147,30 +148,6 @@ impl Renderer {
             56.0,
             "RESUME",
             Color::from_rgba(52, 168, 99, 255),
-        );
-        self.draw_button(
-            center_x - 150.0,
-            center_y - 50.0,
-            300.0,
-            48.0,
-            "SPAWN BOX",
-            Color::from_rgba(126, 91, 55, 255),
-        );
-        self.draw_button(
-            center_x - 150.0,
-            center_y + 8.0,
-            300.0,
-            48.0,
-            "SPAWN GRENADE",
-            Color::from_rgba(65, 145, 80, 255),
-        );
-        self.draw_button(
-            center_x - 150.0,
-            center_y + 66.0,
-            300.0,
-            48.0,
-            "SPAWN BARREL",
-            Color::from_rgba(170, 74, 48, 255),
         );
     }
 
@@ -953,16 +930,16 @@ impl Renderer {
             MapKind::Laboratory => Color::from_rgba(25, 49, 53, 255),
         };
 
-        draw_rectangle(0.0, 0.0, 1280.0, 650.0, color);
+        draw_rectangle(0.0, 0.0, 2400.0, 1215.0, color);
 
         match map {
             MapKind::TestRange => {
-                for x in (0..1280).step_by(80) {
+                for x in (0..2400).step_by(100) {
                     draw_line(
                         x as f32,
                         0.0,
                         x as f32,
-                        650.0,
+                        1215.0,
                         1.0,
                         Color::from_rgba(55, 67, 80, 180),
                     );
@@ -971,37 +948,37 @@ impl Renderer {
             MapKind::City => {
                 draw_rectangle(
                     0.0,
-                    400.0,
-                    1280.0,
-                    250.0,
+                    800.0,
+                    2400.0,
+                    415.0,
                     Color::from_rgba(48, 52, 58, 255),
                 );
-                for x in (0..1280).step_by(180) {
+                for x in (0..2400).step_by(220) {
                     draw_rectangle(
                         x as f32,
-                        180.0,
-                        110.0,
-                        220.0,
+                        350.0,
+                        135.0,
+                        450.0,
                         Color::from_rgba(67, 76, 91, 255),
                     );
                 }
             }
             MapKind::Laboratory => {
-                draw_circle(270.0, 620.0, 70.0, Color::from_rgba(45, 190, 104, 170));
-                draw_circle(930.0, 620.0, 85.0, Color::from_rgba(45, 190, 104, 170));
+                draw_circle(500.0, 1160.0, 110.0, Color::from_rgba(45, 190, 104, 170));
+                draw_circle(1750.0, 1150.0, 130.0, Color::from_rgba(45, 190, 104, 170));
                 draw_line(
-                    390.0,
-                    120.0,
-                    390.0,
-                    500.0,
+                    730.0,
+                    220.0,
+                    730.0,
+                    980.0,
                     8.0,
                     Color::from_rgba(235, 55, 75, 220),
                 );
                 draw_line(
-                    890.0,
-                    120.0,
-                    890.0,
-                    500.0,
+                    1670.0,
+                    220.0,
+                    1670.0,
+                    980.0,
                     8.0,
                     Color::from_rgba(235, 55, 75, 220),
                 );
@@ -1043,61 +1020,6 @@ impl Renderer {
             16.0,
             YELLOW,
         );
-    }
-
-    fn draw_touch_controls(&self) {
-        let width = screen_width();
-        let height = screen_height();
-
-        draw_circle(
-            100.0,
-            height - 115.0,
-            66.0,
-            Color::from_rgba(30, 38, 47, 190),
-        );
-        draw_circle(
-            100.0,
-            height - 115.0,
-            29.0,
-            Color::from_rgba(122, 137, 146, 220),
-        );
-        draw_text("MOVE", 77.0, height - 108.0, 12.0, WHITE);
-
-        let fire = vec2(width - 100.0, height - 118.0);
-        draw_circle(
-            fire.x,
-            fire.y,
-            42.0,
-            Color::from_rgba(183, 76, 62, 230),
-        );
-        draw_text("FIRE", fire.x - 18.0, fire.y + 5.0, 13.0, WHITE);
-
-        let weapon = vec2(width - 270.0, height - 170.0);
-        draw_circle(
-            weapon.x,
-            weapon.y,
-            36.0,
-            Color::from_rgba(76, 93, 136, 235),
-        );
-        draw_text("WEAPON", weapon.x - 25.0, weapon.y + 4.0, 11.0, WHITE);
-
-        let grenade = vec2(width - 190.0, height - 205.0);
-        draw_circle(
-            grenade.x,
-            grenade.y,
-            36.0,
-            Color::from_rgba(65, 145, 80, 235),
-        );
-        draw_text("G", grenade.x - 5.0, grenade.y + 7.0, 22.0, WHITE);
-
-        let barrel = vec2(width - 105.0, height - 205.0);
-        draw_circle(
-            barrel.x,
-            barrel.y,
-            36.0,
-            Color::from_rgba(170, 74, 48, 235),
-        );
-        draw_text("B", barrel.x - 6.0, barrel.y + 7.0, 22.0, WHITE);
     }
 
     fn draw_button(
