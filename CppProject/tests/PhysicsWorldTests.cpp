@@ -1192,6 +1192,24 @@ int main()
     }
     CHECK(restoredMelonMark);
 
+    const float expectedCloneDamage = damagedMelonHead.impactDamage;
+    const float expectedCloneImpactX = damagedMelonHead.impactLocalX;
+    const float expectedCloneImpactY = damagedMelonHead.impactLocalY;
+    melonHitWorld.cloneAt(melonHeadIndex);
+    int clonedMelonGroup = -1;
+    for (const BodyRecord& body : melonHitWorld.records())
+    {
+        if (body.groupId >= 0 && body.groupId != melonHitGroup &&
+            body.partIndex == 1)
+        {
+            clonedMelonGroup = body.groupId;
+            CHECK(std::abs(body.impactDamage - expectedCloneDamage) < 0.0001f);
+            CHECK(std::abs(body.impactLocalX - expectedCloneImpactX) < 0.0001f);
+            CHECK(std::abs(body.impactLocalY - expectedCloneImpactY) < 0.0001f);
+        }
+    }
+    CHECK(clonedMelonGroup >= 0);
+
     PhysicsWorld gentleMelonWorld;
     gentleMelonWorld.setMap(MapKind::TestRange, false);
     const int gentleMelonGroup = gentleMelonWorld.spawnRagdoll(0.0f, 5.0f);

@@ -1978,6 +1978,9 @@ void PhysicsWorld::cloneAt(int index)
         double sy = 0.0;
         int count = 0;
         bool robot = false;
+        std::array<float, 6> partDamage{};
+        std::array<float, 6> partImpactX{};
+        std::array<float, 6> partImpactY{};
 
         for (const BodyRecord& r : records_)
         {
@@ -1988,6 +1991,13 @@ void PhysicsWorld::cloneAt(int index)
             sy += p.y;
             if (r.partIndex == 1)
                 robot = r.shape == BodyShape::Box;
+            if (r.partIndex >= 0 && r.partIndex < 6)
+            {
+                const std::size_t part = static_cast<std::size_t>(r.partIndex);
+                partDamage[part] = r.impactDamage;
+                partImpactX[part] = r.impactLocalX;
+                partImpactY[part] = r.impactLocalY;
+            }
             ++count;
         }
 
@@ -1995,10 +2005,22 @@ void PhysicsWorld::cloneAt(int index)
         {
             const float cloneX = static_cast<float>(sx / count) + 2.2f;
             const float cloneY = static_cast<float>(sy / count) + 0.4f;
-            if (robot)
-                spawnRobot(cloneX, cloneY);
-            else
-                spawnRagdoll(cloneX, cloneY);
+            const int clonedGroup = robot
+                ? spawnRobot(cloneX, cloneY)
+                : spawnRagdoll(cloneX, cloneY);
+
+            // Cloning a damaged character keeps its per-part visual damage and
+            // the collision locations that define the dents and surface marks.
+            for (BodyRecord& clone : records_)
+            {
+                if (clone.groupId != clonedGroup ||
+                    clone.partIndex < 0 || clone.partIndex >= 6)
+                    continue;
+                const std::size_t part = static_cast<std::size_t>(clone.partIndex);
+                clone.impactDamage = partDamage[part];
+                clone.impactLocalX = partImpactX[part];
+                clone.impactLocalY = partImpactY[part];
+            }
         }
         return;
     }
