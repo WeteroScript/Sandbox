@@ -77,7 +77,7 @@ namespace Sandbox.UnityPort
                       Input.GetTouch(0).phase == TouchPhase.Canceled;
             }
 
-            if (down)
+            if (down && !IsPointerOnHud())
             {
                 Vector2 world = GetWorldPointer();
                 var hit = Physics2D.OverlapPoint(world);
@@ -111,6 +111,24 @@ namespace Sandbox.UnityPort
 
             if (up)
                 heldBody = null;
+        }
+
+        private bool IsPointerOnHud()
+        {
+            float scale = Mathf.Clamp(Screen.width / 900f, 0.75f, 1.25f);
+            Vector2 screenPoint = Input.touchCount > 0
+                ? Input.GetTouch(0).position
+                : (Vector2)Input.mousePosition;
+            float x = screenPoint.x / scale;
+            float y = (Screen.height - screenPoint.y) / scale;
+
+            if (y <= 76f || y >= Screen.height / scale - 76f)
+                return true;
+
+            if (spawnPanel && x >= Screen.width / scale - 235f && y >= 70f && y <= 400f)
+                return true;
+
+            return false;
         }
 
         private Vector2 GetWorldPointer()
