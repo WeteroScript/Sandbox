@@ -30,6 +30,7 @@ Third-party C++ source is fetched during CMake configuration. The Android projec
 - Clear-scene action requires a second confirmation tap to prevent accidental deletion.
 - Mouse and touch interaction, including two-finger camera pan and pinch zoom.
 - Versioned scene save/load with map selection, body transforms, velocities, dimensions, colors, freeze state, ragdoll joint links, and mechanism connections.
+- In-memory scene snapshots reuse the validated save format; bounded Undo/Redo history restores complete scenes, including maps, ragdoll joints, freeze state, and mechanisms.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
 - Mouse-wheel zoom anchored to the pointer position, pause, and simulation speed controls.
 - Procedural object materials with per-vertex lighting, beveled edges, wood grain, metal panels, fasteners, surface highlights, and contact shadows.
@@ -78,10 +79,13 @@ The output is under `app/build/outputs/apk/debug/`. The GitHub Actions APK workf
 - Tap a toggle or button in the scene to activate it.
 - `F5`: save scene.
 - `F9`: load scene.
+- `Ctrl+Z`: undo the last scene edit.
+- `Ctrl+Y` or `Ctrl+Shift+Z`: redo an undone edit.
+- The spawn panel also contains touch-friendly UNDO and REDO buttons; history keeps up to 20 actions.
 - `-` / `+`: change simulation speed.
 
 The original Rust project remains in the repository as a reference. The previous Unity prototype is archived; C++ is now the active rewrite.
 
 ## Physics regression test
 
-CTest covers Melon and Robot joint graphs, character-preserving clone, grouped freeze and rotation, scene persistence, mechanism restoration, partial circle immersion, malformed save rejection, duplicate-constraint rejection, mechanism endpoint deletion, and piston-anchor cleanup.
+CTest covers Melon and Robot joint graphs, character-preserving clone, grouped freeze and rotation, scene persistence, mechanism restoration, partial circle immersion, malformed save rejection, in-memory snapshot restoration and validation, duplicate-constraint rejection, mechanism endpoint deletion, and piston-anchor cleanup.
