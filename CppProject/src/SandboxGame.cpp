@@ -7,6 +7,7 @@
 #include <cstring>
 #include <fstream>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -533,8 +534,19 @@ void SandboxGame::handlePointerDown(float x, float y)
         return;
     }
 
-    if (tool_ == SandboxTool::Grab && physics_.interactAt(world.x, world.y))
-        return;
+    std::vector<std::uint8_t> preInteractionSnapshot;
+    bool hasPreInteractionSnapshot = false;
+    if (tool_ == SandboxTool::Grab)
+    {
+        hasPreInteractionSnapshot =
+            captureHistorySnapshot(preInteractionSnapshot);
+        if (physics_.interactAt(world.x, world.y))
+        {
+            if (hasPreInteractionSnapshot)
+                pushUndoSnapshot(std::move(preInteractionSnapshot));
+            return;
+        }
+    }
 
     grabbedIndex_ = physics_.pickBody(world.x, world.y);
     if (grabbedIndex_ < 0)
@@ -553,25 +565,49 @@ void SandboxGame::handlePointerDown(float x, float y)
     switch (tool_)
     {
         case SandboxTool::Grab:
+            dragStartSnapshot_ = std::move(preInteractionSnapshot);
+            dragStartPointerX_ = x;
+            dragStartPointerY_ = y;
+            dragChanged_ = false;
             break;
         case SandboxTool::Freeze:
+        {
+            std::vector<std::uint8_t> before;
+            const bool canUndo = captureHistorySnapshot(before);
             physics_.toggleFreeze(grabbedIndex_);
+            if (canUndo) pushUndoSnapshot(std::move(before));
             grabbedIndex_ = -1;
             break;
+        }
         case SandboxTool::Clone:
+        {
+            std::vector<std::uint8_t> before;
+            const bool canUndo = captureHistorySnapshot(before);
             physics_.cloneAt(grabbedIndex_);
+            if (canUndo) pushUndoSnapshot(std::move(before));
             grabbedIndex_ = -1;
             break;
+        }
         case SandboxTool::Delete:
+        {
+            std::vector<std::uint8_t> before;
+            const bool canUndo = captureHistorySnapshot(before);
             physics_.deleteAt(grabbedIndex_);
+            if (canUndo) pushUndoSnapshot(std::move(before));
             grabbedIndex_ = -1;
             break;
+        }
         case SandboxTool::Rotate:
+        {
+            std::vector<std::uint8_t> before;
+            const bool canUndo = captureHistorySnapshot(before);
             physics_.rotateAt(grabbedIndex_, kPi / 12.0f);
+            if (canUndo) pushUndoSnapshot(std::move(before));
             notice_ = "Rotated 15 degrees";
             noticeTimer_ = 1.4f;
             grabbedIndex_ = -1;
             break;
+        }
     }
 }
 
@@ -579,6 +615,14 @@ void SandboxGame::handlePointerMove(float x, float y)
 {
     pointerX_ = x;
     pointerY_ = y;
+
+    if (grabbedIndex_ >= 0 && tool_ == SandboxTool::Grab)
+    {
+        const float dx = x - dragStartPointerX_;
+        const float dy = y - dragStartPointerY_;
+        if (dx * dx + dy * dy > 9.0f)
+            dragChanged_ = true;
+    }
 
     if (panning_)
     {
@@ -593,6 +637,7 @@ void SandboxGame::handlePointerMove(float x, float y)
 
 void SandboxGame::handlePointerUp()
 {
+    finishDragHistory();
     pointerDown_ = false;
     panning_ = false;
     grabbedIndex_ = -1;
