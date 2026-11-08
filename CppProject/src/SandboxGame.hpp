@@ -9,23 +9,22 @@
 #include <vector>
 
 enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
-enum class SpawnCategory { Props, Mechanisms };
+enum class SpawnCategory { Props, Mechanisms, Misc };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
-    Rod, Rope, Spring, Piston, Button, Toggle
+    Rod, Rope, Spring, Piston, Button, Toggle,
+    WaterBucket, LavaBucket, AcidBucket
 };
 
 struct UiLayout
 {
     float scale = 1.0f;
     std::array<SDL_FRect, 6> toolButtons{};
-    SDL_FRect speedDown{};
     SDL_FRect speedLabel{};
-    SDL_FRect speedUp{};
     SDL_FRect pauseButton{};
     SDL_FRect mapButton{};
     SDL_FRect spawnPanel{};
-    std::array<SDL_FRect, 2> categoryButtons{};
+    std::array<SDL_FRect, 3> categoryButtons{};
     std::array<SDL_FRect, 6> spawnItems{};
     SDL_FRect quantityDown{};
     SDL_FRect quantityLabel{};
@@ -90,7 +89,6 @@ private:
     float lastPanX_ = 0.0f;
     float lastPanY_ = 0.0f;
     float accumulator_ = 0.0f;
-    float fps_ = 0.0f;
     float noticeTimer_ = 0.0f;
     float clearConfirmTimer_ = 0.0f;
     std::string notice_;
@@ -106,7 +104,6 @@ private:
 
     UiLayout makeUiLayout() const;
     void processEvents();
-    void handleKey(SDL_Keycode key, SDL_Keymod modifiers);
     void handlePointerDown(float x, float y);
     void handlePointerMove(float x, float y);
     void handlePointerUp();
@@ -134,6 +131,7 @@ private:
     void drawSurfaces();
     void drawMechanisms();
     void drawBody(const BodyRecord& body, bool selected);
+    void drawBucket(const BodyRecord& body, float x, float y, float angle);
     void drawBox(float x, float y, float halfWidth, float halfHeight,
                  float angle, SDL_Color tint, bool outline);
     void drawCircle(float x, float y, float radius, float angle,

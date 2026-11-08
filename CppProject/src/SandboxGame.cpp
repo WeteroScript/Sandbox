@@ -142,17 +142,16 @@ SandboxGame::~SandboxGame()
 
 bool SandboxGame::initialize()
 {
-    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
         return false;
 
     SDL_SetAppMetadata("Sandbox", "0.2.0", "com.weteroscript.sandbox");
 
     window_ = SDL_CreateWindow(
-        "Sandbox - C++",
+        "Sandbox",
         1280,
         720,
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY
+        SDL_WINDOW_HIGH_PIXEL_DENSITY
     );
     if (!window_)
         return false;
@@ -171,8 +170,6 @@ bool SandboxGame::initialize()
 int SandboxGame::run()
 {
     Uint64 previousTicks = SDL_GetTicks();
-    Uint64 fpsTicks = previousTicks;
-    int frames = 0;
 
     while (running_)
     {
@@ -185,15 +182,6 @@ int SandboxGame::run()
 
         update(deltaTime);
         render();
-
-        ++frames;
-        if (now - fpsTicks >= 500)
-        {
-            const float elapsed = static_cast<float>(now - fpsTicks) / 1000.0f;
-            fps_ = elapsed > 0.0f ? static_cast<float>(frames) / elapsed : 0.0f;
-            frames = 0;
-            fpsTicks = now;
-        }
     }
 
     return 0;
@@ -203,80 +191,81 @@ UiLayout SandboxGame::makeUiLayout() const
 {
     UiLayout layout;
     layout.scale = clampFloat(
-        std::min(static_cast<float>(outputWidth_) / 960.0f,
-                 static_cast<float>(outputHeight_) / 620.0f),
-        0.72f,
-        1.25f
+        std::min(static_cast<float>(outputWidth_) / 780.0f,
+                 static_cast<float>(outputHeight_) / 430.0f),
+        0.90f,
+        1.40f
     );
 
     const float scale = layout.scale;
-    const float margin = 12.0f * scale;
-    const float top = 12.0f * scale;
-    const float buttonWidth = 66.0f * scale;
-    const float buttonHeight = 38.0f * scale;
-    const float gap = 4.5f * scale;
+    const float margin = 8.0f * scale;
+    const float top = 8.0f * scale;
+    const float gap = 5.0f * scale;
+    const float buttonHeight = 46.0f * scale;
 
+    const float mapWidth = 108.0f * scale;
+    const float speedWidth = 86.0f * scale;
+    const float pauseWidth = 78.0f * scale;
+    const float utilityWidth = mapWidth + speedWidth + pauseWidth + gap * 2.0f;
+    const float utilityStart = static_cast<float>(outputWidth_) -
+                               margin - utilityWidth;
+
+    layout.mapButton = {utilityStart, top, mapWidth, buttonHeight};
+    layout.speedLabel = {
+        utilityStart + mapWidth + gap, top, speedWidth, buttonHeight
+    };
+    layout.pauseButton = {
+        utilityStart + mapWidth + speedWidth + gap * 2.0f,
+        top, pauseWidth, buttonHeight
+    };
+
+    const float toolArea = utilityStart - margin - gap;
+    const float toolWidth = std::max(
+        52.0f * scale,
+        std::min(92.0f * scale,
+            (toolArea - gap * 5.0f) / static_cast<float>(layout.toolButtons.size()))
+    );
     for (std::size_t i = 0; i < layout.toolButtons.size(); ++i)
     {
-        layout.toolButtons[i] = SDL_FRect{
-            margin + static_cast<float>(i) * (buttonWidth + gap),
+        layout.toolButtons[i] = {
+            margin + static_cast<float>(i) * (toolWidth + gap),
             top,
-            buttonWidth,
+            toolWidth,
             buttonHeight
         };
     }
 
-    layout.mapButton = {
-        static_cast<float>(outputWidth_) * 0.5f - 48.0f * scale,
-        top,
-        96.0f * scale,
-        buttonHeight
-    };
-
-    const float speedWidth = 44.0f * scale;
-    const float speedGroupWidth = speedWidth * 4.0f + gap * 3.0f;
-    float speedX = static_cast<float>(outputWidth_) - speedGroupWidth - margin;
-
-    layout.speedDown = {speedX, top, speedWidth, buttonHeight};
-    speedX += speedWidth + gap;
-    layout.speedLabel = {speedX, top, speedWidth, buttonHeight};
-    speedX += speedWidth + gap;
-    layout.speedUp = {speedX, top, speedWidth, buttonHeight};
-    speedX += speedWidth + gap;
-    layout.pauseButton = {speedX, top, speedWidth, buttonHeight};
-
     layout.spawnPanel = {
         margin,
-        top + buttonHeight + 10.0f * scale,
-        252.0f * scale,
-        326.0f * scale
+        top + buttonHeight + 8.0f * scale,
+        340.0f * scale,
+        284.0f * scale
     };
 
     const float innerX = layout.spawnPanel.x + 10.0f * scale;
     const float innerWidth = layout.spawnPanel.w - 20.0f * scale;
-    const float categoryY = layout.spawnPanel.y + 37.0f * scale;
-    const float categoryGap = 6.0f * scale;
-    const float categoryWidth = (innerWidth - categoryGap) * 0.5f;
-    layout.categoryButtons[0] = {
-        innerX, categoryY, categoryWidth, 31.0f * scale
-    };
-    layout.categoryButtons[1] = {
-        innerX + categoryWidth + categoryGap,
-        categoryY,
-        categoryWidth,
-        31.0f * scale
-    };
+    const float categoryY = layout.spawnPanel.y + 30.0f * scale;
+    const float categoryGap = 5.0f * scale;
+    const float categoryWidth = (innerWidth - categoryGap * 2.0f) / 3.0f;
+    for (std::size_t i = 0; i < layout.categoryButtons.size(); ++i)
+    {
+        layout.categoryButtons[i] = {
+            innerX + static_cast<float>(i) * (categoryWidth + categoryGap),
+            categoryY,
+            categoryWidth,
+            32.0f * scale
+        };
+    }
 
-    const float itemY = categoryY + 39.0f * scale;
-    const float itemGapX = 6.0f * scale;
+    const float itemY = categoryY + 37.0f * scale;
+    const float itemGapX = 5.0f * scale;
     const float itemGapY = 5.0f * scale;
-    const float itemWidth = (innerWidth - itemGapX) * 0.5f;
-    const float itemHeight = 32.0f * scale;
-
+    const float itemWidth = (innerWidth - itemGapX * 2.0f) / 3.0f;
+    const float itemHeight = 36.0f * scale;
     for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
     {
-        const std::size_t row = i / 2;
-        const std::size_t column = i % 2;
+        const std::size_t row = i / 3;
+        const std::size_t column = i % 3;
         layout.spawnItems[i] = {
             innerX + static_cast<float>(column) * (itemWidth + itemGapX),
             itemY + static_cast<float>(row) * (itemHeight + itemGapY),
@@ -285,22 +274,32 @@ UiLayout SandboxGame::makeUiLayout() const
         };
     }
 
-    const float quantityY = itemY + 3.0f * (itemHeight + itemGapY) + 2.0f * scale;
-    layout.quantityDown = {innerX, quantityY, 42.0f * scale, itemHeight};
-    layout.quantityLabel = {innerX + 48.0f * scale, quantityY, 58.0f * scale, itemHeight};
-    layout.quantityUp = {innerX + 112.0f * scale, quantityY, 42.0f * scale, itemHeight};
-
-    const float actionsY = quantityY + itemHeight + 7.0f * scale;
-    layout.saveButton = {innerX, actionsY, 68.0f * scale, itemHeight};
-    layout.loadButton = {innerX + 74.0f * scale, actionsY, 68.0f * scale, itemHeight};
-    layout.clearButton = {
-        innerX + 148.0f * scale,
-        actionsY,
-        innerWidth - 148.0f * scale,
-        itemHeight
+    const float quantityY = itemY + 2.0f * (itemHeight + itemGapY) + scale;
+    const float quantityWidth = 56.0f * scale;
+    const float quantityLabelWidth = 82.0f * scale;
+    layout.quantityDown = {innerX, quantityY, quantityWidth, itemHeight};
+    layout.quantityLabel = {
+        innerX + quantityWidth + 5.0f * scale,
+        quantityY, quantityLabelWidth, itemHeight
+    };
+    layout.quantityUp = {
+        innerX + quantityWidth + quantityLabelWidth + 10.0f * scale,
+        quantityY, quantityWidth, itemHeight
     };
 
-    const float historyY = actionsY + itemHeight + 6.0f * scale;
+    const float actionsY = quantityY + itemHeight + 5.0f * scale;
+    const float actionGap = 5.0f * scale;
+    const float actionWidth = (innerWidth - actionGap * 2.0f) / 3.0f;
+    layout.saveButton = {innerX, actionsY, actionWidth, itemHeight};
+    layout.loadButton = {
+        innerX + actionWidth + actionGap, actionsY, actionWidth, itemHeight
+    };
+    layout.clearButton = {
+        innerX + 2.0f * (actionWidth + actionGap),
+        actionsY, actionWidth, itemHeight
+    };
+
+    const float historyY = actionsY + itemHeight + 5.0f * scale;
     const float historyGap = 6.0f * scale;
     const float historyWidth = (innerWidth - historyGap) * 0.5f;
     layout.undoButton = {innerX, historyY, historyWidth, itemHeight};
@@ -310,6 +309,7 @@ UiLayout SandboxGame::makeUiLayout() const
 
     return layout;
 }
+
 void SandboxGame::processEvents()
 {
     SDL_Event event;
@@ -320,76 +320,6 @@ void SandboxGame::processEvents()
             case SDL_EVENT_QUIT:
                 running_ = false;
                 break;
-
-            case SDL_EVENT_KEY_DOWN:
-                if (!event.key.repeat)
-                    handleKey(event.key.key, event.key.mod);
-                break;
-
-            case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                if (event.button.button == SDL_BUTTON_LEFT)
-                    handlePointerDown(event.button.x, event.button.y);
-                else if (event.button.button == SDL_BUTTON_MIDDLE)
-                {
-                    panning_ = true;
-                    lastPanX_ = event.button.x;
-                    lastPanY_ = event.button.y;
-                }
-                break;
-
-            case SDL_EVENT_MOUSE_BUTTON_UP:
-                if (event.button.button == SDL_BUTTON_LEFT)
-                    handlePointerUp();
-                else if (event.button.button == SDL_BUTTON_MIDDLE)
-                    panning_ = false;
-                break;
-
-            case SDL_EVENT_MOUSE_MOTION:
-                if (pointerDown_)
-                    handlePointerMove(event.motion.x, event.motion.y);
-
-                if (panning_)
-                {
-                    const float dx = event.motion.x - lastPanX_;
-                    const float dy = event.motion.y - lastPanY_;
-                    cameraX_ -= dx / pixelsPerMeter_;
-                    cameraY_ += dy / pixelsPerMeter_;
-                    lastPanX_ = event.motion.x;
-                    lastPanY_ = event.motion.y;
-                }
-                break;
-
-            case SDL_EVENT_MOUSE_WHEEL:
-            {
-                const float oldScale = pixelsPerMeter_;
-                const float newScale = clampFloat(
-                    oldScale * std::pow(1.12f, event.wheel.y),
-                    24.0f,
-                    100.0f
-                );
-
-                // SDL mouse coordinates are in logical window pixels while
-                // the camera uses renderer output pixels on high-DPI displays.
-                int windowWidth = 0;
-                int windowHeight = 0;
-                SDL_GetWindowSize(window_, &windowWidth, &windowHeight);
-                const float scaleX = windowWidth > 0
-                    ? static_cast<float>(outputWidth_) / windowWidth : 1.0f;
-                const float scaleY = windowHeight > 0
-                    ? static_cast<float>(outputHeight_) / windowHeight : 1.0f;
-                const float mouseX = event.wheel.mouse_x * scaleX;
-                const float mouseY = event.wheel.mouse_y * scaleY;
-
-                // Preserve the exact world point below the cursor while zooming.
-                const float anchorX =
-                    mouseX - static_cast<float>(outputWidth_) * 0.5f;
-                const float anchorY =
-                    mouseY - static_cast<float>(outputHeight_) * 0.5f;
-                cameraX_ += anchorX / oldScale - anchorX / newScale;
-                cameraY_ += -anchorY / oldScale + anchorY / newScale;
-                pixelsPerMeter_ = newScale;
-                break;
-            }
 
             case SDL_EVENT_FINGER_DOWN:
                 SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
@@ -422,74 +352,6 @@ void SandboxGame::processEvents()
     }
 }
 
-void SandboxGame::handleKey(SDL_Keycode key, SDL_Keymod modifiers)
-{
-    if ((modifiers & SDL_KMOD_CTRL) != 0)
-    {
-        if (key == SDLK_Z)
-        {
-            if ((modifiers & SDL_KMOD_SHIFT) != 0)
-                redoScene();
-            else
-                undoScene();
-            return;
-        }
-        if (key == SDLK_Y)
-        {
-            redoScene();
-            return;
-        }
-    }
-
-    switch (key)
-    {
-        case SDLK_ESCAPE:
-        case SDLK_SPACE:
-            paused_ = !paused_;
-            break;
-        case SDLK_1:
-            tool_ = SandboxTool::Grab;
-            break;
-        case SDLK_2:
-            tool_ = SandboxTool::Freeze;
-            break;
-        case SDLK_3:
-            tool_ = SandboxTool::Clone;
-            break;
-        case SDLK_4:
-            tool_ = SandboxTool::Delete;
-            break;
-        case SDLK_5:
-            tool_ = SandboxTool::Rotate;
-            spawnPlacementActive_ = false;
-            break;
-        case SDLK_TAB:
-            spawnPanelOpen_ = !spawnPanelOpen_;
-            break;
-        case SDLK_M:
-            cycleMap();
-            break;
-        case SDLK_F5:
-            saveScene();
-            break;
-        case SDLK_F9:
-            loadScene();
-            break;
-        case SDLK_MINUS:
-        case SDLK_KP_MINUS:
-            speedIndex_ = std::max(0, speedIndex_ - 1);
-            simulationSpeed_ = kSpeeds[static_cast<std::size_t>(speedIndex_)];
-            break;
-        case SDLK_EQUALS:
-        case SDLK_KP_PLUS:
-            speedIndex_ = std::min(3, speedIndex_ + 1);
-            simulationSpeed_ = kSpeeds[static_cast<std::size_t>(speedIndex_)];
-            break;
-        default:
-            break;
-    }
-}
-
 bool SandboxGame::pointInRect(float x, float y, const SDL_FRect& rect) const
 {
     return x >= rect.x && y >= rect.y &&
@@ -517,9 +379,7 @@ void SandboxGame::handlePointerDown(float x, float y)
     }
 
     if (pointInRect(x, y, layout.mapButton) ||
-        pointInRect(x, y, layout.speedDown) ||
         pointInRect(x, y, layout.speedLabel) ||
-        pointInRect(x, y, layout.speedUp) ||
         pointInRect(x, y, layout.pauseButton) ||
         (spawnPanelOpen_ && pointInRect(x, y, layout.spawnPanel)))
     {
@@ -792,16 +652,9 @@ void SandboxGame::handleUiClick(float x, float y)
         return;
     }
 
-    if (pointInRect(x, y, layout.speedDown))
+    if (pointInRect(x, y, layout.speedLabel))
     {
-        speedIndex_ = std::max(0, speedIndex_ - 1);
-        simulationSpeed_ = kSpeeds[static_cast<std::size_t>(speedIndex_)];
-        return;
-    }
-
-    if (pointInRect(x, y, layout.speedUp))
-    {
-        speedIndex_ = std::min(3, speedIndex_ + 1);
+        speedIndex_ = (speedIndex_ + 1) % static_cast<int>(kSpeeds.size());
         simulationSpeed_ = kSpeeds[static_cast<std::size_t>(speedIndex_)];
         return;
     }
@@ -820,7 +673,7 @@ void SandboxGame::handleUiClick(float x, float y)
         if (!pointInRect(x, y, layout.categoryButtons[i]))
             continue;
 
-        spawnCategory_ = i == 0 ? SpawnCategory::Props : SpawnCategory::Mechanisms;
+        spawnCategory_ = static_cast<SpawnCategory>(i);
         spawnPlacementActive_ = false;
         return;
     }
@@ -833,11 +686,15 @@ void SandboxGame::handleUiClick(float x, float y)
         SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
         SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle
     };
+    static constexpr std::array<SpawnItem, 6> miscItems{
+        SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
+        SpawnItem::Box, SpawnItem::Box, SpawnItem::Box
+    };
 
     const auto& items = spawnCategory_ == SpawnCategory::Props
-        ? propItems : mechanismItems;
-    const std::array<const char*, 6> ignoredLabels{}; // Keeps the category selection table type-stable.
-    (void)ignoredLabels;
+        ? propItems
+        : spawnCategory_ == SpawnCategory::Mechanisms
+            ? mechanismItems : miscItems;
 
     for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
     {
@@ -952,6 +809,15 @@ void SandboxGame::placeSelected(float worldX, float worldY)
                 break;
             case SpawnItem::Toggle:
                 result = physics_.spawnMechanism(MechanismKind::Toggle, x, y);
+                break;
+            case SpawnItem::WaterBucket:
+                result = physics_.spawnBucket(BucketKind::Water, x, y);
+                break;
+            case SpawnItem::LavaBucket:
+                result = physics_.spawnBucket(BucketKind::Lava, x, y);
+                break;
+            case SpawnItem::AcidBucket:
+                result = physics_.spawnBucket(BucketKind::Acid, x, y);
                 break;
         }
 
@@ -1550,9 +1416,8 @@ void SandboxGame::drawUi()
     }
     drawButton(layout.mapButton, mapLabel, false);
 
-    drawButton(layout.speedDown, "-", false);
-    drawButton(layout.speedLabel, kSpeedLabels[static_cast<std::size_t>(speedIndex_)], false);
-    drawButton(layout.speedUp, "+", false);
+    drawButton(layout.speedLabel,
+               kSpeedLabels[static_cast<std::size_t>(speedIndex_)], false);
     drawButton(layout.pauseButton, paused_ ? "PLAY" : "PAUSE", paused_);
 
     if (spawnPanelOpen_)
@@ -1575,29 +1440,32 @@ void SandboxGame::drawUi()
             spawnCategory_ == SpawnCategory::Props
         );
         drawButton(
-            layout.categoryButtons[1], "MECHANISMS",
+            layout.categoryButtons[1], "MECH",
             spawnCategory_ == SpawnCategory::Mechanisms
+        );
+        drawButton(
+            layout.categoryButtons[2], "MISC",
+            spawnCategory_ == SpawnCategory::Misc
         );
 
         static constexpr std::array<const char*, 6> propLabels{
             "BOX", "BALL", "BARREL", "PLATFORM", "MELON", "ROBOT"
         };
-        static constexpr std::array<SpawnItem, 6> propItems{
-            SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
-            SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot
-        };
         static constexpr std::array<const char*, 6> mechanismLabels{
             "ROD", "ROPE", "SPRING", "PISTON", "BUTTON", "TOGGLE"
         };
-        static constexpr std::array<SpawnItem, 6> mechanismItems{
-            SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
-            SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle
+        static constexpr std::array<const char*, 6> miscLabels{
+            "WATER PAIL", "LAVA PAIL", "ACID PAIL", "", "", ""
         };
 
         const auto& labels = spawnCategory_ == SpawnCategory::Props
-            ? propLabels : mechanismLabels;
+            ? propLabels
+            : spawnCategory_ == SpawnCategory::Mechanisms
+                ? mechanismLabels : miscLabels;
         const auto& items = spawnCategory_ == SpawnCategory::Props
-            ? propItems : mechanismItems;
+            ? propItems
+            : spawnCategory_ == SpawnCategory::Mechanisms
+                ? mechanismItems : miscItems;
 
         for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
         {
@@ -1644,11 +1512,9 @@ void SandboxGame::drawUi()
     std::snprintf(
         status,
         sizeof(status),
-        "%s   OBJECTS %zu   AWAKE %d   FPS %.0f   |   M MAP   1-5 TOOLS   CTRL+Z/Y UNDO/REDO",
+        "%s    OBJECTS %zu",
         mapLabel,
-        physics_.dynamicCount(),
-        physics_.awakeBodyCount(),
-        fps_
+        physics_.dynamicCount()
     );
     setColor(renderer_, makeColor(218, 226, 235));
     SDL_RenderDebugText(renderer_, 14.0f,
