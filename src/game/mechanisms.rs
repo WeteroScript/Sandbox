@@ -107,7 +107,7 @@ impl MechanismWorld {
     }
 
     pub fn step(&mut self, physics: &mut PhysicsWorld, delta_time: f32) {
-        let dt = delta_time.clamp(1.0 / 120.0, 1.0 / 30.0);
+        let dt = delta_time.clamp(1.0 / 240.0, 1.0 / 30.0);
 
         if self.next_toggle {
             for mechanism in &mut self.items {
