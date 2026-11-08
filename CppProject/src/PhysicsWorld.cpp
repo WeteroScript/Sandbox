@@ -1,11 +1,15 @@
 #include "PhysicsWorld.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <cstring>
 #include <type_traits>
+#include <set>
+#include <tuple>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -45,6 +49,140 @@ bool sameBodyId(b2BodyId a, b2BodyId b)
     return a.index1 == b.index1 &&
            a.world0 == b.world0 &&
            a.generation == b.generation;
+}
+
+struct Point2 { float x = 0.0f; float y = 0.0f; };
+
+float polygonArea(const std::vector<Point2>& points)
+{
+    if (points.size() < 3) return 0.0f;
+    double sum = 0.0;
+    for (std::size_t i = 0; i < points.size(); ++i)
+    {
+        const Point2& a = points[i];
+        const Point2& b = points[(i + 1) % points.size()];
+        sum += static_cast<double>(a.x) * b.y -
+               static_cast<double>(b.x) * a.y;
+    }
+    return static_cast<float>(std::abs(sum) * 0.5);
+}
+
+std::vector<Point2> clipPolygon(
+    const std::vector<Point2>& input, int axis, float boundary, bool keepGreater)
+{
+    std::vector<Point2> output;
+    if (input.empty()) return output;
+    const auto coordinate = [axis](const Point2& p) { return axis == 0 ? p.x : p.y; };
+    const auto inside = [&](const Point2& p)
+    {
+        return keepGreater ? coordinate(p) >= boundary : coordinate(p) <= boundary;
+    };
+    Point2 previous = input.back();
+    bool previousInside = inside(previous);
+    for (const Point2& current : input)
+    {
+        const bool currentInside = inside(current);
+        if (currentInside != previousInside)
+        {
+            const float a = coordinate(previous);
+            const float b = coordinate(current);
+            const float denominator = b - a;
+            if (std::abs(denominator) > 0.000001f)
+            {
+                const float t = (boundary - a) / denominator;
+                output.push_back({
+                    previous.x + (current.x - previous.x) * t,
+                    previous.y + (current.y - previous.y) * t
+                });
+            }
+        }
+        if (currentInside) output.push_back(current);
+        previous = current;
+        previousInside = currentInside;
+    }
+    return output;
+}
+
+float circleRectangleArea(float cx, float cy, float radius,
+                          float left, float bottom, float right, float top)
+{
+    constexpr float pi = 3.14159265358979323846f;
+    const float r2 = radius * radius;
+    if (right <= left || top <= bottom) return 0.0f;
+    if (left <= cx-radius && right >= cx+radius &&
+        bottom <= cy-radius && top >= cy+radius)
+        return pi * r2;
+
+    const float x0 = std::max(left, cx-radius);
+    const float x1 = std::min(right, cx+radius);
+    if (x1 <= x0) return 0.0f;
+
+    std::vector<float> cuts{x0, x1};
+    for (float edgeY : {bottom, top})
+    {
+        const float dy = edgeY - cy;
+        if (std::abs(dy) >= radius) continue;
+        const float dx = std::sqrt(std::max(0.0f, r2-dy*dy));
+        for (float crossing : {cx-dx, cx+dx})
+            if (crossing > x0 && crossing < x1) cuts.push_back(crossing);
+    }
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+
+    const auto heightAt = [&](float x)
+    {
+        const float dx = x-cx;
+        const float half = std::sqrt(std::max(0.0f, r2-dx*dx));
+        return std::max(0.0f,
+            std::min(top, cy+half) - std::max(bottom, cy-half));
+    };
+
+    double area = 0.0;
+    constexpr int slices = 24;
+    for (std::size_t part = 1; part < cuts.size(); ++part)
+    {
+        const float a = cuts[part-1], b = cuts[part];
+        const float step = (b-a) / static_cast<float>(slices);
+        double sum = heightAt(a) + heightAt(b);
+        for (int i=1; i<slices; ++i)
+            sum += (i%2 ? 4.0 : 2.0) * heightAt(a + step*static_cast<float>(i));
+        area += sum * static_cast<double>(step) / 3.0;
+    }
+    return static_cast<float>(area);
+}
+
+float bodyRectangleOverlap(const BodyRecord& record, float x, float y,
+                           b2Rot rotation, const SurfaceZone& zone)
+{
+    const float left=zone.x-zone.halfWidth, right=zone.x+zone.halfWidth;
+    const float bottom=zone.y-zone.halfHeight, top=zone.y+zone.halfHeight;
+    if (record.shape == BodyShape::Circle)
+    {
+        constexpr float pi=3.14159265358979323846f;
+        const float area=pi*record.radius*record.radius;
+        return area>0.0f ? std::clamp(
+            circleRectangleArea(x,y,record.radius,left,bottom,right,top)/area,
+            0.0f,1.0f) : 0.0f;
+    }
+
+    const float c=static_cast<float>(rotation.c), s=static_cast<float>(rotation.s);
+    const std::array<Point2,4> corners{{
+        {x-c*record.halfWidth+s*record.halfHeight,
+         y-s*record.halfWidth-c*record.halfHeight},
+        {x+c*record.halfWidth+s*record.halfHeight,
+         y+s*record.halfWidth-c*record.halfHeight},
+        {x+c*record.halfWidth-s*record.halfHeight,
+         y+s*record.halfWidth+c*record.halfHeight},
+        {x-c*record.halfWidth-s*record.halfHeight,
+         y-s*record.halfWidth+c*record.halfHeight}
+    }};
+    std::vector<Point2> clipped(corners.begin(),corners.end());
+    clipped=clipPolygon(clipped,0,left,true);
+    clipped=clipPolygon(clipped,0,right,false);
+    clipped=clipPolygon(clipped,1,bottom,true);
+    clipped=clipPolygon(clipped,1,top,false);
+    const float area=4.0f*record.halfWidth*record.halfHeight;
+    return area>0.0f ? std::clamp(polygonArea(clipped)/area,0.0f,1.0f):0.0f;
 }
 
 struct SavedBody
@@ -151,6 +289,19 @@ bool readSavedBody(std::istream& in, SavedBody& b)
         b.radius <= 0.0f || b.radius > 1000.0f ||
         b.density <= 0.0f || b.density > 1000.0f ||
         std::abs(b.x) > 1000000.0f || std::abs(b.y) > 1000000.0f ||
+        std::abs(b.angle) > 6.2832f ||
+        std::abs(b.velocityX) > 1000.0f || std::abs(b.velocityY) > 1000.0f ||
+        std::abs(b.angularVelocity) > 1000.0f ||
+        std::abs(b.savedVelocity.x) > 1000.0f ||
+        std::abs(b.savedVelocity.y) > 1000.0f ||
+        std::abs(b.savedAngularVelocity) > 1000.0f ||
+        std::abs(b.parentAnchor.x) > 1000.0f ||
+        std::abs(b.parentAnchor.y) > 1000.0f ||
+        std::abs(b.childAnchor.x) > 1000.0f ||
+        std::abs(b.childAnchor.y) > 1000.0f ||
+        std::abs(b.jointLowerAngle) > 6.2832f ||
+        std::abs(b.jointUpperAngle) > 6.2832f ||
+        b.jointLowerAngle > b.jointUpperAngle ||
         b.groupId < -1 || b.groupId > 1000000 ||
         b.partIndex < -1 || b.parentPart < -1 ||
         b.partIndex > 5 || b.parentPart > 5 ||
@@ -205,8 +356,11 @@ bool readSavedMechanism(std::istream& in, SavedMechanism& m)
     return m.kind <= maxKind &&
         m.firstIndex >= -1 && m.secondIndex >= -1 &&
         finite(m.anchorX) && finite(m.anchorY) &&
-        finite(m.restLength) && m.restLength >= 0.0f && m.restLength <= 1000.0f &&
-        finite(m.phase) && m.pressed <= 1 && m.active <= 1;
+        std::abs(m.anchorX) <= 1000000.0f &&
+        std::abs(m.anchorY) <= 1000000.0f &&
+        finite(m.restLength) && m.restLength >= 0.0f && m.restLength <= 16.0f &&
+        finite(m.phase) && m.phase >= 0.0f && m.phase <= 1000000.0f &&
+        m.pressed <= 1 && m.active <= 1;
 }
 }
 
@@ -329,31 +483,10 @@ void PhysicsWorld::updateSurfaces(float dt)
         const float x = static_cast<float>(position.x);
         const float y = static_cast<float>(position.y);
 
-        // Use the rotated shape bounds to estimate how much of the object
-        // intersects a liquid zone instead of switching effects at its centre.
-        float extentX = record.radius;
-        float extentY = record.radius;
-        if (record.shape == BodyShape::Box)
-        {
-            const float cosine = std::abs(static_cast<float>(rotation.c));
-            const float sine = std::abs(static_cast<float>(rotation.s));
-            extentX = cosine * record.halfWidth + sine * record.halfHeight;
-            extentY = sine * record.halfWidth + cosine * record.halfHeight;
-        }
-
-        const float bodyArea = std::max(0.0001f, 4.0f * extentX * extentY);
         for (const SurfaceZone& zone : surfaces_)
         {
-            const float overlapLeft = std::max(x - extentX, zone.x - zone.halfWidth);
-            const float overlapRight = std::min(x + extentX, zone.x + zone.halfWidth);
-            const float overlapBottom = std::max(y - extentY, zone.y - zone.halfHeight);
-            const float overlapTop = std::min(y + extentY, zone.y + zone.halfHeight);
-            if (overlapRight <= overlapLeft || overlapTop <= overlapBottom)
-                continue;
-
-            const float overlapArea =
-                (overlapRight - overlapLeft) * (overlapTop - overlapBottom);
-            const float immersion = std::clamp(overlapArea / bodyArea, 0.0f, 1.0f);
+            const float immersion =
+                bodyRectangleOverlap(record, x, y, rotation, zone);
             if (immersion <= 0.001f)
                 continue;
 
@@ -1273,43 +1406,72 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
             if ((kind == MechanismKind::Rod || kind == MechanismKind::Rope ||
                  kind == MechanismKind::Spring) &&
                 (mechanism.firstIndex < 0 || mechanism.secondIndex < 0 ||
-                 mechanism.firstIndex == mechanism.secondIndex))
+                 mechanism.firstIndex == mechanism.secondIndex ||
+                 mechanism.restLength < 0.45f))
                 return false;
             if (kind == MechanismKind::Piston &&
-                (mechanism.firstIndex != -1 || mechanism.secondIndex < 0))
+                (mechanism.firstIndex != -1 || mechanism.secondIndex < 0 ||
+                 mechanism.restLength < 0.45f))
                 return false;
             if (kind == MechanismKind::Button &&
-                (mechanism.firstIndex < 0 || mechanism.secondIndex != -1))
+                (mechanism.firstIndex < 0 || mechanism.secondIndex != -1 ||
+                 mechanism.restLength <= 0.0f || mechanism.restLength > 2.0f))
                 return false;
             if (kind == MechanismKind::Toggle &&
-                (mechanism.firstIndex != -1 || mechanism.secondIndex != -1))
+                (mechanism.firstIndex != -1 || mechanism.secondIndex != -1 ||
+                 mechanism.restLength != 0.0f))
                 return false;
         }
     }
 
-    for (std::size_t i = 0; i < saved.size(); ++i)
+    std::unordered_map<int, std::uint8_t> characterParts;
+    std::unordered_map<int, bool> characterFrozenState;
+    for (const SavedBody& body : saved)
     {
-        const SavedBody& body = saved[i];
-        if (body.groupId < 0)
-            continue;
+        if (body.groupId < 0) continue;
+        const std::uint8_t bit =
+            static_cast<std::uint8_t>(1U << static_cast<unsigned>(body.partIndex));
+        std::uint8_t& mask = characterParts[body.groupId];
+        if ((mask & bit) != 0) return false;
+        mask = static_cast<std::uint8_t>(mask | bit);
 
-        for (std::size_t j = 0; j < i; ++j)
-        {
-            if (saved[j].groupId == body.groupId &&
-                saved[j].partIndex == body.partIndex)
-                return false;
-        }
+        if ((body.partIndex == 0 && body.parentPart != -1) ||
+            (body.partIndex != 0 && body.parentPart != 0))
+            return false;
 
-        if (body.parentPart >= 0)
+        const auto frozen = characterFrozenState.find(body.groupId);
+        if (frozen == characterFrozenState.end())
+            characterFrozenState.emplace(body.groupId, body.frozen);
+        else if (frozen->second != body.frozen)
+            return false;
+    }
+    for (const auto& [groupId, mask] : characterParts)
+    {
+        (void)groupId;
+        if (mask != 0x3FU) return false;
+    }
+
+    if (version >= 2)
+    {
+        std::set<std::tuple<unsigned, int, int, float, float>> uniqueMechanisms;
+        for (const SavedMechanism& mechanism : savedMechanisms)
         {
-            const bool parentExists = std::any_of(saved.begin(), saved.end(),
-                [&body](const SavedBody& candidate)
-                {
-                    return candidate.groupId == body.groupId &&
-                           candidate.partIndex == body.parentPart;
-                });
-            if (!parentExists)
-                return false;
+            const MechanismKind kind = static_cast<MechanismKind>(mechanism.kind);
+            int first = mechanism.firstIndex;
+            int second = mechanism.secondIndex;
+            float anchorX = mechanism.anchorX;
+            float anchorY = mechanism.anchorY;
+            if (kind == MechanismKind::Rod || kind == MechanismKind::Rope ||
+                kind == MechanismKind::Spring)
+            {
+                if (first > second) std::swap(first, second);
+                anchorX = 0.0f;
+                anchorY = 0.0f;
+            }
+            const auto key = std::make_tuple(
+                static_cast<unsigned>(mechanism.kind),
+                first, second, anchorX, anchorY);
+            if (!uniqueMechanisms.insert(key).second) return false;
         }
     }
 
@@ -1417,7 +1579,10 @@ bool PhysicsWorld::loadFromFile(const std::string& path)
 
         if (!createMechanism(kind, savedMechanism.anchorX, savedMechanism.anchorY,
                              first, second, savedMechanism.restLength))
-            continue;
+        {
+            clearDynamic();
+            return false;
+        }
 
         MechanismRecord& restored = mechanisms_.back();
         restored.phase = savedMechanism.phase;
