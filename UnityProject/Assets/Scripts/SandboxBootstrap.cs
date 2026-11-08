@@ -4,7 +4,7 @@ namespace Sandbox.UnityPort
 {
     public static class SandboxBootstrap
     {
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateRuntime()
         {
             if (Object.FindObjectOfType<SandboxGame>() != null)
