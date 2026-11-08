@@ -67,6 +67,7 @@ namespace Sandbox.UnityPort
                 Destroy(joint);
 
             var rigidbody = copy.GetComponent<Rigidbody2D>();
+            rigidbody.bodyType = RigidbodyType2D.Dynamic;
             rigidbody.velocity = Vector2.zero;
             rigidbody.angularVelocity = 0f;
             return copyBody;
