@@ -311,6 +311,8 @@ struct SavedBody
     bool breakable = false;
     bool powerSource = false;
     float batteryCharge = 0.0f;
+    float impactLocalX = 0.0f;
+    float impactLocalY = 0.0f;
 };
 
 bool writeSavedBody(std::ostream& out, const SavedBody& b)
@@ -344,7 +346,9 @@ bool writeSavedBody(std::ostream& out, const SavedBody& b)
         writeValue(out, static_cast<std::uint8_t>(b.breakable ? 1U : 0U)) &&
         writeValue(out, b.impactDamage) &&
         writeValue(out, static_cast<std::uint8_t>(b.powerSource ? 1U : 0U)) &&
-        writeValue(out, b.batteryCharge);
+        writeValue(out, b.batteryCharge) &&
+        writeValue(out, b.impactLocalX) &&
+        writeValue(out, b.impactLocalY);
 }
 
 bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
@@ -415,6 +419,11 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         b.powerSource = powerSource != 0;
     }
 
+    if (version >= 8 &&
+        (!readValue(in, b.impactLocalX) ||
+         !readValue(in, b.impactLocalY)))
+        return false;
+
     if (shape > static_cast<std::uint8_t>(BodyShape::Circle) || frozen > 1)
         return false;
 
@@ -430,7 +439,8 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         b.parentAnchor.x, b.parentAnchor.y, b.childAnchor.x, b.childAnchor.y,
         b.jointLowerAngle, b.jointUpperAngle,
         b.savedVelocity.x, b.savedVelocity.y, b.savedAngularVelocity,
-        b.bucketVolume, b.acidExposure, b.impactDamage, b.batteryCharge
+        b.bucketVolume, b.acidExposure, b.impactDamage, b.batteryCharge,
+        b.impactLocalX, b.impactLocalY
     };
 
     for (float value : values)
@@ -468,6 +478,8 @@ bool readSavedBody(std::istream& in, SavedBody& b, std::uint32_t version)
         static_cast<std::uint8_t>(b.material) >
             static_cast<std::uint8_t>(MaterialKind::Plastic) ||
         b.impactDamage < 0.0f || b.impactDamage > 1.0f ||
+        std::abs(b.impactLocalX) > 1000.0f ||
+        std::abs(b.impactLocalY) > 1000.0f ||
         b.batteryCharge < 0.0f || b.batteryCharge > 100.0f ||
         (!b.powerSource && b.batteryCharge > 0.0f) ||
         (b.powerSource && (b.groupId >= 0 || b.bucketKind != BucketKind::None)) ||
@@ -1147,7 +1159,8 @@ void PhysicsWorld::processImpactEvents()
     std::vector<b2BodyId> fracturedBodies;
     std::vector<std::uint8_t> fractureQueued(records_.size(), 0U);
 
-    const auto applyImpact = [&](b2ShapeId shapeId, float approachSpeed)
+    const auto applyImpact = [&](b2ShapeId shapeId, float approachSpeed,
+                                 b2Pos impactPoint)
     {
         if (!b2Shape_IsValid(shapeId))
             return;
@@ -1160,18 +1173,42 @@ void PhysicsWorld::processImpactEvents()
         const std::size_t recordIndex = found->second;
         BodyRecord& record = records_[recordIndex];
 
-        // Character parts accumulate a persistent, non-structural impact mark.
-        // Light contacts are ignored; the articulated body and its joints remain intact.
+        const auto rememberImpactPoint = [&]()
+        {
+            const b2Vec2 localPoint = b2Body_GetLocalPoint(
+                bodyId,
+                {static_cast<float>(impactPoint.x),
+                 static_cast<float>(impactPoint.y)});
+            const float limitX = record.shape == BodyShape::Circle
+                ? record.radius * 0.96f : record.halfWidth * 0.96f;
+            const float limitY = record.shape == BodyShape::Circle
+                ? record.radius * 0.96f : record.halfHeight * 0.96f;
+            record.impactLocalX = std::clamp(localPoint.x, -limitX, limitX);
+            record.impactLocalY = std::clamp(localPoint.y, -limitY, limitY);
+        };
+
+        // Character parts accumulate persistent, non-structural impact marks.
+        // The melon head has a lower threshold so falls and head-first collisions
+        // leave visible rind damage while ordinary touches remain harmless.
         if (record.groupId >= 0)
         {
-            if (approachSpeed < 4.5f)
+            const bool melonHead = record.partIndex == 1 &&
+                record.shape == BodyShape::Circle &&
+                record.material == MaterialKind::Organic;
+            const float threshold = melonHead ? 3.8f : 4.5f;
+            if (!std::isfinite(approachSpeed) || approachSpeed < threshold)
                 return;
 
-            const float severity = (approachSpeed - 4.5f) / 20.0f;
-            const float increment = std::clamp(0.06f + severity * 0.30f,
-                                               0.06f, 0.36f);
+            const float severity = (approachSpeed - threshold) /
+                (melonHead ? 16.0f : 20.0f);
+            const float increment = melonHead
+                ? std::clamp(0.065f + severity * 0.36f, 0.065f, 0.42f)
+                : std::clamp(0.06f + severity * 0.30f, 0.06f, 0.36f);
+            const float previousDamage = record.impactDamage;
             record.impactDamage = std::clamp(
-                record.impactDamage + increment, 0.0f, 0.88f);
+                previousDamage + increment, 0.0f, melonHead ? 0.96f : 0.88f);
+            if (previousDamage <= 0.001f || increment >= previousDamage * 0.85f)
+                rememberImpactPoint();
             return;
         }
 
@@ -1186,6 +1223,7 @@ void PhysicsWorld::processImpactEvents()
         const float increment = ratio >= 1.35f
             ? 1.0f
             : ratio * ratio * 0.52f;
+        rememberImpactPoint();
         record.impactDamage = std::clamp(record.impactDamage + increment, 0.0f, 1.0f);
         if (record.impactDamage >= 1.0f && !fractureQueued[recordIndex])
         {
@@ -1197,8 +1235,8 @@ void PhysicsWorld::processImpactEvents()
     for (int i = 0; i < events.hitCount; ++i)
     {
         const b2ContactHitEvent& hit = events.hitEvents[i];
-        applyImpact(hit.shapeIdA, hit.approachSpeed);
-        applyImpact(hit.shapeIdB, hit.approachSpeed);
+        applyImpact(hit.shapeIdA, hit.approachSpeed, hit.point);
+        applyImpact(hit.shapeIdB, hit.approachSpeed, hit.point);
     }
 
     for (b2BodyId body : fracturedBodies)
@@ -1998,6 +2036,8 @@ void PhysicsWorld::cloneAt(int index)
     {
         BodyRecord& clone = records_[static_cast<std::size_t>(copyIndex)];
         clone.impactDamage = selected.impactDamage;
+        clone.impactLocalX = selected.impactLocalX;
+        clone.impactLocalY = selected.impactLocalY;
         clone.breakable = selected.breakable;
         clone.powerSource = selected.powerSource;
         clone.batteryCharge = selected.batteryCharge;
@@ -2267,7 +2307,7 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         return false;
 
     constexpr char magic[8] = {'S','B','X','2','D','S','C','N'};
-    constexpr std::uint32_t version = 7;
+    constexpr std::uint32_t version = 8;
     constexpr std::uint32_t endianMarker = 0x01020304U;
     const std::uint8_t savedMap = static_cast<std::uint8_t>(map_);
 
@@ -2313,6 +2353,8 @@ bool PhysicsWorld::saveToStream(std::ostream& output) const
         body.acidExposure = record.acidExposure;
         body.material = record.material;
         body.impactDamage = record.impactDamage;
+        body.impactLocalX = record.impactLocalX;
+        body.impactLocalY = record.impactLocalY;
         body.breakable = record.breakable;
         body.powerSource = record.powerSource;
         body.batteryCharge = record.batteryCharge;
@@ -2434,7 +2476,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     if (!readValue(input, version) ||
         !readValue(input, endianMarker) ||
-        (version < 1 || version > 7) ||
+        (version < 1 || version > 8) ||
         endianMarker != 0x01020304U)
         return false;
 
@@ -2619,6 +2661,8 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         record.acidExposure = body.acidExposure;
         record.material = body.material;
         record.impactDamage = body.impactDamage;
+        record.impactLocalX = body.impactLocalX;
+        record.impactLocalY = body.impactLocalY;
         record.breakable = body.breakable;
         record.powerSource = body.powerSource;
         record.batteryCharge = body.batteryCharge;

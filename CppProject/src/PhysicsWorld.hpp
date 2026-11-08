@@ -41,6 +41,8 @@ struct BodyRecord
     float acidExposure = 0.0f;
     MaterialKind material = MaterialKind::Wood;
     float impactDamage = 0.0f;
+    float impactLocalX = 0.0f;
+    float impactLocalY = 0.0f;
     bool breakable = false;
     bool powerSource = false;
     float batteryCharge = 0.0f;

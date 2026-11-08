@@ -1472,10 +1472,17 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
             const Uint8 alpha=static_cast<Uint8>(
                 70.0f + std::clamp(impactDamage,0.0f,1.0f)*145.0f);
             setColor(renderer_,SDL_Color{30,35,42,alpha});
-            const SDL_FPoint crack0=point(0.0f,0.0f);
-            const SDL_FPoint crack1=point(halfWidth*0.16f,halfHeight*0.22f);
-            const SDL_FPoint crack2=point(halfWidth*0.02f,halfHeight*0.43f);
-            const SDL_FPoint crack3=point(halfWidth*0.25f,halfHeight*0.64f);
+            const float impactX = std::clamp(impactLocalX,
+                -halfWidth * 0.82f, halfWidth * 0.82f);
+            const float impactY = std::clamp(impactLocalY,
+                -halfHeight * 0.82f, halfHeight * 0.82f);
+            const SDL_FPoint crack0=point(impactX,impactY);
+            const SDL_FPoint crack1=point(impactX+halfWidth*0.16f,
+                                          impactY+halfHeight*0.22f);
+            const SDL_FPoint crack2=point(impactX+halfWidth*0.02f,
+                                          impactY+halfHeight*0.43f);
+            const SDL_FPoint crack3=point(impactX+halfWidth*0.25f,
+                                          impactY+halfHeight*0.64f);
             SDL_RenderLine(renderer_,crack0.x,crack0.y,crack1.x,crack1.y);
             SDL_RenderLine(renderer_,crack1.x,crack1.y,crack2.x,crack2.y);
             SDL_RenderLine(renderer_,crack2.x,crack2.y,crack3.x,crack3.y);
@@ -1904,6 +1911,80 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
             setColor(renderer_, SDL_Color{34, 100, 53, 235});
             SDL_RenderLine(renderer_, p0.x, p0.y, p1.x, p1.y);
         }
+
+        if (body.impactDamage > 0.015f)
+        {
+            const float severity = std::clamp(body.impactDamage, 0.0f, 0.96f);
+            const float impactX = std::clamp(
+                body.impactLocalX / std::max(0.001f, body.radius),
+                -0.88f, 0.88f);
+            const float impactY = std::clamp(
+                body.impactLocalY / std::max(0.001f, body.radius),
+                -0.68f, 0.68f);
+            const SDL_FPoint impact = facePoint(impactX, impactY);
+            const float markRadius = radiusPixels * (0.085f + severity * 0.085f);
+
+            // A soft, layered dent stays on the rind and scales with impact strength.
+            drawFilledEllipse(renderer_, impact.x, impact.y,
+                markRadius * 1.55f, markRadius * 1.05f,
+                SDL_Color{34, 83, 43,
+                    static_cast<Uint8>(45.0f + severity * 85.0f)});
+            drawFilledEllipse(renderer_,
+                impact.x - markRadius * 0.12f,
+                impact.y - markRadius * 0.10f,
+                markRadius * 0.72f, markRadius * 0.48f,
+                SDL_Color{94, 131, 61,
+                    static_cast<Uint8>(35.0f + severity * 90.0f)});
+            drawFilledEllipse(renderer_,
+                impact.x - markRadius * 0.24f,
+                impact.y - markRadius * 0.22f,
+                markRadius * 0.24f, markRadius * 0.16f,
+                SDL_Color{193, 226, 132,
+                    static_cast<Uint8>(35.0f + severity * 70.0f)});
+
+            // Cracks branch from the dent. Their length grows with accumulated damage.
+            const float crackLength = 0.14f + severity * 0.30f;
+            for (int branch = 0; branch < 4; ++branch)
+            {
+                const float angleOffset =
+                    0.72f + static_cast<float>(branch) * 1.47f;
+                const float directionX = std::cos(angleOffset);
+                const float directionY = std::sin(angleOffset) * 0.78f;
+                const float midX = std::clamp(
+                    impactX + directionX * crackLength * 0.48f,
+                    -0.90f, 0.90f);
+                const float midY = std::clamp(
+                    impactY + directionY * crackLength * 0.48f,
+                    -0.70f, 0.70f);
+                const float endX = std::clamp(
+                    impactX + directionX * crackLength,
+                    -0.90f, 0.90f);
+                const float endY = std::clamp(
+                    impactY + directionY * crackLength,
+                    -0.70f, 0.70f);
+                const SDL_FPoint middle = facePoint(midX, midY);
+                const SDL_FPoint end = facePoint(endX, endY);
+                setColor(renderer_, SDL_Color{28, 73, 38,
+                    static_cast<Uint8>(100.0f + severity * 135.0f)});
+                SDL_RenderLine(renderer_, impact.x, impact.y,
+                               middle.x, middle.y);
+                SDL_RenderLine(renderer_, middle.x, middle.y,
+                               end.x, end.y);
+
+                const float branchX = std::clamp(
+                    midX - directionY * crackLength * 0.24f,
+                    -0.90f, 0.90f);
+                const float branchY = std::clamp(
+                    midY + directionX * crackLength * 0.24f,
+                    -0.70f, 0.70f);
+                const SDL_FPoint branchPoint = facePoint(branchX, branchY);
+                setColor(renderer_, SDL_Color{44, 93, 48,
+                    static_cast<Uint8>(70.0f + severity * 105.0f)});
+                SDL_RenderLine(renderer_, middle.x, middle.y,
+                               branchPoint.x, branchPoint.y);
+            }
+        }
+
         if (selected)
         {
             setColor(renderer_, SDL_Color{245, 248, 250, 255});
@@ -2063,13 +2144,16 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
 
     // Soft, stylized impact marks communicate character damage without gore or
     // structural cracks. The mark is attached to the struck ragdoll part.
-    if (body.groupId >= 0 && body.impactDamage > 0.025f)
+    const bool melonHeadWithCustomDamage =
+        body.groupId >= 0 && body.partIndex == 1 &&
+        body.shape == BodyShape::Circle &&
+        body.material == MaterialKind::Organic;
+    if (body.groupId >= 0 && body.impactDamage > 0.025f &&
+        !melonHeadWithCustomDamage)
     {
         const float severity = std::clamp(body.impactDamage, 0.0f, 1.0f);
-        const float localX = body.shape == BodyShape::Circle
-            ? -body.radius * 0.22f : body.halfWidth * 0.20f;
-        const float localY = body.shape == BodyShape::Circle
-            ? body.radius * 0.12f : body.halfHeight * 0.18f;
+        const float localX = body.impactLocalX;
+        const float localY = body.impactLocalY;
         const float markWorldX = x + std::cos(angle) * localX -
                                  std::sin(angle) * localY;
         const float markWorldY = y + std::sin(angle) * localX +

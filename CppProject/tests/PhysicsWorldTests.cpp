@@ -249,13 +249,15 @@ int main()
     CHECK(world.saveToFile(savePath.string()));
 
     // Older scene formats remain readable after material data (v4), batteries (v5),
-    // ice (v6), and plastic (v7).
+    // ice (v6), plastic (v7), and impact coordinates (v8).
     const std::filesystem::path legacyV2Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v2.scene";
     const std::filesystem::path legacyV3Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v3.scene";
     const std::filesystem::path legacyV4Path =
         std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v4.scene";
+    const std::filesystem::path legacyV7Path =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_legacy_v7.scene";
     {
         std::ifstream input(savePath, std::ios::binary);
         CHECK(input.good());
@@ -264,7 +266,8 @@ int main()
             std::istreambuf_iterator<char>()
         };
         constexpr std::size_t headerSize = 21;
-        constexpr std::size_t currentBodySize = 114;
+        constexpr std::size_t currentBodySize = 122;
+        constexpr std::size_t legacyV7BodySize = 114;
         constexpr std::size_t legacyV4BodySize = 109;
         constexpr std::size_t legacyV3BodySize = 103;
         constexpr std::size_t legacyV2BodySize = 94;
@@ -327,6 +330,7 @@ int main()
         CHECK(makeLegacy(2, legacyV2BodySize, false, legacyV2Path));
         CHECK(makeLegacy(3, legacyV3BodySize, true, legacyV3Path));
         CHECK(makeLegacy(4, legacyV4BodySize, true, legacyV4Path));
+        CHECK(makeLegacy(7, legacyV7BodySize, true, legacyV7Path));
     }
 
     PhysicsWorld legacyV2World;
@@ -350,10 +354,18 @@ int main()
     CHECK(legacyV4World.mechanisms().size() == world.mechanisms().size());
     CHECK(legacyV4World.surfaces().size() == world.surfaces().size());
 
+    PhysicsWorld legacyV7World;
+    CHECK(legacyV7World.loadFromFile(legacyV7Path.string()));
+    CHECK(legacyV7World.map() == MapKind::Laboratory);
+    CHECK(legacyV7World.dynamicCount() == world.dynamicCount());
+    CHECK(legacyV7World.mechanisms().size() == world.mechanisms().size());
+    CHECK(legacyV7World.surfaces().size() == world.surfaces().size());
+
     std::error_code legacyCleanupError;
     std::filesystem::remove(legacyV2Path, legacyCleanupError);
     std::filesystem::remove(legacyV3Path, legacyCleanupError);
     std::filesystem::remove(legacyV4Path, legacyCleanupError);
+    std::filesystem::remove(legacyV7Path, legacyCleanupError);
 
     const std::filesystem::path duplicateMechanismPath =
         std::filesystem::temp_directory_path() / "sandbox_cpp_duplicate_mechanism.scene";
@@ -366,7 +378,7 @@ int main()
         };
         constexpr std::size_t bodyCountOffset = 17;
         constexpr std::size_t bodyDataOffset = 21;
-        constexpr std::size_t savedBodySize = 114;
+        constexpr std::size_t savedBodySize = 122;
         constexpr std::size_t savedMechanismSize = 27;
         CHECK(bytes.size() >= bodyCountOffset + sizeof(std::uint32_t));
         std::uint32_t bodyCount = 0;
@@ -1128,6 +1140,98 @@ int main()
         CHECK(restoredMaterialKinds[material]);
     CHECK(restoredMaterialKinds[static_cast<std::size_t>(MaterialKind::Ice)]);
     CHECK(restoredMaterialKinds[static_cast<std::size_t>(MaterialKind::Plastic)]);
+
+    // Melon damage follows the real hit location, scales with impact speed and
+    // survives snapshots. A gentle contact must not leave a damage mark.
+    PhysicsWorld melonHitWorld;
+    melonHitWorld.setMap(MapKind::TestRange, false);
+    const int melonHitGroup = melonHitWorld.spawnRagdoll(0.0f, 5.0f);
+    const int melonHitBall = melonHitWorld.spawnBall(1.0f, 6.58f);
+    CHECK(melonHitGroup >= 0 && melonHitBall >= 0);
+    int melonHeadIndex = -1;
+    for (std::size_t i = 0; i < melonHitWorld.records().size(); ++i)
+    {
+        const BodyRecord& body = melonHitWorld.records()[i];
+        if (body.groupId == melonHitGroup && body.partIndex == 1)
+        {
+            melonHeadIndex = static_cast<int>(i);
+            break;
+        }
+    }
+    CHECK(melonHeadIndex >= 0);
+    const b2BodyId melonHeadId =
+        melonHitWorld.records()[static_cast<std::size_t>(melonHeadIndex)].id;
+    const b2BodyId melonHitBallId =
+        melonHitWorld.records()[static_cast<std::size_t>(melonHitBall)].id;
+    b2Body_SetLinearVelocity(melonHitBallId, {-22.0f, 0.0f});
+    for (int i = 0; i < 12; ++i)
+        melonHitWorld.step(1.0f / 60.0f, 4);
+
+    const BodyRecord& damagedMelonHead =
+        melonHitWorld.records()[static_cast<std::size_t>(melonHeadIndex)];
+    CHECK(b2Body_IsValid(melonHeadId));
+    CHECK(damagedMelonHead.impactDamage > 0.0f);
+    CHECK(damagedMelonHead.impactDamage <= 0.96f);
+    CHECK(damagedMelonHead.impactLocalX > 0.02f);
+    CHECK(std::abs(damagedMelonHead.impactLocalX) <=
+          damagedMelonHead.radius * 0.96f + 0.001f);
+
+    std::vector<std::uint8_t> melonDamageSnapshot;
+    CHECK(melonHitWorld.saveToSnapshot(melonDamageSnapshot));
+    PhysicsWorld restoredMelonDamage;
+    CHECK(restoredMelonDamage.loadFromSnapshot(melonDamageSnapshot));
+    bool restoredMelonMark = false;
+    for (const BodyRecord& body : restoredMelonDamage.records())
+    {
+        if (body.groupId != melonHitGroup || body.partIndex != 1)
+            continue;
+        CHECK(std::abs(body.impactDamage - damagedMelonHead.impactDamage) < 0.0001f);
+        CHECK(std::abs(body.impactLocalX - damagedMelonHead.impactLocalX) < 0.0001f);
+        CHECK(std::abs(body.impactLocalY - damagedMelonHead.impactLocalY) < 0.0001f);
+        restoredMelonMark = true;
+    }
+    CHECK(restoredMelonMark);
+
+    PhysicsWorld gentleMelonWorld;
+    gentleMelonWorld.setMap(MapKind::TestRange, false);
+    const int gentleMelonGroup = gentleMelonWorld.spawnRagdoll(0.0f, 5.0f);
+    const int gentleBall = gentleMelonWorld.spawnBall(1.0f, 6.58f);
+    CHECK(gentleMelonGroup >= 0 && gentleBall >= 0);
+    b2Body_SetLinearVelocity(
+        gentleMelonWorld.records()[static_cast<std::size_t>(gentleBall)].id,
+        {-2.0f, 0.0f});
+    for (int i = 0; i < 12; ++i)
+        gentleMelonWorld.step(1.0f / 60.0f, 4);
+    for (const BodyRecord& body : gentleMelonWorld.records())
+        if (body.groupId == gentleMelonGroup)
+            CHECK(body.impactDamage == 0.0f);
+
+    // A hard drop marks the articulated melon on landing without breaking its joints.
+    PhysicsWorld melonFallWorld;
+    melonFallWorld.setMap(MapKind::TestRange, false);
+    const int melonFallGroup = melonFallWorld.spawnRagdoll(4.0f, 6.0f);
+    CHECK(melonFallGroup >= 0);
+    int fallJointCount = 0;
+    for (const BodyRecord& body : melonFallWorld.records())
+    {
+        if (body.groupId != melonFallGroup)
+            continue;
+        fallJointCount += b2Body_GetJointCount(body.id);
+        b2Body_SetLinearVelocity(body.id, {0.0f, -18.0f});
+    }
+    for (int i = 0; i < 100; ++i)
+        melonFallWorld.step(1.0f / 60.0f, 4);
+    bool melonFallMarked = false;
+    int fallJointCountAfter = 0;
+    for (const BodyRecord& body : melonFallWorld.records())
+    {
+        if (body.groupId != melonFallGroup)
+            continue;
+        melonFallMarked = melonFallMarked || body.impactDamage > 0.0f;
+        fallJointCountAfter += b2Body_GetJointCount(body.id);
+    }
+    CHECK(melonFallMarked);
+    CHECK(fallJointCountAfter == fallJointCount);
 
     // A light collision creates no breakage; a high-speed hit fractures wood into four pieces.
     PhysicsWorld lightImpactWorld;
