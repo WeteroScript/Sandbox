@@ -1,15 +1,15 @@
 # Sandbox — native C++ rewrite
 
-The active rewrite is developed directly in the repository's \`main\` branch.
+The active rewrite is developed directly in the repository's `main` branch.
 
 ## Technology
 
 - C++20 for application and game logic.
-- SDL 3.4.20 for rendering, desktop input, touch input, and platform integration.
+- SDL 3.4.20 for rendering, desktop input, touch input, and Android platform integration.
 - Box2D 3.2.0 for rigid-body physics and ragdoll joints.
 - CMake FetchContent with pinned upstream release tags.
 
-Third-party source is downloaded during CMake configuration rather than copied into this repository.
+Third-party C++ source is fetched during CMake configuration. The Android project includes the upstream SDL Java activity integration.
 
 ## Implemented foundation
 
@@ -21,54 +21,54 @@ Third-party source is downloaded during CMake configuration rather than copied i
 - Group freeze, clone, and delete for ragdolls.
 - Spawn panel for boxes, balls, and Melon ragdolls.
 - Spawn quantity from 1 to 10 and tap-to-place workflow.
-- Mouse and single-touch interaction.
-- Versioned scene save/load with body transforms, velocities, colors, frozen states, and ragdoll joint links.
+- Mouse and single-touch interaction; dragging on empty space pans the camera.
+- Versioned scene save/load with body transforms, velocities, dimensions, colors, freeze state, and ragdoll joint links.
 - Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
-- Versioned scene save/load, including body transforms, velocities, materials, frozen state, and ragdoll joint links.
-- Automatic restore of the last saved scene on startup; F5 saves and F9 loads.
-- Camera pan, mouse-wheel zoom, pause, and simulation speed controls.
+- Mouse-wheel zoom, pause, and simulation speed controls.
 - Physics grid and FPS/object counters.
-- Desktop CMake target and Android native shared-library target.
+- Desktop CMake target and Android Gradle/CMake project for arm64-v8a.
 
 ## Desktop build
 
 Requirements: CMake 3.22+, a C/C++20 compiler, and Git.
 
-\`\`\`sh
+```sh
 cmake -S CppProject -B CppProject/build -DCMAKE_BUILD_TYPE=Release
 cmake --build CppProject/build --config Release
-\`\`\`
+ctest --test-dir CppProject/build --output-on-failure
+```
 
-Run the \`sandbox\` executable from \`CppProject/build\`.
+Run the `sandbox` executable from `CppProject/build`.
 
-## Android
+## Android build
 
-The CMake project defines an Android shared-library target named \`main\`. SDL3 handles the native application entry point and Android input layer. Android Gradle packaging and the SDLActivity integration are the next migration step.
+Open `CppProject/android-project` in Android Studio. The project uses the SDL 3.4.20 Android activity, compiles the native `main` shared library through CMake, and targets arm64-v8a on Android API 23+.
 
-No Android APK has been built or device-tested as part of this commit.
+From that directory, the debug package command is:
+
+```sh
+./gradlew assembleDebug
+```
+
+The output is under `app/build/outputs/apk/debug/`. The GitHub Actions APK workflow is manual-only and builds this C++ project. No APK has been built or device-tested in this development pass.
 
 ## Controls
 
 - Mouse or touch: select, drag, and place objects.
 - Middle mouse drag or touch on empty space: pan the camera.
 - Mouse wheel: zoom.
-- \`1\`: GRAB.
-- \`2\`: FREEZE.
-- \`3\`: CLONE.
-- \`4\`: DELETE.
-- \`Space\` or \`Escape\`: pause.
-- \`Tab\`: toggle spawn panel.
-- \`-\` / \`+\`: change simulation speed.
+- `1`: GRAB.
+- `2`: FREEZE.
+- `3`: CLONE.
+- `4`: DELETE.
+- `Space` or `Escape`: pause.
+- `Tab`: toggle spawn panel.
+- `F5`: save scene.
+- `F9`: load scene.
+- `-` / `+`: change simulation speed.
 
-The original Rust project remains in the repository as a reference. The previous Unity prototype is also retained for reference; C++ is now the active rewrite.
-
-The existing Android APK workflow is manual-only and is not triggered by ordinary pushes.
+The original Rust project remains in the repository as a reference. The previous Unity prototype is archived; C++ is now the active rewrite.
 
 ## Physics regression test
 
-CTest contains a smoke test for ragdoll joints, grouped freeze, scene persistence, clone, and delete:
-
-```sh
-cmake --build CppProject/build --config Release
-ctest --test-dir CppProject/build --output-on-failure
-```
+CTest includes a smoke test for ragdoll joints, grouped freeze, scene persistence, clone, and delete.

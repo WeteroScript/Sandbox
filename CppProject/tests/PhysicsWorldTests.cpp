@@ -1,14 +1,21 @@
 #include "PhysicsWorld.hpp"
 
-#include <cassert>
 #include <filesystem>
-#include <string>
+#include <iostream>
+
+#define CHECK(condition) \
+    do { \
+        if (!(condition)) { \
+            std::cerr << "FAILED: " #condition " at line " << __LINE__ << '\n'; \
+            return 1; \
+        } \
+    } while (false)
 
 int main()
 {
     PhysicsWorld world;
     const std::size_t initialCount = world.dynamicCount();
-    assert(initialCount == 8);
+    CHECK(initialCount == 8);
 
     int ragdollIndex = -1;
     int ragdollGroup = -1;
@@ -28,23 +35,23 @@ int main()
         }
     }
 
-    assert(ragdollIndex >= 0);
-    assert(ragdollGroup >= 0);
-    assert(torsoJointCount == 5);
+    CHECK(ragdollIndex >= 0);
+    CHECK(ragdollGroup >= 0);
+    CHECK(torsoJointCount == 5);
 
     world.toggleFreeze(ragdollIndex);
     for (const BodyRecord& body : world.records())
         if (body.groupId == ragdollGroup)
-            assert(body.frozen);
+            CHECK(body.frozen);
 
     const std::filesystem::path savePath =
         std::filesystem::temp_directory_path() / "sandbox_cpp_scene_test.scene";
-    assert(world.saveToFile(savePath.string()));
+    CHECK(world.saveToFile(savePath.string()));
 
     world.spawnBox(8.0f, 4.0f);
-    assert(world.dynamicCount() == initialCount + 1);
-    assert(world.loadFromFile(savePath.string()));
-    assert(world.dynamicCount() == initialCount);
+    CHECK(world.dynamicCount() == initialCount + 1);
+    CHECK(world.loadFromFile(savePath.string()));
+    CHECK(world.dynamicCount() == initialCount);
 
     int restoredTorsoJoints = -1;
     int restoredRagdoll = -1;
@@ -61,34 +68,33 @@ int main()
         }
     }
 
-    assert(restoredRagdoll >= 0);
-    assert(restoredTorsoJoints == 5);
+    CHECK(restoredRagdoll >= 0);
+    CHECK(restoredTorsoJoints == 5);
     for (const BodyRecord& body : world.records())
         if (body.groupId == restoredGroup)
-            assert(body.frozen);
+            CHECK(body.frozen);
 
     world.toggleFreeze(restoredRagdoll);
     world.cloneAt(restoredRagdoll);
-    assert(world.dynamicCount() == initialCount + 6);
+    CHECK(world.dynamicCount() == initialCount + 6);
 
     int clonedRagdoll = -1;
-    int clonedGroup = -1;
     for (std::size_t i = 0; i < world.records().size(); ++i)
     {
         const BodyRecord& body = world.records()[i];
         if (body.groupId >= 0 && body.groupId != restoredGroup)
         {
             clonedRagdoll = static_cast<int>(i);
-            clonedGroup = body.groupId;
             break;
         }
     }
 
-    assert(clonedRagdoll >= 0);
+    CHECK(clonedRagdoll >= 0);
     world.deleteAt(clonedRagdoll);
-    assert(world.dynamicCount() == initialCount);
+    CHECK(world.dynamicCount() == initialCount);
 
     std::error_code error;
     std::filesystem::remove(savePath, error);
+    std::cout << "Physics and scene persistence checks passed.\n";
     return 0;
 }
