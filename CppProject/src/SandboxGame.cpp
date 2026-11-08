@@ -193,15 +193,15 @@ UiLayout SandboxGame::makeUiLayout() const
     layout.scale = clampFloat(
         std::min(static_cast<float>(outputWidth_) / 780.0f,
                  static_cast<float>(outputHeight_) / 430.0f),
-        0.90f,
-        1.40f
+        1.00f,
+        1.45f
     );
 
     const float scale = layout.scale;
     const float margin = 8.0f * scale;
     const float top = 8.0f * scale;
     const float gap = 5.0f * scale;
-    const float buttonHeight = 46.0f * scale;
+    const float buttonHeight = 52.0f * scale;
 
     const float mapWidth = 108.0f * scale;
     const float speedWidth = 86.0f * scale;
@@ -239,7 +239,7 @@ UiLayout SandboxGame::makeUiLayout() const
         margin,
         top + buttonHeight + 8.0f * scale,
         340.0f * scale,
-        284.0f * scale
+        370.0f * scale
     };
 
     const float innerX = layout.spawnPanel.x + 10.0f * scale;
@@ -253,7 +253,7 @@ UiLayout SandboxGame::makeUiLayout() const
             innerX + static_cast<float>(i) * (categoryWidth + categoryGap),
             categoryY,
             categoryWidth,
-            32.0f * scale
+            40.0f * scale
         };
     }
 
@@ -261,7 +261,7 @@ UiLayout SandboxGame::makeUiLayout() const
     const float itemGapX = 5.0f * scale;
     const float itemGapY = 5.0f * scale;
     const float itemWidth = (innerWidth - itemGapX * 2.0f) / 3.0f;
-    const float itemHeight = 36.0f * scale;
+    const float itemHeight = 46.0f * scale;
     for (std::size_t i = 0; i < layout.spawnItems.size(); ++i)
     {
         const std::size_t row = i / 3;
@@ -1464,12 +1464,15 @@ void SandboxGame::drawButton(const SDL_FRect& rect, const char* label, bool acti
 
     setColor(renderer_, makeColor(240, 244, 248));
     const float textWidth = static_cast<float>(std::strlen(label)) * 8.0f;
+    const float textScale = std::clamp(rect.h / 38.0f, 1.0f, 1.65f);
+    SDL_SetRenderScale(renderer_, textScale, textScale);
     SDL_RenderDebugText(
         renderer_,
-        rect.x + std::max(4.0f, (rect.w - textWidth) * 0.5f),
-        rect.y + std::max(4.0f, (rect.h - 8.0f) * 0.5f),
+        (rect.x + (rect.w - textWidth * textScale) * 0.5f) / textScale,
+        (rect.y + (rect.h - 8.0f * textScale) * 0.5f) / textScale,
         label
     );
+    SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
 }
 
 void SandboxGame::drawUi()
@@ -1528,7 +1531,7 @@ void SandboxGame::drawUi()
             spawnCategory_ == SpawnCategory::Mechanisms
         );
         drawButton(
-            layout.categoryButtons[2], "MISC",
+            layout.categoryButtons[2], "RAZNOE",
             spawnCategory_ == SpawnCategory::Misc
         );
 
@@ -1539,7 +1542,7 @@ void SandboxGame::drawUi()
             "ROD", "ROPE", "SPRING", "PISTON", "BUTTON", "TOGGLE"
         };
         static constexpr std::array<const char*, 6> miscLabels{
-            "WATER PAIL", "LAVA PAIL", "ACID PAIL", "", "", ""
+            "VEDRO VODY", "VEDRO LAVY", "VEDRO KISLOTY", "", "", ""
         };
         static constexpr std::array<SpawnItem, 6> propItems{
             SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,

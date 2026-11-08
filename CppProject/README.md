@@ -18,7 +18,7 @@ The active game is a touch-first Android application. The project is developed i
 - Filled water, lava and acid buckets in the MISC catalogue. Tap a placed bucket to empty it into a finite puddle; nearby puddles of the same liquid join together.
 - Rod, rope, spring, piston, button and toggle mechanisms.
 - GRAB, FREEZE, CLONE, DELETE and ROTATE touch tools.
-- Three catalogue sections: PROPS, MECH and MISC.
+- Three catalogue sections: PROPS, MECH and RAZNOE (Разное).
 - Large touch targets, tap-to-place, one-finger object manipulation and camera panning, plus two-finger pan and pinch zoom.
 - Save/load buttons and bounded 20-action Undo/Redo history.
 - Scene saves preserve map, body state, buckets, liquid puddles, corrosion exposure, ragdoll joints and mechanisms.
