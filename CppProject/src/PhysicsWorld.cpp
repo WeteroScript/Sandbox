@@ -325,7 +325,7 @@ bool writeSavedBody(std::ostream& out, const SavedBody& b)
     const std::int32_t partIndex = b.partIndex;
     const std::int32_t parentPart = b.parentPart;
 
-    return writeValue(out, shape) &&
+    if (!(writeValue(out, shape) &&
         writeValue(out, b.halfWidth) && writeValue(out, b.halfHeight) &&
         writeValue(out, b.radius) && writeValue(out, b.density) &&
         writeValue(out, b.x) && writeValue(out, b.y) && writeValue(out, b.angle) &&
@@ -350,7 +350,7 @@ bool writeSavedBody(std::ostream& out, const SavedBody& b)
         writeValue(out, static_cast<std::uint8_t>(b.powerSource ? 1U : 0U)) &&
         writeValue(out, b.batteryCharge) &&
         writeValue(out, b.impactLocalX) &&
-        writeValue(out, b.impactLocalY)
+        writeValue(out, b.impactLocalY)))
         return false;
 
     if (!writeValue(out, b.impactMarkCount))
