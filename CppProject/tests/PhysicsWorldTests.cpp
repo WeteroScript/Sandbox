@@ -314,11 +314,11 @@ int main()
                 currentBytes.begin() + static_cast<std::ptrdiff_t>(endOffset));
 
             std::ofstream output(path, std::ios::binary | std::ios::trunc);
-            CHECK(output.good());
+            if (!output.good())
+                return false;
             output.write(legacyBytes.data(),
                          static_cast<std::streamsize>(legacyBytes.size()));
-            CHECK(output.good());
-            return true;
+            return output.good();
         };
 
         CHECK(makeLegacy(2, legacyV2BodySize, false, legacyV2Path));
