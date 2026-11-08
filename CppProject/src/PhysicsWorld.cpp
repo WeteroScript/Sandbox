@@ -2571,6 +2571,17 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
         }
     }
 
+    // Master power is part of the saved scene: every global Toggle is kept in
+    // sync by setMechanismsEnabled, so the first restored Toggle is authoritative.
+    const auto savedMasterToggle = std::find_if(
+        savedMechanisms.begin(), savedMechanisms.end(),
+        [](const SavedMechanism& mechanism)
+        {
+            return static_cast<MechanismKind>(mechanism.kind) == MechanismKind::Toggle;
+        });
+    mechanismsEnabled_ = savedMasterToggle == savedMechanisms.end()
+        ? true : savedMasterToggle->pressed != 0;
+
     return true;
 }
 

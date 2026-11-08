@@ -756,6 +756,8 @@ int main()
         MechanismKind::Switch, 0.0f, 6.0f) == 1);
     CHECK(batteryMotorWorld.spawnMechanism(
         MechanismKind::Motor, 4.0f, 6.0f) == 2);
+    CHECK(batteryMotorWorld.spawnMechanism(
+        MechanismKind::Toggle, 10.0f, 10.0f) == 3);
     CHECK(batteryMotorWorld.mechanisms()[0].active);
     CHECK(batteryMotorWorld.mechanisms()[1].active);
     CHECK(batteryMotorWorld.mechanisms()[1].pressed);
@@ -777,6 +779,13 @@ int main()
     CHECK(batteryMotorWorld.records()[static_cast<std::size_t>(batteryIndex)].batteryCharge <
           chargeAfterFirstStep);
 
+    // Disable the master power after closing the local circuit; this state must
+    // remain off after saving and loading the scene.
+    CHECK(batteryMotorWorld.interactAt(10.0f, 10.0f));
+    CHECK(!batteryMotorWorld.mechanisms()[3].pressed);
+    batteryMotorWorld.step(1.0f / 60.0f, 4);
+    CHECK(!batteryMotorWorld.mechanisms()[2].active);
+
     std::vector<std::uint8_t> batterySnapshot;
     CHECK(batteryMotorWorld.saveToSnapshot(batterySnapshot));
     PhysicsWorld restoredBatteryMotor;
@@ -786,8 +795,14 @@ int main()
         if (record.powerSource && record.batteryCharge > 0.0f)
             restoredBatteryFound = true;
     CHECK(restoredBatteryFound);
+    CHECK(restoredBatteryMotor.mechanisms().size() == 4);
+    CHECK(!restoredBatteryMotor.mechanisms()[2].active);
+    CHECK(!restoredBatteryMotor.mechanisms()[3].pressed);
     restoredBatteryMotor.step(1.0f / 60.0f, 4);
-    CHECK(restoredBatteryMotor.mechanisms().size() == 3);
+    CHECK(!restoredBatteryMotor.mechanisms()[2].active);
+
+    CHECK(restoredBatteryMotor.interactAt(10.0f, 10.0f));
+    restoredBatteryMotor.step(1.0f / 60.0f, 4);
     CHECK(restoredBatteryMotor.mechanisms()[2].active);
 
     PhysicsWorld ropeVariantWorld;
