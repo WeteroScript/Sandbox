@@ -360,7 +360,12 @@ impl Game {
             return;
         };
 
-        if pointer.y <= 62.0 || pointer.x < 0.0 || pointer.x > screen_width() {
+        if pointer.y <= 62.0
+            || pointer.x < 0.0
+            || pointer.x > screen_width()
+            || (pointer.x <= 330.0 && pointer.y >= screen_height() - 66.0)
+            || (pointer.x >= screen_width() - 155.0 && pointer.y >= screen_height() - 175.0)
+        {
             return;
         }
 
