@@ -1,9 +1,13 @@
 #include "PhysicsWorld.hpp"
 
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
+#include <vector>
 
 #define CHECK(condition) \
     do { \
@@ -241,6 +245,59 @@ int main()
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.interactAt(0.0f, 2.0f));
     CHECK(world.saveToFile(savePath.string()));
+
+    const std::filesystem::path duplicateMechanismPath =
+        std::filesystem::temp_directory_path() / "sandbox_cpp_duplicate_mechanism.scene";
+    {
+        std::ifstream input(savePath, std::ios::binary);
+        CHECK(input.good());
+        std::vector<char> bytes{
+            std::istreambuf_iterator<char>(input),
+            std::istreambuf_iterator<char>()
+        };
+        constexpr std::size_t bodyCountOffset = 17;
+        constexpr std::size_t bodyDataOffset = 21;
+        constexpr std::size_t savedBodySize = 94;
+        constexpr std::size_t savedMechanismSize = 27;
+        CHECK(bytes.size() >= bodyCountOffset + sizeof(std::uint32_t));
+        std::uint32_t bodyCount = 0;
+        std::memcpy(&bodyCount, bytes.data() + bodyCountOffset, sizeof(bodyCount));
+        const std::size_t mechanismCountOffset =
+            bodyDataOffset + static_cast<std::size_t>(bodyCount) * savedBodySize;
+        CHECK(bytes.size() >= mechanismCountOffset + sizeof(std::uint32_t));
+        std::uint32_t mechanismCount = 0;
+        std::memcpy(&mechanismCount, bytes.data() + mechanismCountOffset,
+                    sizeof(mechanismCount));
+        CHECK(mechanismCount >= 2);
+
+        const std::size_t firstMechanism = mechanismCountOffset + sizeof(std::uint32_t);
+        const std::size_t secondMechanism = firstMechanism + savedMechanismSize;
+        CHECK(bytes.size() >= secondMechanism + savedMechanismSize);
+        std::int32_t firstBody = -1;
+        std::int32_t secondBody = -1;
+        std::memcpy(&firstBody, bytes.data() + firstMechanism + 1, sizeof(firstBody));
+        std::memcpy(&secondBody, bytes.data() + firstMechanism + 5, sizeof(secondBody));
+        CHECK(firstBody >= 0 && secondBody >= 0 && firstBody != secondBody);
+
+        // Convert mechanism #2 to an exact copy of mechanism #1's constraint
+        // endpoints and kind. Its other finite fields remain in valid ranges.
+        bytes[secondMechanism] = bytes[firstMechanism];
+        std::memcpy(bytes.data() + secondMechanism + 1, &firstBody, sizeof(firstBody));
+        std::memcpy(bytes.data() + secondMechanism + 5, &secondBody, sizeof(secondBody));
+
+        std::ofstream output(duplicateMechanismPath, std::ios::binary | std::ios::trunc);
+        CHECK(output.good());
+        output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        CHECK(output.good());
+    }
+    const std::size_t beforeDuplicateLoad = world.dynamicCount();
+    const std::size_t mechanismsBeforeDuplicateLoad = world.mechanisms().size();
+    CHECK(!world.loadFromFile(duplicateMechanismPath.string()));
+    CHECK(world.dynamicCount() == beforeDuplicateLoad);
+    CHECK(world.mechanisms().size() == mechanismsBeforeDuplicateLoad);
+    CHECK(world.map() == MapKind::Laboratory);
+    std::error_code duplicateCleanupError;
+    std::filesystem::remove(duplicateMechanismPath, duplicateCleanupError);
 
     world.setMap(MapKind::City, true);
     CHECK(world.map() == MapKind::City);
