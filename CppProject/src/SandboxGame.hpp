@@ -7,7 +7,11 @@
 #include <string>
 
 enum class SandboxTool { Grab, Freeze, Clone, Delete };
-enum class SpawnKind { None, Box, Ball, Ragdoll };
+enum class SpawnCategory { Props, Mechanisms };
+enum class SpawnItem {
+    Box, Ball, Barrel, Platform, Ragdoll,
+    Rod, Rope, Spring, Piston, Button, Toggle
+};
 
 struct UiLayout
 {
@@ -17,10 +21,10 @@ struct UiLayout
     SDL_FRect speedLabel{};
     SDL_FRect speedUp{};
     SDL_FRect pauseButton{};
+    SDL_FRect mapButton{};
     SDL_FRect spawnPanel{};
-    SDL_FRect spawnBox{};
-    SDL_FRect spawnBall{};
-    SDL_FRect spawnRagdoll{};
+    std::array<SDL_FRect, 2> categoryButtons{};
+    std::array<SDL_FRect, 6> spawnItems{};
     SDL_FRect quantityDown{};
     SDL_FRect quantityLabel{};
     SDL_FRect quantityUp{};
@@ -64,7 +68,9 @@ private:
     float pinchMidY_ = 0.0f;
 
     SandboxTool tool_ = SandboxTool::Grab;
-    SpawnKind spawnKind_ = SpawnKind::None;
+    SpawnCategory spawnCategory_ = SpawnCategory::Props;
+    SpawnItem selectedSpawnItem_ = SpawnItem::Box;
+    bool spawnPlacementActive_ = false;
     int spawnQuantity_ = 1;
     int grabbedIndex_ = -1;
     int speedIndex_ = 2;
@@ -98,6 +104,7 @@ private:
     void handleFingerUp(SDL_FingerID fingerId);
     void handleUiClick(float x, float y);
     void placeSelected(float worldX, float worldY);
+    void cycleMap();
     void saveScene();
     void loadScene(bool silent = false);
     void update(float deltaTime);
@@ -106,7 +113,10 @@ private:
     b2Vec2 screenToWorld(float x, float y) const;
     SDL_FPoint worldToScreen(float x, float y) const;
 
+    void drawBackground();
     void drawGrid();
+    void drawSurfaces();
+    void drawMechanisms();
     void drawBody(const BodyRecord& body, bool selected);
     void drawBox(float x, float y, float halfWidth, float halfHeight,
                  float angle, SDL_Color tint, bool outline);
