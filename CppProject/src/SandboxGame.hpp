@@ -14,7 +14,7 @@ enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
     WaterBucket, LavaBucket, AcidBucket, Chain, ElasticRope, Cable,
-    WoodBlock, MetalBlock, GlassBlock, RubberBlock, ConcreteBlock, IceBlock, Empty,
+    WoodBlock, MetalBlock, GlassBlock, RubberBlock, ConcreteBlock, IceBlock, PlasticBlock, Empty,
     Battery, Wheel, Wire, Switch, Motor
 };
 
@@ -27,7 +27,7 @@ struct UiLayout
     SDL_FRect mapButton{};
     SDL_FRect spawnPanel{};
     std::array<SDL_FRect, 5> categoryButtons{};
-    std::array<SDL_FRect, 6> spawnItems{};
+    std::array<SDL_FRect, 9> spawnItems{};
     SDL_FRect quantityDown{};
     SDL_FRect quantityLabel{};
     SDL_FRect quantityUp{};

@@ -192,8 +192,8 @@ UiLayout SandboxGame::makeUiLayout() const
     UiLayout layout;
     layout.scale = clampFloat(
         std::min(static_cast<float>(outputWidth_) / 780.0f,
-                 static_cast<float>(outputHeight_) / 438.0f),
-        0.78f,
+                 static_cast<float>(outputHeight_) / 478.0f),
+        0.70f,
         1.45f
     );
 
@@ -239,7 +239,7 @@ UiLayout SandboxGame::makeUiLayout() const
         margin,
         top + buttonHeight + 8.0f * scale,
         340.0f * scale,
-        370.0f * scale
+        410.0f * scale
     };
 
     const float innerX = layout.spawnPanel.x + 10.0f * scale;
@@ -274,7 +274,7 @@ UiLayout SandboxGame::makeUiLayout() const
         };
     }
 
-    const float quantityY = itemY + 2.0f * (itemHeight + itemGapY) + scale;
+    const float quantityY = itemY + 3.0f * (itemHeight + itemGapY) + scale;
     const float quantityWidth = 56.0f * scale;
     const float quantityLabelWidth = 82.0f * scale;
     layout.quantityDown = {innerX, quantityY, quantityWidth, itemHeight};
@@ -719,25 +719,30 @@ void SandboxGame::handleUiClick(float x, float y)
         return;
     }
 
-    static constexpr std::array<SpawnItem, 6> propItems{
+    static constexpr std::array<SpawnItem, 9> propItems{
         SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
-        SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot
+        SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot,
+        SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
     };
-    static constexpr std::array<SpawnItem, 6> mechanismItems{
+    static constexpr std::array<SpawnItem, 9> mechanismItems{
         SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
-        SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle
+        SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle,
+        SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
     };
-    static constexpr std::array<SpawnItem, 6> miscItems{
+    static constexpr std::array<SpawnItem, 9> miscItems{
         SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
-        SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable
+        SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable,
+        SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
     };
-    static constexpr std::array<SpawnItem, 6> materialItems{
+    static constexpr std::array<SpawnItem, 9> materialItems{
         SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
-        SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::IceBlock
+        SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::IceBlock,
+        SpawnItem::PlasticBlock, SpawnItem::Empty, SpawnItem::Empty
     };
-    static constexpr std::array<SpawnItem, 6> powerItems{
+    static constexpr std::array<SpawnItem, 9> powerItems{
         SpawnItem::Battery, SpawnItem::Wheel, SpawnItem::Motor,
-        SpawnItem::Wire, SpawnItem::Switch, SpawnItem::Empty
+        SpawnItem::Wire, SpawnItem::Switch, SpawnItem::Empty,
+        SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
     };
 
     const auto& items = spawnCategory_ == SpawnCategory::Props
@@ -753,6 +758,8 @@ void SandboxGame::handleUiClick(float x, float y)
             continue;
 
         const SpawnItem clickedItem = items[i];
+        if (clickedItem == SpawnItem::Empty)
+            return;
         if (spawnPlacementActive_ && selectedSpawnItem_ == clickedItem)
             spawnPlacementActive_ = false;
         else
@@ -906,6 +913,9 @@ void SandboxGame::placeSelected(float worldX, float worldY)
                 break;
             case SpawnItem::IceBlock:
                 result = physics_.spawnMaterialBlock(MaterialKind::Ice, x, y);
+                break;
+            case SpawnItem::PlasticBlock:
+                result = physics_.spawnMaterialBlock(MaterialKind::Plastic, x, y);
                 break;
             case SpawnItem::Empty:
                 break;
@@ -1333,6 +1343,52 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
             const SDL_FPoint midB=point(halfWidth*0.54f,0.0f);
             setColor(renderer_,SDL_Color{bright.r,bright.g,bright.b,100});
             SDL_RenderLine(renderer_,midA.x,midA.y,midB.x,midB.y);
+        }
+        else if (material == MaterialKind::Plastic)
+        {
+            const SDL_Color panelDark{dark.r, dark.g, dark.b, 195};
+            const SDL_Color panelLight{bright.r, bright.g, bright.b, 175};
+            const SDL_FPoint panel[4] = {
+                point(-halfWidth * 0.66f, -halfHeight * 0.62f),
+                point(halfWidth * 0.66f, -halfHeight * 0.62f),
+                point(halfWidth * 0.66f, halfHeight * 0.62f),
+                point(-halfWidth * 0.66f, halfHeight * 0.62f)
+            };
+            setColor(renderer_, panelDark);
+            for (int edge = 0; edge < 4; ++edge)
+                SDL_RenderLine(renderer_, panel[edge].x, panel[edge].y,
+                    panel[(edge + 1) % 4].x, panel[(edge + 1) % 4].y);
+
+            const SDL_FPoint ribStart = point(-halfWidth * 0.44f,
+                                               -halfHeight * 0.42f);
+            const SDL_FPoint ribEnd = point(halfWidth * 0.44f,
+                                             -halfHeight * 0.42f);
+            setColor(renderer_, panelLight);
+            SDL_RenderLine(renderer_, ribStart.x, ribStart.y,
+                           ribEnd.x, ribEnd.y);
+            for (int rib = -1; rib <= 1; ++rib)
+            {
+                const float ribX = static_cast<float>(rib) * halfWidth * 0.30f;
+                const SDL_FPoint a = point(ribX, -halfHeight * 0.22f);
+                const SDL_FPoint b = point(ribX, halfHeight * 0.35f);
+                setColor(renderer_, panelDark);
+                SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+                const SDL_FPoint highlight = point(
+                    ribX - halfWidth * 0.035f, -halfHeight * 0.20f);
+                const SDL_FPoint highlightEnd = point(
+                    ribX - halfWidth * 0.035f, halfHeight * 0.32f);
+                setColor(renderer_, panelLight);
+                SDL_RenderLine(renderer_, highlight.x, highlight.y,
+                               highlightEnd.x, highlightEnd.y);
+            }
+
+            for (float bx : {-halfWidth * 0.52f, halfWidth * 0.52f})
+                for (float by : {-halfHeight * 0.48f, halfHeight * 0.48f})
+                {
+                    const SDL_FPoint fastener = point(bx, by);
+                    drawFilledCircle(renderer_, fastener.x, fastener.y,
+                        1.7f, SDL_Color{42, 49, 57, 190});
+                }
         }
         else if (material == MaterialKind::Ice)
         {
@@ -2207,40 +2263,50 @@ void SandboxGame::drawUi()
             spawnCategory_ == SpawnCategory::Power
         );
 
-        static constexpr std::array<const char*, 6> propLabels{
-            "BOX", "BALL", "BARREL", "PLATFORM", "MELON", "ROBOT"
+        static constexpr std::array<const char*, 9> propLabels{
+            "BOX", "BALL", "BARREL", "PLATFORM", "MELON", "ROBOT",
+            "", "", ""
         };
-        static constexpr std::array<const char*, 6> mechanismLabels{
-            "ROD", "ROPE", "SPRING", "PISTON", "BUTTON", "TOGGLE"
+        static constexpr std::array<const char*, 9> mechanismLabels{
+            "ROD", "ROPE", "SPRING", "PISTON", "BUTTON", "TOGGLE",
+            "", "", ""
         };
-        static constexpr std::array<const char*, 6> miscLabels{
-            "WATER", "LAVA", "ACID", "CHAIN", "ELASTIC", "CABLE"
+        static constexpr std::array<const char*, 9> miscLabels{
+            "WATER", "LAVA", "ACID", "CHAIN", "ELASTIC", "CABLE",
+            "", "", ""
         };
-        static constexpr std::array<const char*, 6> materialLabels{
-            "WOOD", "METAL", "GLASS", "RUBBER", "CONCRETE", "ICE"
+        static constexpr std::array<const char*, 9> materialLabels{
+            "WOOD", "METAL", "GLASS", "RUBBER", "CONCRETE", "ICE",
+            "PLASTIC", "", ""
         };
-        static constexpr std::array<const char*, 6> powerLabels{
-            "BATTERY", "WHEEL", "MOTOR", "WIRE", "SWITCH", ""
+        static constexpr std::array<const char*, 9> powerLabels{
+            "BATTERY", "WHEEL", "MOTOR", "WIRE", "SWITCH", "",
+            "", "", ""
         };
-        static constexpr std::array<SpawnItem, 6> propItems{
+        static constexpr std::array<SpawnItem, 9> propItems{
             SpawnItem::Box, SpawnItem::Ball, SpawnItem::Barrel,
-            SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot
+            SpawnItem::Platform, SpawnItem::Ragdoll, SpawnItem::Robot,
+            SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
         };
-        static constexpr std::array<SpawnItem, 6> mechanismItems{
+        static constexpr std::array<SpawnItem, 9> mechanismItems{
             SpawnItem::Rod, SpawnItem::Rope, SpawnItem::Spring,
-            SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle
+            SpawnItem::Piston, SpawnItem::Button, SpawnItem::Toggle,
+            SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
         };
-        static constexpr std::array<SpawnItem, 6> miscItems{
+        static constexpr std::array<SpawnItem, 9> miscItems{
             SpawnItem::WaterBucket, SpawnItem::LavaBucket, SpawnItem::AcidBucket,
-            SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable
+            SpawnItem::Chain, SpawnItem::ElasticRope, SpawnItem::Cable,
+            SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
         };
-        static constexpr std::array<SpawnItem, 6> materialItems{
+        static constexpr std::array<SpawnItem, 9> materialItems{
             SpawnItem::WoodBlock, SpawnItem::MetalBlock, SpawnItem::GlassBlock,
-            SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::IceBlock
+            SpawnItem::RubberBlock, SpawnItem::ConcreteBlock, SpawnItem::IceBlock,
+            SpawnItem::PlasticBlock, SpawnItem::Empty, SpawnItem::Empty
         };
-        static constexpr std::array<SpawnItem, 6> powerItems{
+        static constexpr std::array<SpawnItem, 9> powerItems{
             SpawnItem::Battery, SpawnItem::Wheel, SpawnItem::Motor,
-            SpawnItem::Wire, SpawnItem::Switch, SpawnItem::Empty
+            SpawnItem::Wire, SpawnItem::Switch, SpawnItem::Empty,
+            SpawnItem::Empty, SpawnItem::Empty, SpawnItem::Empty
         };
 
         const auto& labels = spawnCategory_ == SpawnCategory::Props
