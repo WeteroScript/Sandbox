@@ -1898,10 +1898,13 @@ void SandboxGame::update(float deltaTime)
     int steps = 0;
     while (accumulator_ >= kFixedStep && steps < 12)
     {
-        if (activeWalkGroup_ >= 0 && std::abs(walkDirection_) > 0.04f)
+        if (activeWalkGroup_ >= 0)
         {
-            walkGaitPhase_ += kFixedStep * 8.6f *
-                std::max(0.25f, std::abs(walkDirection_));
+            if (std::abs(walkDirection_) > 0.04f)
+            {
+                walkGaitPhase_ += kFixedStep * 8.6f *
+                    std::max(0.25f, std::abs(walkDirection_));
+            }
             physics_.driveCharacter(
                 activeWalkGroup_, walkDirection_, walkGaitPhase_, kFixedStep);
         }
