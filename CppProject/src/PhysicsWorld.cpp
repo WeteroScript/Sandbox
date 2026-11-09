@@ -1425,6 +1425,53 @@ void PhysicsWorld::step(float dt, int subSteps)
         b2Body_SetAngularVelocity(record.id,
             std::clamp(b2Body_GetAngularVelocity(record.id), -12.0f, 12.0f));
     }
+
+    // A low-gain balance controller lets a fallen melon recover its upright
+    // posture. It does not lock the ragdoll: strong impacts can still throw it
+    // around, and the controller only acts while the torso is tilted.
+    constexpr float fullTurn = 6.2831853071795864769f;
+    for (BodyRecord& torso : records_)
+    {
+        if (torso.groupId < 0 || torso.partIndex != 0 || torso.frozen ||
+            !b2Body_IsValid(torso.id))
+            continue;
+
+        const b2Rot torsoRotation = b2Body_GetRotation(torso.id);
+        const float torsoAngle = std::remainder(
+            std::atan2(static_cast<float>(torsoRotation.s),
+                       static_cast<float>(torsoRotation.c)), fullTurn);
+        const float torsoAngularVelocity = b2Body_GetAngularVelocity(torso.id);
+        const float uprightTorque = std::clamp(
+            -torsoAngle * 6.0f - torsoAngularVelocity * 2.4f,
+            -18.0f, 18.0f);
+        if (std::abs(torsoAngle) > 0.22f ||
+            std::abs(torsoAngularVelocity) > 1.2f)
+            b2Body_ApplyTorque(torso.id, uprightTorque, true);
+
+        // Once the torso is nearly upright, gently bring both legs underneath it.
+        if (std::abs(torsoAngle) < 0.70f)
+        {
+            for (BodyRecord& leg : records_)
+            {
+                if (leg.groupId != torso.groupId ||
+                    (leg.partIndex != 4 && leg.partIndex != 5) ||
+                    leg.frozen || !b2Body_IsValid(leg.id))
+                    continue;
+
+                const b2Rot legRotation = b2Body_GetRotation(leg.id);
+                const float legAngle = std::remainder(
+                    std::atan2(static_cast<float>(legRotation.s),
+                               static_cast<float>(legRotation.c)), fullTurn);
+                const float legAngularVelocity = b2Body_GetAngularVelocity(leg.id);
+                const float legTorque = std::clamp(
+                    -legAngle * 3.1f - legAngularVelocity * 1.25f,
+                    -7.0f, 7.0f);
+                if (std::abs(legAngle) > 0.28f ||
+                    std::abs(legAngularVelocity) > 1.0f)
+                    b2Body_ApplyTorque(leg.id, legTorque, true);
+            }
+        }
+    }
 }
 
 void PhysicsWorld::processImpactEvents()

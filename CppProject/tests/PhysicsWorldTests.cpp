@@ -1258,6 +1258,25 @@ int main()
             restoredCharacterDamageTotal += record.impactDamage;
     CHECK(restoredCharacterDamageTotal > 0.025f);
 
+    // A fallen character receives a gentle self-righting force.
+    PhysicsWorld selfRightingWorld;
+    selfRightingWorld.setMap(MapKind::Platform, false);
+    const int selfRightingGroup = selfRightingWorld.spawnRagdoll(0.0f, -2.6f);
+    CHECK(selfRightingGroup >= 0);
+    b2BodyId selfRightingTorso = b2_nullBodyId;
+    for (const BodyRecord& record : selfRightingWorld.records())
+        if (record.groupId == selfRightingGroup && record.partIndex == 0)
+            selfRightingTorso = record.id;
+    CHECK(b2Body_IsValid(selfRightingTorso));
+    b2Body_SetAngularVelocity(selfRightingTorso, 5.0f);
+    for (int i = 0; i < 150; ++i)
+        selfRightingWorld.step(1.0f / 60.0f, 4);
+    const b2Rot recoveredRotation = b2Body_GetRotation(selfRightingTorso);
+    const float recoveredAngle = std::atan2(
+        static_cast<float>(recoveredRotation.s),
+        static_cast<float>(recoveredRotation.c));
+    CHECK(std::abs(recoveredAngle) < 1.05f);
+
     // A character part stays inside a bounded motion envelope after a hit.
     PhysicsWorld stableCharacterWorld;
     stableCharacterWorld.setMap(MapKind::Laboratory, false);
