@@ -943,6 +943,8 @@ void SandboxGame::handlePointerDown(float x, float y)
                 walkStartPointerX_ = x;
                 walkDirection_ = 0.0f;
                 walkGaitPhase_ = 0.0f;
+                walkHoldingObject_ =
+                    physics_.characterHoldingObject(activeWalkGroup_);
                 panning_ = false;
                 notice_ = "Drag left or right to walk";
                 noticeTimer_ = 2.0f;
@@ -950,6 +952,7 @@ void SandboxGame::handlePointerDown(float x, float y)
             else
             {
                 activeWalkGroup_ = -1;
+                walkHoldingObject_ = false;
                 panning_ = true;
                 lastPanX_ = x;
                 lastPanY_ = y;
@@ -1109,8 +1112,16 @@ void SandboxGame::handlePointerUp()
     }
 
     if (activeWalkGroup_ >= 0)
+    {
         physics_.driveCharacter(
             activeWalkGroup_, 0.0f, walkGaitPhase_, kFixedStep);
+        if (walkHoldingObject_)
+        {
+            notice_ = "Object released";
+            noticeTimer_ = 1.3f;
+        }
+    }
+    walkHoldingObject_ = false;
     pointerDown_ = false;
     panning_ = false;
     grabbedIndex_ = -1;
@@ -1907,6 +1918,13 @@ void SandboxGame::update(float deltaTime)
             }
             physics_.driveCharacter(
                 activeWalkGroup_, walkDirection_, walkGaitPhase_, kFixedStep);
+            const bool holding = physics_.characterHoldingObject(activeWalkGroup_);
+            if (holding != walkHoldingObject_)
+            {
+                notice_ = holding ? "Object picked up" : "Object released";
+                noticeTimer_ = 1.3f;
+                walkHoldingObject_ = holding;
+            }
         }
         physics_.step(kFixedStep, 4);
         const float impactSpeed = physics_.lastImpactSpeed();

@@ -70,6 +70,15 @@ struct SurfaceZone
     float volume = 0.0f;
 };
 
+struct CharacterGripRecord
+{
+    int groupId = -1;
+    int handPart = -1;
+    b2BodyId handBody = b2_nullBodyId;
+    b2BodyId objectBody = b2_nullBodyId;
+    b2JointId joint = b2_nullJointId;
+};
+
 struct MechanismRecord
 {
     MechanismKind kind = MechanismKind::Rod;
@@ -114,6 +123,7 @@ public:
     bool releaseBucketIfTilted(int index);
     float lastImpactSpeed() const { return lastImpactSpeed_; }
     bool lastImpactWasSnow() const { return lastImpactWasSnow_; }
+    bool characterHoldingObject(int groupId) const;
     std::size_t applyMeteorImpact(
         float x, float y, float radius, float impulseStrength);
     bool createMeteorCrater(
@@ -146,6 +156,7 @@ private:
     std::vector<BodyRecord> records_;
     std::vector<SurfaceZone> surfaces_;
     std::vector<MechanismRecord> mechanisms_;
+    std::vector<CharacterGripRecord> characterGrips_;
     int nextGroupId_ = 1;
     MapKind map_ = MapKind::TestRange;
     bool mechanismsEnabled_ = true;
@@ -199,6 +210,9 @@ private:
                          float restLength = 0.0f);
     void eraseRecord(std::size_t index);
     void removeMechanismsForBody(b2BodyId body);
+    void releaseCharacterGrip(int groupId);
+    void releaseCharacterGripsForBody(b2BodyId body);
+    void releaseAllCharacterGrips();
     void setFrozen(BodyRecord& record, bool frozen);
     int spawnCharacter(float x, float y, bool robot);
 };

@@ -655,6 +655,9 @@ PhysicsWorld::PhysicsWorld()
 
 void PhysicsWorld::clearWorldBodies()
 {
+    releaseAllCharacterGrips();
+    drivenCharacterGroup_ = -1;
+    drivenCharacterDirection_ = 0.0f;
     meteorCraterBodies_.fill(b2_nullBodyId);
     meteorCraterFloorSaved_ = false;
     meteorCraterRemaining_ = 0.0f;
@@ -2523,10 +2526,15 @@ bool PhysicsWorld::driveCharacter(
         return false;
 
     direction = std::clamp(direction, -1.0f, 1.0f);
+    if (drivenCharacterGroup_ >= 0 && drivenCharacterGroup_ != groupId)
+        releaseCharacterGrip(drivenCharacterGroup_);
     drivenCharacterGroup_ = groupId;
     drivenCharacterDirection_ = direction;
     if (std::abs(direction) < 0.035f)
+    {
+        releaseCharacterGrip(groupId);
         return false;
+    }
 
     BodyRecord* torso = nullptr;
     for (BodyRecord& record : records_)
@@ -2616,6 +2624,124 @@ bool PhysicsWorld::driveCharacter(
         }
         return false;
     };
+
+    // Pick up only a nearby, light, loose object. The weld is attached at
+    // the palm, so the object remains a real Box2D body and can be dropped.
+    BodyRecord* leadingArmForGrip = nullptr;
+    for (BodyRecord& part : records_)
+    {
+        if (part.groupId == groupId && part.partIndex == leadingPart &&
+            !part.frozen && b2Body_IsValid(part.id))
+        {
+            leadingArmForGrip = &part;
+            break;
+        }
+    }
+
+    bool holdingObject = characterHoldingObject(groupId);
+    if (holdingObject && leadingArmForGrip)
+    {
+        const auto grip = std::find_if(characterGrips_.begin(),
+            characterGrips_.end(),
+            [groupId](const CharacterGripRecord& item)
+            {
+                return item.groupId == groupId;
+            });
+        if (grip != characterGrips_.end() &&
+            !sameBodyId(grip->handBody, leadingArmForGrip->id))
+        {
+            releaseCharacterGrip(groupId);
+            holdingObject = false;
+        }
+    }
+
+    if (!holdingObject && leadingArmForGrip)
+    {
+        const b2Pos armPosition = b2Body_GetPosition(leadingArmForGrip->id);
+        const b2Rot armRotation = b2Body_GetRotation(leadingArmForGrip->id);
+        const float localHandY = -leadingArmForGrip->halfHeight * 0.90f;
+        const float handX = static_cast<float>(armPosition.x) -
+            static_cast<float>(armRotation.s) * localHandY;
+        const float handY = static_cast<float>(armPosition.y) +
+            static_cast<float>(armRotation.c) * localHandY;
+
+        BodyRecord* candidate = nullptr;
+        float nearestDistanceSquared = 0.0f;
+        constexpr float maxCarryMass = 2.25f;
+        for (BodyRecord& prop : records_)
+        {
+            if (!prop.selectable || prop.frozen || prop.groupId >= 0 ||
+                prop.partIndex >= 0 || prop.bucketKind != BucketKind::None ||
+                !b2Body_IsValid(prop.id))
+                continue;
+
+            const float mass = b2Body_GetMass(prop.id);
+            if (!std::isfinite(mass) || mass <= 0.02f || mass > maxCarryMass)
+                continue;
+
+            const bool alreadyHeld = std::any_of(
+                characterGrips_.begin(), characterGrips_.end(),
+                [&prop](const CharacterGripRecord& grip)
+                {
+                    return sameBodyId(grip.objectBody, prop.id);
+                });
+            if (alreadyHeld)
+                continue;
+
+            const b2Pos position = b2Body_GetPosition(prop.id);
+            const b2Rot rotation = b2Body_GetRotation(prop.id);
+            const float cosine = std::abs(static_cast<float>(rotation.c));
+            const float sine = std::abs(static_cast<float>(rotation.s));
+            const float extentX = prop.shape == BodyShape::Circle
+                ? prop.radius
+                : cosine * prop.halfWidth + sine * prop.halfHeight;
+            const float extentY = prop.shape == BodyShape::Circle
+                ? prop.radius
+                : sine * prop.halfWidth + cosine * prop.halfHeight;
+            const float propX = static_cast<float>(position.x);
+            const float propY = static_cast<float>(position.y);
+            const float forwardGap = (propX - handX) * direction;
+            const float verticalGap = std::abs(propY - handY);
+            if (forwardGap < -0.08f || forwardGap > extentX + 0.28f ||
+                verticalGap > extentY + 0.28f)
+                continue;
+
+            const float distanceSquared =
+                forwardGap * forwardGap + verticalGap * verticalGap;
+            if (!candidate || distanceSquared < nearestDistanceSquared)
+            {
+                candidate = &prop;
+                nearestDistanceSquared = distanceSquared;
+            }
+        }
+
+        if (candidate)
+        {
+            const b2Pos worldAnchor{handX, handY};
+            b2WeldJointDef definition = b2DefaultWeldJointDef();
+            definition.base.bodyIdA = leadingArmForGrip->id;
+            definition.base.bodyIdB = candidate->id;
+            definition.base.collideConnected = false;
+            definition.base.localFrameA.p = b2Body_GetLocalPoint(
+                leadingArmForGrip->id, worldAnchor);
+            definition.base.localFrameB.p = b2Body_GetLocalPoint(
+                candidate->id, worldAnchor);
+            definition.linearHertz = 5.5f;
+            definition.angularHertz = 4.2f;
+            definition.linearDampingRatio = 0.82f;
+            definition.angularDampingRatio = 0.78f;
+
+            const b2JointId joint = b2CreateWeldJoint(world_, &definition);
+            if (b2Joint_IsValid(joint))
+            {
+                characterGrips_.push_back(CharacterGripRecord{
+                    groupId, leadingPart, leadingArmForGrip->id,
+                    candidate->id, joint
+                });
+                holdingObject = true;
+            }
+        }
+    }
 
     for (BodyRecord& part : records_)
     {
@@ -2707,7 +2833,7 @@ bool PhysicsWorld::driveCharacter(
             break;
         }
     }
-    if (leadingArm)
+    if (leadingArm && !characterHoldingObject(groupId))
     {
         const b2Pos armPosition = b2Body_GetPosition(leadingArm->id);
         const b2Rot armRotation = b2Body_GetRotation(leadingArm->id);
@@ -2758,6 +2884,59 @@ bool PhysicsWorld::driveCharacter(
     return true;
 }
 
+bool PhysicsWorld::characterHoldingObject(int groupId) const
+{
+    if (groupId < 0)
+        return false;
+    return std::any_of(characterGrips_.begin(), characterGrips_.end(),
+        [groupId](const CharacterGripRecord& grip)
+        {
+            return grip.groupId == groupId &&
+                b2Joint_IsValid(grip.joint) &&
+                b2Body_IsValid(grip.handBody) &&
+                b2Body_IsValid(grip.objectBody);
+        });
+}
+
+void PhysicsWorld::releaseCharacterGrip(int groupId)
+{
+    for (std::size_t i = characterGrips_.size(); i > 0; --i)
+    {
+        CharacterGripRecord& grip = characterGrips_[i - 1];
+        if (grip.groupId != groupId)
+            continue;
+        if (b2Joint_IsValid(grip.joint))
+            b2DestroyJoint(grip.joint);
+        characterGrips_.erase(characterGrips_.begin() +
+            static_cast<std::ptrdiff_t>(i - 1));
+    }
+}
+
+void PhysicsWorld::releaseCharacterGripsForBody(b2BodyId body)
+{
+    if (!b2Body_IsValid(body))
+        return;
+    for (std::size_t i = characterGrips_.size(); i > 0; --i)
+    {
+        CharacterGripRecord& grip = characterGrips_[i - 1];
+        if (!sameBodyId(grip.handBody, body) &&
+            !sameBodyId(grip.objectBody, body))
+            continue;
+        if (b2Joint_IsValid(grip.joint))
+            b2DestroyJoint(grip.joint);
+        characterGrips_.erase(characterGrips_.begin() +
+            static_cast<std::ptrdiff_t>(i - 1));
+    }
+}
+
+void PhysicsWorld::releaseAllCharacterGrips()
+{
+    for (CharacterGripRecord& grip : characterGrips_)
+        if (b2Joint_IsValid(grip.joint))
+            b2DestroyJoint(grip.joint);
+    characterGrips_.clear();
+}
+
 void PhysicsWorld::setFrozen(BodyRecord& r, bool frozen)
 {
     if (r.frozen == frozen || !b2Body_IsValid(r.id))
@@ -2790,9 +2969,15 @@ void PhysicsWorld::toggleFreeze(int index)
 
     if (group < 0)
     {
+        if (freeze)
+            releaseCharacterGripsForBody(
+                records_[static_cast<std::size_t>(index)].id);
         setFrozen(records_[static_cast<std::size_t>(index)], freeze);
         return;
     }
+
+    if (freeze)
+        releaseCharacterGrip(group);
 
     for (BodyRecord& r : records_)
         if (r.groupId == group)
@@ -3063,6 +3248,7 @@ void PhysicsWorld::eraseRecord(std::size_t index)
         return;
 
     const b2BodyId body = records_[index].id;
+    releaseCharacterGripsForBody(body);
     removeMechanismsForBody(body);
 
     const auto found = std::find_if(records_.begin(), records_.end(),
@@ -3104,6 +3290,10 @@ void PhysicsWorld::deleteAt(int index)
 
 void PhysicsWorld::clearDynamic()
 {
+    releaseAllCharacterGrips();
+    drivenCharacterGroup_ = -1;
+    drivenCharacterDirection_ = 0.0f;
+
     // Collect all dynamic/selectable bodies and hidden piston anchors first.
     // Destroying them in one batch avoids repeatedly erasing from records_ and
     // rescanning the mechanism list for every object in large scenes.

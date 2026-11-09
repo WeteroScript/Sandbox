@@ -135,6 +135,7 @@ private:
     bool dragChanged_ = false;
     bool rotationDragActive_ = false;
     bool rotationChanged_ = false;
+    bool walkHoldingObject_ = false;
     float rotationPivotX_ = 0.0f;
     float rotationPivotY_ = 0.0f;
     float lastRotationPointerAngle_ = 0.0f;

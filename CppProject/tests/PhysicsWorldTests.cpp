@@ -1365,7 +1365,7 @@ int main()
     CHECK(!walkingWorld.driveCharacter(
         walkingGroup, 0.0f, gaitPhase, 1.0f / 60.0f));
 
-    // The leading hand pushes a nearby loose prop while the character walks.
+    // A light loose prop is welded to the leading palm, carried, then dropped.
     PhysicsWorld handInteractionWorld;
     handInteractionWorld.setMap(MapKind::Platform, false);
     const int handCharacter = handInteractionWorld.spawnRagdoll(0.0f, -2.6f);
@@ -1383,9 +1383,30 @@ int main()
             handCharacter, 1.0f, handGaitPhase, 1.0f / 60.0f));
         handInteractionWorld.step(1.0f / 60.0f, 4);
     }
+    CHECK(handInteractionWorld.characterHoldingObject(handCharacter));
     const float handPropEndX =
         static_cast<float>(b2Body_GetPosition(handPropBody).x);
     CHECK(handPropEndX > handPropStartX + 0.15f);
+    CHECK(!handInteractionWorld.driveCharacter(
+        handCharacter, 0.0f, handGaitPhase, 1.0f / 60.0f));
+    CHECK(!handInteractionWorld.characterHoldingObject(handCharacter));
+
+    // The grip refuses a heavy object instead of attaching it to the hand.
+    PhysicsWorld heavyHandWorld;
+    heavyHandWorld.setMap(MapKind::Platform, false);
+    const int heavyHandCharacter = heavyHandWorld.spawnRagdoll(0.0f, -2.6f);
+    const int heavyHandProp = heavyHandWorld.spawnMaterialBlock(
+        MaterialKind::Metal, 1.15f, -2.25f);
+    CHECK(heavyHandCharacter >= 0 && heavyHandProp >= 0);
+    float heavyGaitPhase = 0.0f;
+    for (int i = 0; i < 30; ++i)
+    {
+        heavyGaitPhase += (1.0f / 60.0f) * 8.6f;
+        CHECK(heavyHandWorld.driveCharacter(
+            heavyHandCharacter, 1.0f, heavyGaitPhase, 1.0f / 60.0f));
+        heavyHandWorld.step(1.0f / 60.0f, 4);
+    }
+    CHECK(!heavyHandWorld.characterHoldingObject(heavyHandCharacter));
 
     // Head and arms receive gentle posture assistance after a strong wobble.
     PhysicsWorld balancedCharacterWorld;
