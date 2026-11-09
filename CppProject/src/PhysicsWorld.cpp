@@ -1504,6 +1504,12 @@ void PhysicsWorld::step(float dt, int subSteps)
                     !b2Body_IsValid(part.id))
                     continue;
 
+                const bool activelyWalking =
+                    torso.groupId == drivenCharacterGroup_ &&
+                    std::abs(drivenCharacterDirection_) > 0.035f;
+                if (activelyWalking && part.partIndex >= 2)
+                    continue;
+
                 const b2Rot partRotation = b2Body_GetRotation(part.id);
                 const float partAngle = std::atan2(
                     static_cast<float>(partRotation.s),
@@ -2517,6 +2523,8 @@ bool PhysicsWorld::driveCharacter(
         return false;
 
     direction = std::clamp(direction, -1.0f, 1.0f);
+    drivenCharacterGroup_ = groupId;
+    drivenCharacterDirection_ = direction;
     if (std::abs(direction) < 0.035f)
         return false;
 
@@ -2552,6 +2560,7 @@ bool PhysicsWorld::driveCharacter(
             torsoAngularVelocity * 1.8f, -8.0f, 8.0f);
     b2Body_ApplyTorque(torso->id, leanTorque, true);
 
+    constexpr float halfTurn = 3.14159265358979323846f;
     const float gaitStrength = std::abs(direction);
     for (BodyRecord& part : records_)
     {
@@ -2576,7 +2585,7 @@ bool PhysicsWorld::driveCharacter(
 
         if (part.partIndex == 4 || part.partIndex == 5)
         {
-            const float sidePhase = part.partIndex == 4 ? 0.0f : kPi;
+            const float sidePhase = part.partIndex == 4 ? 0.0f : halfTurn;
             targetAngle = std::sin(gaitPhase + sidePhase) *
                 0.46f * gaitStrength;
             stiffness = 7.0f;
@@ -2585,7 +2594,7 @@ bool PhysicsWorld::driveCharacter(
         }
         else if (part.partIndex == 2 || part.partIndex == 3)
         {
-            const float armPhase = part.partIndex == 2 ? kPi : 0.0f;
+            const float armPhase = part.partIndex == 2 ? halfTurn : 0.0f;
             targetAngle = std::sin(gaitPhase + armPhase) *
                 0.24f * gaitStrength;
             stiffness = 4.0f;

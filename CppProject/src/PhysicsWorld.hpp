@@ -154,6 +154,8 @@ private:
     bool lastImpactWasSnow_ = false;
     std::array<b2BodyId, 5> meteorCraterBodies_{};
     bool meteorCraterFloorSaved_ = false;
+    int drivenCharacterGroup_ = -1;
+    float drivenCharacterDirection_ = 0.0f;
     float meteorCraterRemaining_ = 0.0f;
     float meteorCraterFloorX_ = 0.0f;
     float meteorCraterFloorY_ = 0.0f;

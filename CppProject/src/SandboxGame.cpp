@@ -1108,6 +1108,9 @@ void SandboxGame::handlePointerUp()
         noticeTimer_ = 1.8f;
     }
 
+    if (activeWalkGroup_ >= 0)
+        physics_.driveCharacter(
+            activeWalkGroup_, 0.0f, walkGaitPhase_, kFixedStep);
     pointerDown_ = false;
     panning_ = false;
     grabbedIndex_ = -1;
