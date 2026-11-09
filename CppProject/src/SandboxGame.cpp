@@ -369,7 +369,13 @@ void SandboxGame::processEvents()
             case SDL_EVENT_KEY_DOWN:
                 if (!event.key.repeat && event.key.key == SDLK_AC_BACK)
                 {
-                    if (spawnPlacementActive_)
+                    if (meteorEvent_.waitingForTarget())
+                    {
+                        meteorEvent_.cancel();
+                        notice_ = "Meteor targeting cancelled";
+                        noticeTimer_ = 2.0f;
+                    }
+                    else if (spawnPlacementActive_)
                         spawnPlacementActive_ = false;
                     else if (spawnPanelOpen_)
                         spawnPanelOpen_ = false;
@@ -440,7 +446,8 @@ void SandboxGame::handlePointerDown(float x, float y)
         pointInRect(x, y, layout.pauseButton) ||
         pointInRect(x, y, layout.extrasButton) ||
         (extrasPanelOpen_ && pointInRect(x, y, layout.extrasPanel)) ||
-        (spawnPanelOpen_ && pointInRect(x, y, layout.spawnPanel)))
+        (!meteorEvent_.waitingForTarget() && spawnPanelOpen_ &&
+         pointInRect(x, y, layout.spawnPanel)))
     {
         handleUiClick(x, y);
         return;

@@ -20,8 +20,8 @@ struct MeteorPoint
     float y = 0.0f;
 };
 
-// A purely visual sandbox event. It deliberately does not alter terrain or
-// apply real-world blast forces; all timings use the simulation clock.
+// A timed sandbox event with a one-shot, bounded in-game impulse.
+// All timings use the simulation clock; terrain deformation remains visual.
 class MeteorEvent
 {
 public:
