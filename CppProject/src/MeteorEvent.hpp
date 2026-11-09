@@ -130,7 +130,7 @@ public:
     {
         if (!hasCrater())
             return 0.0f;
-        return std::clamp(stageRemaining_ / 3.0f, 0.0f, 1.0f);
+        return std::clamp(stageRemaining_ / kCraterSeconds, 0.0f, 1.0f);
     }
 
     float targetX() const { return targetX_; }
