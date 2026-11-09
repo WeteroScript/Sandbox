@@ -3295,9 +3295,25 @@ void SandboxGame::drawMeteorEffects()
         const float pulse = 1.0f +
             std::sin(static_cast<float>(SDL_GetTicks()) * 0.005f) * 0.08f;
         const float radius = 22.0f * pulse;
-        setColor(renderer_, makeColor(255, 174, 91, 210));
-        SDL_RenderCircle(renderer_, target.x, target.y, radius);
-        SDL_RenderCircle(renderer_, target.x, target.y, radius * 0.62f);
+        const auto drawRing = [&](float ringRadius, SDL_Color tint)
+        {
+            setColor(renderer_, tint);
+            constexpr int segments = 32;
+            for (int segment = 0; segment < segments; ++segment)
+            {
+                const float a0 = 2.0f * kPi *
+                    static_cast<float>(segment) / segments;
+                const float a1 = 2.0f * kPi *
+                    static_cast<float>(segment + 1) / segments;
+                SDL_RenderLine(renderer_,
+                    target.x + std::cos(a0) * ringRadius,
+                    target.y + std::sin(a0) * ringRadius,
+                    target.x + std::cos(a1) * ringRadius,
+                    target.y + std::sin(a1) * ringRadius);
+            }
+        };
+        drawRing(radius, makeColor(255, 174, 91, 210));
+        drawRing(radius * 0.62f, makeColor(255, 218, 165, 175));
         SDL_RenderLine(renderer_, target.x - radius * 1.45f, target.y,
                        target.x - radius * 0.78f, target.y);
         SDL_RenderLine(renderer_, target.x + radius * 0.78f, target.y,
