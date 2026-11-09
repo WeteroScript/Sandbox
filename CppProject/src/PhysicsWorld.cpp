@@ -2542,9 +2542,9 @@ bool PhysicsWorld::driveCharacter(
         return false;
 
     const b2Vec2 torsoVelocity = b2Body_GetLinearVelocity(torso->id);
-    const float desiredSpeed = direction * 3.8f;
+    const float desiredSpeed = direction * 5.0f;
     const float acceleration = std::clamp(
-        (desiredSpeed - torsoVelocity.x) * 2.7f, -9.0f, 9.0f);
+        (desiredSpeed - torsoVelocity.x) * 4.0f, -22.0f, 22.0f);
     const float mass = std::max(0.1f, b2Body_GetMass(torso->id));
     b2Body_ApplyForceToCenter(
         torso->id, {mass * acceleration, 0.0f}, true);
@@ -2586,11 +2586,21 @@ bool PhysicsWorld::driveCharacter(
         if (part.partIndex == 4 || part.partIndex == 5)
         {
             const float sidePhase = part.partIndex == 4 ? 0.0f : halfTurn;
-            targetAngle = std::sin(gaitPhase + sidePhase) *
-                0.46f * gaitStrength;
-            stiffness = 7.0f;
-            damping = 2.0f;
-            maxTorque = 12.0f;
+            const float legPhase = gaitPhase + sidePhase;
+            const float swing = std::sin(legPhase);
+            targetAngle = swing * 0.52f * gaitStrength;
+            stiffness = 7.5f;
+            damping = 2.1f;
+            maxTorque = 13.5f;
+
+            // Alternate the push through each planted leg. A small lift during
+            // the recovery phase prevents both feet from dragging continuously.
+            const float stance = std::max(0.0f, std::cos(legPhase));
+            const float lift = std::max(0.0f, swing);
+            const float legMass = std::max(0.1f, b2Body_GetMass(part.id));
+            b2Body_ApplyForceToCenter(part.id,
+                {legMass * direction * 7.0f * stance,
+                 legMass * 1.8f * lift}, true);
         }
         else if (part.partIndex == 2 || part.partIndex == 3)
         {
