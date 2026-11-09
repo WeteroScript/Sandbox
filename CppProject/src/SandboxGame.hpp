@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PhysicsWorld.hpp"
+#include "MeteorEvent.hpp"
 #include <SDL3/SDL.h>
 
 #include <array>
@@ -10,6 +11,7 @@
 
 enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
 enum class SpawnCategory { Props, Mechanisms, Misc, Materials, Power };
+enum class ExtraPanelSection : std::uint8_t { Ropes, Meteor };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
@@ -36,6 +38,12 @@ struct UiLayout
     SDL_FRect clearButton{};
     SDL_FRect undoButton{};
     SDL_FRect redoButton{};
+    SDL_FRect extrasButton{};
+    SDL_FRect extrasPanel{};
+    SDL_FRect ropeTab{};
+    SDL_FRect meteorTab{};
+    std::array<SDL_FRect, 4> ropeButtons{};
+    SDL_FRect meteorSpawnButton{};
 };
 
 class SandboxGame
@@ -58,6 +66,7 @@ private:
     bool running_ = true;
     bool paused_ = false;
     bool spawnPanelOpen_ = true;
+    bool extrasPanelOpen_ = false;
     bool pointerDown_ = false;
     bool panning_ = false;
     bool hasPrimaryFinger_ = false;
@@ -77,6 +86,8 @@ private:
     SpawnCategory spawnCategory_ = SpawnCategory::Props;
     SpawnItem selectedSpawnItem_ = SpawnItem::Box;
     bool spawnPlacementActive_ = false;
+    ExtraPanelSection extraPanelSection_ = ExtraPanelSection::Ropes;
+    MeteorEvent meteorEvent_;
     int spawnQuantity_ = 1;
     int grabbedIndex_ = -1;
     int speedIndex_ = 2;
@@ -132,6 +143,7 @@ private:
     void drawBackground();
     void drawGrid();
     void drawSurfaces();
+    void drawMeteorEffects();
     void drawMechanisms();
     void drawBody(const BodyRecord& body, bool selected);
     void drawBucket(const BodyRecord& body, float x, float y, float angle);

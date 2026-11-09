@@ -1,4 +1,5 @@
 #include "PhysicsWorld.hpp"
+#include "MeteorEvent.hpp"
 
 #include <array>
 #include <cmath>
@@ -22,6 +23,47 @@
 
 int main()
 {
+    // Meteor scheduling is simulation-time based and has an exact,
+    // independently testable countdown / flight / explosion / crater lifecycle.
+    MeteorEvent meteor;
+    CHECK(meteor.stage() == MeteorStage::Idle);
+    meteor.beginTargetSelection();
+    CHECK(meteor.waitingForTarget());
+    CHECK(!meteor.setTarget(std::numeric_limits<float>::quiet_NaN(), 4.0f));
+    CHECK(meteor.setTarget(12.5f, -3.0f));
+    CHECK(meteor.countdownActive());
+    CHECK(meteor.countdownSecondsRounded() == 60);
+    meteor.update(59.5f);
+    CHECK(meteor.countdownActive());
+    CHECK(meteor.countdownSecondsRounded() == 1);
+    meteor.update(0.5f);
+    CHECK(meteor.inAtmosphere());
+    CHECK(std::abs(meteor.flightProgress()) < 0.0001f);
+    const MeteorPoint entryStart = meteor.meteorPosition();
+    meteor.update(1.5f);
+    CHECK(meteor.inAtmosphere());
+    CHECK(meteor.flightProgress() > 0.45f && meteor.flightProgress() < 0.55f);
+    const MeteorPoint entryMiddle = meteor.meteorPosition();
+    CHECK(entryMiddle.x > entryStart.x);
+    CHECK(entryMiddle.y < entryStart.y);
+    meteor.update(1.5f);
+    CHECK(meteor.exploding());
+    meteor.update(MeteorEvent::kExplosionSeconds);
+    CHECK(meteor.hasCrater());
+    CHECK(std::abs(meteor.secondsRemaining() - MeteorEvent::kCraterSeconds) < 0.0001f);
+    meteor.update(57.0f);
+    CHECK(meteor.hasCrater());
+    CHECK(meteor.craterFade() == 1.0f);
+    meteor.update(2.0f);
+    CHECK(meteor.hasCrater());
+    CHECK(meteor.craterFade() < 1.0f);
+    meteor.update(1.0f);
+    CHECK(meteor.stage() == MeteorStage::Idle);
+    meteor.beginTargetSelection();
+    CHECK(meteor.waitingForTarget());
+    meteor.cancel();
+    CHECK(meteor.stage() == MeteorStage::Idle);
+
     PhysicsWorld world;
     const std::size_t initialCount = world.dynamicCount();
     CHECK(initialCount == 8);

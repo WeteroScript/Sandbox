@@ -308,6 +308,50 @@ UiLayout SandboxGame::makeUiLayout() const
         innerX + historyWidth + historyGap, historyY, historyWidth, itemHeight
     };
 
+    const float extrasButtonWidth = 94.0f * scale;
+    const float extrasButtonHeight = 42.0f * scale;
+    layout.extrasButton = {
+        static_cast<float>(outputWidth_) - margin - extrasButtonWidth,
+        static_cast<float>(outputHeight_) - margin - extrasButtonHeight,
+        extrasButtonWidth, extrasButtonHeight
+    };
+
+    const float extrasPanelWidth = 238.0f * scale;
+    const float extrasPanelHeight = 222.0f * scale;
+    layout.extrasPanel = {
+        static_cast<float>(outputWidth_) - margin - extrasPanelWidth,
+        layout.extrasButton.y - 8.0f * scale - extrasPanelHeight,
+        extrasPanelWidth, extrasPanelHeight
+    };
+    const float extrasInnerX = layout.extrasPanel.x + 10.0f * scale;
+    const float extrasInnerWidth = layout.extrasPanel.w - 20.0f * scale;
+    const float tabGap = 6.0f * scale;
+    const float tabWidth = (extrasInnerWidth - tabGap) * 0.5f;
+    const float tabY = layout.extrasPanel.y + 28.0f * scale;
+    layout.ropeTab = {extrasInnerX, tabY, tabWidth, 38.0f * scale};
+    layout.meteorTab = {
+        extrasInnerX + tabWidth + tabGap, tabY, tabWidth, 38.0f * scale
+    };
+
+    const float ropeGap = 6.0f * scale;
+    const float ropeWidth = (extrasInnerWidth - ropeGap) * 0.5f;
+    const float ropeHeight = 44.0f * scale;
+    const float ropeY = tabY + 51.0f * scale;
+    for (std::size_t i = 0; i < layout.ropeButtons.size(); ++i)
+    {
+        const std::size_t row = i / 2;
+        const std::size_t column = i % 2;
+        layout.ropeButtons[i] = {
+            extrasInnerX + static_cast<float>(column) * (ropeWidth + ropeGap),
+            ropeY + static_cast<float>(row) * (ropeHeight + ropeGap),
+            ropeWidth, ropeHeight
+        };
+    }
+    layout.meteorSpawnButton = {
+        extrasInnerX, tabY + 91.0f * scale,
+        extrasInnerWidth, 48.0f * scale
+    };
+
     return layout;
 }
 
@@ -394,6 +438,8 @@ void SandboxGame::handlePointerDown(float x, float y)
     if (pointInRect(x, y, layout.mapButton) ||
         pointInRect(x, y, layout.speedLabel) ||
         pointInRect(x, y, layout.pauseButton) ||
+        pointInRect(x, y, layout.extrasButton) ||
+        (extrasPanelOpen_ && pointInRect(x, y, layout.extrasPanel)) ||
         (spawnPanelOpen_ && pointInRect(x, y, layout.spawnPanel)))
     {
         handleUiClick(x, y);
@@ -401,6 +447,16 @@ void SandboxGame::handlePointerDown(float x, float y)
     }
 
     const b2Vec2 world = screenToWorld(x, y);
+    if (meteorEvent_.waitingForTarget())
+    {
+        if (meteorEvent_.setTarget(world.x, world.y))
+        {
+            notice_ = "Meteor ETA 01:00";
+            noticeTimer_ = 2.8f;
+        }
+        return;
+    }
+
     if (spawnPlacementActive_)
     {
         placeSelected(world.x, world.y);
@@ -688,6 +744,72 @@ void SandboxGame::handleUiClick(float x, float y)
         return;
     }
 
+    if (pointInRect(x, y, layout.extrasButton))
+    {
+        extrasPanelOpen_ = !extrasPanelOpen_;
+        return;
+    }
+
+    if (extrasPanelOpen_ && pointInRect(x, y, layout.extrasPanel))
+    {
+        if (pointInRect(x, y, layout.ropeTab))
+        {
+            extraPanelSection_ = ExtraPanelSection::Ropes;
+            return;
+        }
+        if (pointInRect(x, y, layout.meteorTab))
+        {
+            extraPanelSection_ = ExtraPanelSection::Meteor;
+            return;
+        }
+
+        if (extraPanelSection_ == ExtraPanelSection::Ropes)
+        {
+            static constexpr std::array<SpawnItem, 4> ropeItems{
+                SpawnItem::Rope, SpawnItem::Chain,
+                SpawnItem::ElasticRope, SpawnItem::Cable
+            };
+            for (std::size_t i = 0; i < layout.ropeButtons.size(); ++i)
+            {
+                if (!pointInRect(x, y, layout.ropeButtons[i]))
+                    continue;
+                selectedSpawnItem_ = ropeItems[i];
+                spawnCategory_ = i == 0
+                    ? SpawnCategory::Mechanisms : SpawnCategory::Misc;
+                spawnPlacementActive_ = true;
+                tool_ = SandboxTool::Grab;
+                extrasPanelOpen_ = false;
+                notice_ = "Tap near two movable objects to connect";
+                noticeTimer_ = 2.5f;
+                return;
+            }
+        }
+        else if (pointInRect(x, y, layout.meteorSpawnButton))
+        {
+            if (!meteorEvent_.active())
+            {
+                meteorEvent_.beginTargetSelection();
+                spawnPlacementActive_ = false;
+                extrasPanelOpen_ = false;
+                notice_ = "Tap the meteor impact point";
+                noticeTimer_ = 3.0f;
+            }
+            else if (meteorEvent_.waitingForTarget())
+            {
+                meteorEvent_.cancel();
+                notice_ = "Meteor targeting cancelled";
+                noticeTimer_ = 2.0f;
+            }
+            else
+            {
+                notice_ = "A meteor event is already active";
+                noticeTimer_ = 2.0f;
+            }
+            return;
+        }
+        return;
+    }
+
     if (pointInRect(x, y, layout.mapButton))
     {
         cycleMap();
@@ -797,6 +919,7 @@ void SandboxGame::handleUiClick(float x, float y)
             std::vector<std::uint8_t> before;
             const bool canUndo = hadContent && captureHistorySnapshot(before);
             physics_.clearDynamic();
+            meteorEvent_.cancel();
             if (canUndo) pushUndoSnapshot(std::move(before));
             grabbedIndex_ = -1;
             clearConfirmTimer_ = 0.0f;
@@ -984,6 +1107,7 @@ void SandboxGame::cycleMap()
     std::vector<std::uint8_t> before;
     const bool canUndo = captureHistorySnapshot(before);
     physics_.setMap(next, true);
+    meteorEvent_.cancel();
     if (canUndo) pushUndoSnapshot(std::move(before));
     cameraX_ = 0.0f;
     cameraY_ = 0.0f;
@@ -1048,6 +1172,7 @@ void SandboxGame::loadScene(bool silent)
     const bool loaded = physics_.loadFromFile(path);
     if (loaded)
     {
+        meteorEvent_.cancel();
         if (canUndo) pushUndoSnapshot(std::move(before));
         grabbedIndex_ = -1;
         accumulator_ = 0.0f;
@@ -1185,7 +1310,9 @@ void SandboxGame::update(float deltaTime)
     if (paused_)
         return;
 
-    accumulator_ = std::min(accumulator_ + deltaTime * simulationSpeed_, 0.20f);
+    const float simulationDelta = deltaTime * simulationSpeed_;
+    meteorEvent_.update(simulationDelta);
+    accumulator_ = std::min(accumulator_ + simulationDelta, 0.20f);
 
     int steps = 0;
     while (accumulator_ >= kFixedStep && steps < 12)
@@ -2561,6 +2688,8 @@ void SandboxGame::drawUi()
         drawButton(layout.toolButtons[i], toolLabels[i], active);
     }
 
+    drawButton(layout.extrasButton, "EXTRAS", extrasPanelOpen_);
+
     const char* mapLabel = "TEST RANGE";
     switch (physics_.map())
     {
@@ -2699,6 +2828,107 @@ void SandboxGame::drawUi()
         );
 
 
+    }
+
+    if (extrasPanelOpen_)
+    {
+        setColor(renderer_, makeColor(20, 27, 37, 248));
+        SDL_RenderFillRect(renderer_, &layout.extrasPanel);
+        setColor(renderer_, makeColor(86, 104, 123));
+        SDL_RenderRect(renderer_, &layout.extrasPanel);
+
+        setColor(renderer_, makeColor(240, 244, 248));
+        SDL_RenderDebugText(
+            renderer_, layout.extrasPanel.x + 10.0f * layout.scale,
+            layout.extrasPanel.y + 10.0f * layout.scale, "EXTRA TOOLS");
+
+        drawButton(layout.ropeTab, "ROPES",
+            extraPanelSection_ == ExtraPanelSection::Ropes);
+        drawButton(layout.meteorTab, "METEOR",
+            extraPanelSection_ == ExtraPanelSection::Meteor);
+
+        if (extraPanelSection_ == ExtraPanelSection::Ropes)
+        {
+            static constexpr std::array<const char*, 4> ropeLabels{
+                "ROPE", "CHAIN", "ELASTIC", "CABLE"
+            };
+            for (std::size_t i = 0; i < layout.ropeButtons.size(); ++i)
+                drawButton(layout.ropeButtons[i], ropeLabels[i], false);
+            setColor(renderer_, makeColor(166, 181, 196));
+            SDL_RenderDebugText(
+                renderer_, layout.extrasPanel.x + 10.0f * layout.scale,
+                layout.extrasPanel.y + layout.extrasPanel.h -
+                    20.0f * layout.scale,
+                "CONNECTS TWO NEARBY OBJECTS");
+        }
+        else
+        {
+            const char* meteorLabel = "SPAWN METEOR";
+            bool buttonActive = false;
+            if (meteorEvent_.waitingForTarget())
+            {
+                meteorLabel = "CANCEL TARGET";
+                buttonActive = true;
+            }
+            else if (meteorEvent_.active())
+                meteorLabel = "EVENT ACTIVE";
+            drawButton(layout.meteorSpawnButton, meteorLabel, buttonActive);
+
+            char meteorStatus[64]{};
+            switch (meteorEvent_.stage())
+            {
+                case MeteorStage::Idle:
+                    std::snprintf(meteorStatus, sizeof(meteorStatus),
+                        "SELECT A POINT TO SCHEDULE");
+                    break;
+                case MeteorStage::SelectingTarget:
+                    std::snprintf(meteorStatus, sizeof(meteorStatus),
+                        "TAP THE IMPACT POINT");
+                    break;
+                case MeteorStage::Countdown:
+                {
+                    const int seconds = meteorEvent_.countdownSecondsRounded();
+                    std::snprintf(meteorStatus, sizeof(meteorStatus),
+                        "IMPACT IN %02d:%02d", seconds / 60, seconds % 60);
+                    break;
+                }
+                case MeteorStage::AtmosphericEntry:
+                    std::snprintf(meteorStatus, sizeof(meteorStatus),
+                        "ATMOSPHERIC ENTRY");
+                    break;
+                case MeteorStage::Explosion:
+                    std::snprintf(meteorStatus, sizeof(meteorStatus),
+                        "IMPACT EFFECT");
+                    break;
+                case MeteorStage::Crater:
+                {
+                    const int seconds = static_cast<int>(
+                        std::ceil(meteorEvent_.secondsRemaining()));
+                    std::snprintf(meteorStatus, sizeof(meteorStatus),
+                        "CRATER RESTORES %02d:%02d", seconds / 60, seconds % 60);
+                    break;
+                }
+            }
+            setColor(renderer_, makeColor(203, 215, 226));
+            SDL_RenderDebugText(
+                renderer_, layout.extrasPanel.x + 10.0f * layout.scale,
+                layout.extrasPanel.y + 91.0f * layout.scale,
+                meteorStatus);
+            if (meteorEvent_.active())
+            {
+                const int remaining = meteorEvent_.countdownActive()
+                    ? meteorEvent_.countdownSecondsRounded()
+                    : static_cast<int>(std::ceil(meteorEvent_.secondsRemaining()));
+                char timerText[28]{};
+                std::snprintf(timerText, sizeof(timerText),
+                    "%02d:%02d", remaining / 60, remaining % 60);
+                setColor(renderer_, makeColor(255, 185, 105));
+                SDL_RenderDebugText(
+                    renderer_, layout.extrasPanel.x + 10.0f * layout.scale,
+                    layout.extrasPanel.y + 177.0f * layout.scale,
+                    timerText);
+            }
+        }
     }
 
     char status[180];
@@ -3051,6 +3281,197 @@ void SandboxGame::drawSurfaces()
     }
 }
 
+void SandboxGame::drawMeteorEffects()
+{
+    if (meteorEvent_.stage() == MeteorStage::Idle ||
+        meteorEvent_.waitingForTarget())
+        return;
+
+    const SDL_FPoint target = worldToScreen(
+        meteorEvent_.targetX(), meteorEvent_.targetY());
+
+    if (meteorEvent_.countdownActive())
+    {
+        const float pulse = 1.0f +
+            std::sin(static_cast<float>(SDL_GetTicks()) * 0.005f) * 0.08f;
+        const float radius = 22.0f * pulse;
+        setColor(renderer_, makeColor(255, 174, 91, 210));
+        SDL_RenderCircle(renderer_, target.x, target.y, radius);
+        SDL_RenderCircle(renderer_, target.x, target.y, radius * 0.62f);
+        SDL_RenderLine(renderer_, target.x - radius * 1.45f, target.y,
+                       target.x - radius * 0.78f, target.y);
+        SDL_RenderLine(renderer_, target.x + radius * 0.78f, target.y,
+                       target.x + radius * 1.45f, target.y);
+        SDL_RenderLine(renderer_, target.x, target.y - radius * 1.45f,
+                       target.x, target.y - radius * 0.78f);
+        SDL_RenderLine(renderer_, target.x, target.y + radius * 0.78f,
+                       target.x, target.y + radius * 1.45f);
+        return;
+    }
+
+    if (meteorEvent_.inAtmosphere())
+    {
+        const MeteorPoint position = meteorEvent_.meteorPosition();
+        const SDL_FPoint meteor = worldToScreen(position.x, position.y);
+        const float progress = meteorEvent_.flightProgress();
+        const float directionX = 5.0f;
+        const float directionY = -17.0f;
+        const float directionLength = std::hypot(directionX, directionY);
+        const float dx = directionX / directionLength;
+        const float dy = -directionY / directionLength;
+        const float radius = std::clamp(pixelsPerMeter_ * 0.34f, 7.0f, 22.0f);
+        const float trailLength = radius * (2.6f + progress * 2.2f);
+        const SDL_FPoint tail{
+            meteor.x - dx * trailLength,
+            meteor.y - dy * trailLength
+        };
+
+        setColor(renderer_, makeColor(255, 84, 37, 55));
+        SDL_RenderLine(renderer_, tail.x, tail.y,
+                       meteor.x - dx * radius * 0.45f,
+                       meteor.y - dy * radius * 0.45f);
+        setColor(renderer_, makeColor(255, 130, 52, 155));
+        SDL_RenderLine(renderer_, tail.x + 2.0f, tail.y - 1.0f,
+                       meteor.x - dx * radius * 0.35f,
+                       meteor.y - dy * radius * 0.35f);
+        drawFilledCircle(renderer_, meteor.x - dx * trailLength * 0.55f,
+            meteor.y - dy * trailLength * 0.55f, radius * 0.36f,
+            makeColor(255, 102, 34, 85));
+        drawFilledCircle(renderer_, meteor.x - dx * trailLength * 0.25f,
+            meteor.y - dy * trailLength * 0.25f, radius * 0.28f,
+            makeColor(255, 157, 58, 125));
+        drawFilledCircle(renderer_, meteor.x, meteor.y, radius * 1.9f,
+            makeColor(255, 91, 34, 65));
+        drawFilledCircle(renderer_, meteor.x, meteor.y, radius * 1.15f,
+            makeColor(255, 143, 54, 190));
+        drawFilledCircle(renderer_, meteor.x, meteor.y, radius * 0.68f,
+            makeColor(255, 218, 151, 255));
+        drawFilledCircle(renderer_, meteor.x + radius * 0.12f,
+            meteor.y - radius * 0.12f, radius * 0.34f,
+            makeColor(255, 249, 218, 255));
+
+        for (int spark = 0; spark < 5; ++spark)
+        {
+            const float offset = static_cast<float>(spark) * 0.73f + progress * 4.0f;
+            const float side = std::sin(offset * 2.1f) * radius * 0.72f;
+            const SDL_FPoint start{
+                meteor.x - dx * (radius * (1.0f + spark * 0.68f)) - dy * side,
+                meteor.y - dy * (radius * (1.0f + spark * 0.68f)) + dx * side
+            };
+            const SDL_FPoint end{
+                start.x - dx * radius * 0.42f - dy * radius * 0.25f,
+                start.y - dy * radius * 0.42f + dx * radius * 0.25f
+            };
+            setColor(renderer_, makeColor(255, 188, 95,
+                static_cast<Uint8>(185 - spark * 22)));
+            SDL_RenderLine(renderer_, start.x, start.y, end.x, end.y);
+        }
+        return;
+    }
+
+    if (meteorEvent_.exploding())
+    {
+        const float progress = meteorEvent_.explosionProgress();
+        const float fade = 1.0f - progress;
+        const float radius = pixelsPerMeter_ * (0.55f + progress * 2.4f);
+        drawFilledCircle(renderer_, target.x, target.y,
+            radius * 1.55f, makeColor(255, 125, 54,
+                static_cast<Uint8>(65.0f * fade)));
+        drawFilledCircle(renderer_, target.x, target.y,
+            radius * 0.92f, makeColor(255, 193, 104,
+                static_cast<Uint8>(110.0f * fade)));
+        drawFilledCircle(renderer_, target.x, target.y,
+            radius * 0.40f, makeColor(255, 235, 190,
+                static_cast<Uint8>(160.0f * fade)));
+
+        for (int ray = 0; ray < 18; ++ray)
+        {
+            const float angle = 2.0f * kPi *
+                static_cast<float>(ray) / 18.0f +
+                static_cast<float>(SDL_GetTicks()) * 0.00035f;
+            const float inner = radius * (0.35f + (ray % 3) * 0.08f);
+            const float outer = radius * (1.10f + (ray % 4) * 0.17f);
+            const SDL_FPoint a{
+                target.x + std::cos(angle) * inner,
+                target.y + std::sin(angle) * inner
+            };
+            const SDL_FPoint b{
+                target.x + std::cos(angle) * outer,
+                target.y + std::sin(angle) * outer
+            };
+            setColor(renderer_, makeColor(255, 179, 92,
+                static_cast<Uint8>(190.0f * fade)));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+        }
+
+        for (int fragment = 0; fragment < 12; ++fragment)
+        {
+            const float angle = 2.0f * kPi *
+                static_cast<float>(fragment) / 12.0f;
+            const float travel = radius * (0.65f + progress * 0.85f) *
+                (0.75f + static_cast<float>(fragment % 4) * 0.12f);
+            const SDL_FPoint point{
+                target.x + std::cos(angle) * travel,
+                target.y + std::sin(angle) * travel
+            };
+            drawFilledCircle(renderer_, point.x, point.y,
+                std::max(1.5f, pixelsPerMeter_ * 0.045f),
+                makeColor(205, 119, 77,
+                    static_cast<Uint8>(180.0f * fade)));
+        }
+        return;
+    }
+
+    if (meteorEvent_.hasCrater())
+    {
+        const float fade = meteorEvent_.craterFade();
+        const float radiusX = pixelsPerMeter_ * 1.75f;
+        const float radiusY = pixelsPerMeter_ * 0.62f;
+        const Uint8 alpha = static_cast<Uint8>(205.0f * fade);
+
+        drawFilledEllipse(renderer_, target.x, target.y + radiusY * 0.08f,
+            radiusX * 1.22f, radiusY * 1.28f,
+            makeColor(7, 10, 15, static_cast<Uint8>(alpha * 0.60f)));
+        drawFilledEllipse(renderer_, target.x, target.y,
+            radiusX, radiusY, makeColor(37, 43, 48, alpha));
+        drawFilledEllipse(renderer_, target.x, target.y - radiusY * 0.16f,
+            radiusX * 0.72f, radiusY * 0.62f,
+            makeColor(12, 17, 22, alpha));
+
+        for (int segment = 0; segment < 36; ++segment)
+        {
+            const float a0 = 2.0f * kPi * static_cast<float>(segment) / 36.0f;
+            const float a1 = 2.0f * kPi * static_cast<float>(segment + 1) / 36.0f;
+            const float roughness = 1.0f + 0.045f *
+                std::sin(static_cast<float>(segment) * 4.7f);
+            const SDL_FPoint a{
+                target.x + std::cos(a0) * radiusX * roughness,
+                target.y + std::sin(a0) * radiusY * roughness
+            };
+            const SDL_FPoint b{
+                target.x + std::cos(a1) * radiusX * roughness,
+                target.y + std::sin(a1) * radiusY * roughness
+            };
+            setColor(renderer_, makeColor(125, 106, 88,
+                static_cast<Uint8>(alpha * 0.92f)));
+            SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+        }
+
+        for (int rock = 0; rock < 7; ++rock)
+        {
+            const float angle = 2.0f * kPi * static_cast<float>(rock) / 7.0f;
+            const float distance = radiusX * (0.78f + (rock % 3) * 0.12f);
+            const SDL_FPoint point{
+                target.x + std::cos(angle) * distance,
+                target.y + std::sin(angle) * radiusY * 0.76f
+            };
+            drawFilledCircle(renderer_, point.x, point.y,
+                std::max(2.0f, pixelsPerMeter_ * 0.085f),
+                makeColor(105, 96, 87, alpha));
+        }
+    }
+}
+
 void SandboxGame::drawMechanisms()
 {
     const float viewportWidth = static_cast<float>(outputWidth_);
@@ -3334,6 +3755,7 @@ void SandboxGame::render()
     drawBackground();
     drawGrid();
     drawSurfaces();
+    drawMeteorEffects();
 
     const auto& records = physics_.records();
     for (std::size_t i = 0; i < records.size(); ++i)
