@@ -2621,12 +2621,26 @@ bool PhysicsWorld::driveCharacter(
         }
         else if (part.partIndex == 2 || part.partIndex == 3)
         {
-            const float armPhase = part.partIndex == 2 ? halfTurn : 0.0f;
-            targetAngle = std::sin(gaitPhase + armPhase) *
-                0.24f * gaitStrength;
-            stiffness = 4.0f;
-            damping = 1.55f;
-            maxTorque = 6.5f;
+            const bool leadingArm = direction > 0.0f
+                ? part.partIndex == 3 : part.partIndex == 2;
+            if (leadingArm)
+            {
+                // The front hand reaches ahead to make contact with props.
+                targetAngle = direction * 0.46f +
+                    std::sin(gaitPhase) * 0.07f * gaitStrength;
+                stiffness = 6.2f;
+                damping = 1.8f;
+                maxTorque = 9.0f;
+            }
+            else
+            {
+                const float armPhase = part.partIndex == 2 ? halfTurn : 0.0f;
+                targetAngle = std::sin(gaitPhase + armPhase) *
+                    0.20f * gaitStrength;
+                stiffness = 4.0f;
+                damping = 1.55f;
+                maxTorque = 6.5f;
+            }
         }
         else if (part.partIndex == 1)
         {
@@ -2645,6 +2659,67 @@ bool PhysicsWorld::driveCharacter(
 
     return true;
 }
+
+    // The leading palm can push nearby loose props. The impulse is scaled
+    // by object mass and only activates inside the palm's short reach window.
+    const int leadingPart = direction > 0.0f ? 3 : 2;
+    const BodyRecord* leadingArm = nullptr;
+    for (const BodyRecord& part : records_)
+    {
+        if (part.groupId == groupId && part.partIndex == leadingPart &&
+            !part.frozen && b2Body_IsValid(part.id))
+        {
+            leadingArm = &part;
+            break;
+        }
+    }
+    if (leadingArm)
+    {
+        const b2Pos armPosition = b2Body_GetPosition(leadingArm->id);
+        const b2Rot armRotation = b2Body_GetRotation(leadingArm->id);
+        const float localHandY = -leadingArm->halfHeight * 0.90f;
+        const float handX = static_cast<float>(armPosition.x) -
+            static_cast<float>(armRotation.s) * localHandY;
+        const float handY = static_cast<float>(armPosition.y) +
+            static_cast<float>(armRotation.c) * localHandY;
+
+        for (BodyRecord& prop : records_)
+        {
+            if (!prop.selectable || prop.frozen || prop.groupId >= 0 ||
+                prop.partIndex >= 0 || !b2Body_IsValid(prop.id))
+                continue;
+
+            const b2Pos propPosition = b2Body_GetPosition(prop.id);
+            const b2Rot propRotation = b2Body_GetRotation(prop.id);
+            const float cosine = std::abs(static_cast<float>(propRotation.c));
+            const float sine = std::abs(static_cast<float>(propRotation.s));
+            const float extentX = prop.shape == BodyShape::Circle
+                ? prop.radius
+                : cosine * prop.halfWidth + sine * prop.halfHeight;
+            const float extentY = prop.shape == BodyShape::Circle
+                ? prop.radius
+                : sine * prop.halfWidth + cosine * prop.halfHeight;
+            const float propX = static_cast<float>(propPosition.x);
+            const float propY = static_cast<float>(propPosition.y);
+            const float forwardGap = (propX - handX) * direction;
+            const float verticalGap = std::abs(propY - handY);
+            const float reach = extentX + 0.24f;
+
+            if (forwardGap < -0.08f || forwardGap > reach ||
+                verticalGap > extentY + 0.30f)
+                continue;
+
+            const float proximity = 1.0f -
+                std::clamp(forwardGap / std::max(0.1f, reach), 0.0f, 1.0f);
+            const float propMass = std::max(0.1f, b2Body_GetMass(prop.id));
+            const float effectiveMass = std::min(propMass, 3.2f);
+            const float pushAcceleration =
+                (3.5f + 7.0f * proximity) * gaitStrength;
+            b2Body_ApplyForceToCenter(prop.id,
+                {direction * effectiveMass * pushAcceleration,
+                 std::min(effectiveMass * 1.25f * proximity, 4.0f)}, true);
+        }
+    }
 
 void PhysicsWorld::setFrozen(BodyRecord& r, bool frozen)
 {

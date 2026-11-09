@@ -2990,6 +2990,23 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
     // Articulated character marks are short surface scuffs, not fracture cracks.
     if (body.groupId >= 0 && !melonSideProfile)
     {
+        if (body.partIndex == 2 || body.partIndex == 3)
+        {
+            const float handLocalY = -body.halfHeight * 0.88f;
+            const float handWorldX = x - std::sin(angle) * handLocalY;
+            const float handWorldY = y + std::cos(angle) * handLocalY;
+            const SDL_FPoint hand = worldToScreen(handWorldX, handWorldY);
+            const float handRadius = std::max(2.4f, pixelsPerMeter_ * 0.105f);
+            const SDL_Color palmColor = shadeColor(tint, 1.28f);
+            drawFilledEllipse(renderer_, hand.x, hand.y,
+                handRadius * 1.12f, handRadius * 0.88f, palmColor);
+            drawFilledEllipse(renderer_,
+                hand.x - handRadius * 0.20f,
+                hand.y - handRadius * 0.22f,
+                handRadius * 0.34f, handRadius * 0.24f,
+                SDL_Color{245, 252, 235, 175});
+        }
+
         const auto drawScuff = [&](float localX, float localY, float strength)
         {
             const float severity = std::clamp(strength, 0.0f, 1.0f);

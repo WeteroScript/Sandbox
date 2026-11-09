@@ -1365,6 +1365,28 @@ int main()
     CHECK(!walkingWorld.driveCharacter(
         walkingGroup, 0.0f, gaitPhase, 1.0f / 60.0f));
 
+    // The leading hand pushes a nearby loose prop while the character walks.
+    PhysicsWorld handInteractionWorld;
+    handInteractionWorld.setMap(MapKind::Platform, false);
+    const int handCharacter = handInteractionWorld.spawnRagdoll(0.0f, -2.6f);
+    const int handProp = handInteractionWorld.spawnBox(1.15f, -2.25f);
+    CHECK(handCharacter >= 0 && handProp >= 0);
+    const b2BodyId handPropBody = handInteractionWorld.records()[
+        static_cast<std::size_t>(handProp)].id;
+    const float handPropStartX =
+        static_cast<float>(b2Body_GetPosition(handPropBody).x);
+    float handGaitPhase = 0.0f;
+    for (int i = 0; i < 60; ++i)
+    {
+        handGaitPhase += (1.0f / 60.0f) * 8.6f;
+        CHECK(handInteractionWorld.driveCharacter(
+            handCharacter, 1.0f, handGaitPhase, 1.0f / 60.0f));
+        handInteractionWorld.step(1.0f / 60.0f, 4);
+    }
+    const float handPropEndX =
+        static_cast<float>(b2Body_GetPosition(handPropBody).x);
+    CHECK(handPropEndX > handPropStartX + 0.15f);
+
     // Head and arms receive gentle posture assistance after a strong wobble.
     PhysicsWorld balancedCharacterWorld;
     balancedCharacterWorld.setMap(MapKind::Platform, false);
