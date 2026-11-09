@@ -319,7 +319,7 @@ UiLayout SandboxGame::makeUiLayout() const
     };
 
     const float extrasPanelWidth = 238.0f * scale;
-    const float extrasPanelHeight = 222.0f * scale;
+    const float extrasPanelHeight = 236.0f * scale;
     layout.extrasPanel = {
         static_cast<float>(outputWidth_) - margin - extrasPanelWidth,
         layout.extrasButton.y - 8.0f * scale - extrasPanelHeight,
@@ -335,14 +335,14 @@ UiLayout SandboxGame::makeUiLayout() const
         extrasInnerX + tabWidth + tabGap, tabY, tabWidth, 38.0f * scale
     };
 
-    const float ropeGap = 6.0f * scale;
-    const float ropeWidth = (extrasInnerWidth - ropeGap) * 0.5f;
-    const float ropeHeight = 44.0f * scale;
-    const float ropeY = tabY + 51.0f * scale;
+    const float ropeGap = 5.0f * scale;
+    const float ropeWidth = (extrasInnerWidth - ropeGap * 2.0f) / 3.0f;
+    const float ropeHeight = 38.0f * scale;
+    const float ropeY = tabY + 48.0f * scale;
     for (std::size_t i = 0; i < layout.ropeButtons.size(); ++i)
     {
-        const std::size_t row = i / 2;
-        const std::size_t column = i % 2;
+        const std::size_t row = i / 3;
+        const std::size_t column = i % 3;
         layout.ropeButtons[i] = {
             extrasInnerX + static_cast<float>(column) * (ropeWidth + ropeGap),
             ropeY + static_cast<float>(row) * (ropeHeight + ropeGap),
@@ -981,16 +981,16 @@ void SandboxGame::handleUiClick(float x, float y)
 
         if (extraPanelSection_ == ExtraPanelSection::Ropes)
         {
-            static constexpr std::array<SpawnItem, 4> ropeItems{
-                SpawnItem::Rope, SpawnItem::Chain,
-                SpawnItem::ElasticRope, SpawnItem::Cable
+            static constexpr std::array<SpawnItem, 6> ropeItems{
+                SpawnItem::Rope, SpawnItem::Chain, SpawnItem::ElasticRope,
+                SpawnItem::Cable, SpawnItem::Rod, SpawnItem::Spring
             };
             for (std::size_t i = 0; i < layout.ropeButtons.size(); ++i)
             {
                 if (!pointInRect(x, y, layout.ropeButtons[i]))
                     continue;
                 selectedSpawnItem_ = ropeItems[i];
-                spawnCategory_ = i == 0
+                spawnCategory_ = (i == 0 || i >= 4)
                     ? SpawnCategory::Mechanisms : SpawnCategory::Misc;
                 spawnPlacementActive_ = true;
                 tool_ = SandboxTool::Grab;
@@ -2484,66 +2484,44 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
             const float impactY = std::clamp(
                 localY / std::max(0.001f, body.radius), -0.68f, 0.68f);
             const SDL_FPoint impact = facePoint(impactX, impactY);
-            const float markRadius =
-                radiusPixels * (0.085f + severity * 0.085f);
-
-            drawFilledEllipse(renderer_, impact.x, impact.y,
-                markRadius * 1.55f, markRadius * 1.05f,
-                SDL_Color{34, 83, 43,
-                    static_cast<Uint8>(45.0f + severity * 85.0f)});
-            drawFilledEllipse(renderer_,
-                impact.x - markRadius * 0.12f,
-                impact.y - markRadius * 0.10f,
-                markRadius * 0.72f, markRadius * 0.48f,
-                SDL_Color{94, 131, 61,
-                    static_cast<Uint8>(35.0f + severity * 90.0f)});
-            drawFilledEllipse(renderer_,
-                impact.x - markRadius * 0.24f,
-                impact.y - markRadius * 0.22f,
-                markRadius * 0.24f, markRadius * 0.16f,
-                SDL_Color{193, 226, 132,
-                    static_cast<Uint8>(35.0f + severity * 70.0f)});
-
-            const float crackLength = 0.14f + severity * 0.30f;
-            for (int branch = 0; branch < 4; ++branch)
+            const float scratchLength = 0.17f + severity * 0.23f;
+            const float scratchWidth = 0.035f + severity * 0.025f;
+            for (int scratch = 0; scratch < 3; ++scratch)
             {
-                const float angleOffset =
-                    0.72f + static_cast<float>(branch) * 1.47f;
-                const float directionX = std::cos(angleOffset);
-                const float directionY = std::sin(angleOffset) * 0.78f;
-                const float midX = std::clamp(
-                    impactX + directionX * crackLength * 0.48f,
+                const float offset = (static_cast<float>(scratch) - 1.0f) *
+                    scratchWidth * 1.8f;
+                const float directionX = 0.82f;
+                const float directionY = -0.34f + static_cast<float>(scratch) * 0.12f;
+                const float startX = std::clamp(
+                    impactX - directionX * scratchWidth + offset,
                     -0.90f, 0.90f);
-                const float midY = std::clamp(
-                    impactY + directionY * crackLength * 0.48f,
+                const float startY = std::clamp(
+                    impactY - directionY * scratchWidth + offset,
                     -0.70f, 0.70f);
                 const float endX = std::clamp(
-                    impactX + directionX * crackLength,
-                    -0.90f, 0.90f);
+                    startX + directionX * scratchLength, -0.90f, 0.90f);
                 const float endY = std::clamp(
-                    impactY + directionY * crackLength,
-                    -0.70f, 0.70f);
-                const SDL_FPoint middle = facePoint(midX, midY);
-                const SDL_FPoint end = facePoint(endX, endY);
-                setColor(renderer_, SDL_Color{28, 73, 38,
-                    static_cast<Uint8>(100.0f + severity * 135.0f)});
-                SDL_RenderLine(renderer_, impact.x, impact.y,
-                               middle.x, middle.y);
-                SDL_RenderLine(renderer_, middle.x, middle.y,
-                               end.x, end.y);
-
-                const float branchX = std::clamp(
-                    midX - directionY * crackLength * 0.24f,
-                    -0.90f, 0.90f);
-                const float branchY = std::clamp(
-                    midY + directionX * crackLength * 0.24f,
-                    -0.70f, 0.70f);
-                const SDL_FPoint branchPoint = facePoint(branchX, branchY);
-                setColor(renderer_, SDL_Color{44, 93, 48,
-                    static_cast<Uint8>(70.0f + severity * 105.0f)});
-                SDL_RenderLine(renderer_, middle.x, middle.y,
-                               branchPoint.x, branchPoint.y);
+                    startY + directionY * scratchLength, -0.70f, 0.70f);
+                const SDL_FPoint a = facePoint(startX, startY);
+                const SDL_FPoint b = facePoint(endX, endY);
+                setColor(renderer_, SDL_Color{28, 72, 38,
+                    static_cast<Uint8>(115.0f + severity * 100.0f)});
+                SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+                const SDL_FPoint highlightA = facePoint(
+                    startX, std::clamp(startY + scratchWidth * 0.06f,
+                                       -0.70f, 0.70f));
+                const SDL_FPoint highlightB = facePoint(
+                    endX, std::clamp(endY + scratchWidth * 0.06f,
+                                     -0.70f, 0.70f));
+                setColor(renderer_, SDL_Color{184, 211, 130,
+                    static_cast<Uint8>(65.0f + severity * 95.0f)});
+                SDL_RenderLine(renderer_, highlightA.x, highlightA.y,
+                               highlightB.x, highlightB.y);
             }
+            drawFilledCircle(renderer_, impact.x, impact.y,
+                std::max(1.5f, radiusPixels * (0.018f + severity * 0.025f)),
+                SDL_Color{35, 78, 39,
+                    static_cast<Uint8>(100.0f + severity * 90.0f)});
         };
 
         if (body.impactMarkCount > 0)
@@ -2580,6 +2558,54 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                 body.material, drawableImpact, body.impactLocalX,
                 body.impactLocalY, body.impactMarks,
                 body.impactMarkCount, selected);
+
+    // Articulated character marks are short surface scuffs, not fracture cracks.
+    if (body.groupId >= 0 && !melonSideProfile)
+    {
+        const auto drawScuff = [&](float localX, float localY, float strength)
+        {
+            const float severity = std::clamp(strength, 0.0f, 1.0f);
+            if (severity <= 0.015f)
+                return;
+            const float limitX = body.shape == BodyShape::Circle
+                ? body.radius * 0.82f : body.halfWidth * 0.82f;
+            const float limitY = body.shape == BodyShape::Circle
+                ? body.radius * 0.82f : body.halfHeight * 0.82f;
+            localX = std::clamp(localX, -limitX, limitX);
+            localY = std::clamp(localY, -limitY, limitY);
+            const float length = std::max(0.045f,
+                std::min(limitX, limitY) * (0.22f + severity * 0.42f));
+            const auto point = [&](float lx, float ly)
+            {
+                return worldToScreen(
+                    x + std::cos(angle) * lx - std::sin(angle) * ly,
+                    y + std::sin(angle) * lx + std::cos(angle) * ly);
+            };
+            for (int line = -1; line <= 1; ++line)
+            {
+                const float offset = static_cast<float>(line) * length * 0.22f;
+                const SDL_FPoint a = point(
+                    std::clamp(localX - length * 0.42f, -limitX, limitX),
+                    std::clamp(localY + offset, -limitY, limitY));
+                const SDL_FPoint b = point(
+                    std::clamp(localX + length * 0.42f, -limitX, limitX),
+                    std::clamp(localY + offset - length * 0.16f, -limitY, limitY));
+                setColor(renderer_, SDL_Color{45, 70, 52,
+                    static_cast<Uint8>(85.0f + severity * 125.0f)});
+                SDL_RenderLine(renderer_, a.x, a.y, b.x, b.y);
+            }
+        };
+        if (body.impactMarkCount > 0)
+        {
+            for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
+            {
+                const ImpactMark& impact = body.impactMarks[mark];
+                drawScuff(impact.localX, impact.localY, impact.strength);
+            }
+        }
+        else
+            drawScuff(body.impactLocalX, body.impactLocalY, body.impactDamage);
+    }
 
     // Acid damage gradually reveals small, deterministic surface pits. The
     // pattern is derived from the body ID, so it stays stable across frames.
@@ -3113,8 +3139,8 @@ void SandboxGame::drawUi()
 
         if (extraPanelSection_ == ExtraPanelSection::Ropes)
         {
-            static constexpr std::array<const char*, 4> ropeLabels{
-                "ROPE", "CHAIN", "ELASTIC", "CABLE"
+            static constexpr std::array<const char*, 6> ropeLabels{
+                "ROPE", "CHAIN", "ELASTIC", "CABLE", "ROD", "SPRING"
             };
             for (std::size_t i = 0; i < layout.ropeButtons.size(); ++i)
                 drawButton(layout.ropeButtons[i], ropeLabels[i], false);
@@ -3122,8 +3148,8 @@ void SandboxGame::drawUi()
             SDL_RenderDebugText(
                 renderer_, layout.extrasPanel.x + 10.0f * layout.scale,
                 layout.extrasPanel.y + layout.extrasPanel.h -
-                    20.0f * layout.scale,
-                "CONNECTS TWO NEARBY OBJECTS");
+                    18.0f * layout.scale,
+                "LINKS AND REINFORCEMENT");
         }
         else
         {

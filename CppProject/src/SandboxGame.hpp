@@ -43,7 +43,7 @@ struct UiLayout
     SDL_FRect extrasPanel{};
     SDL_FRect ropeTab{};
     SDL_FRect meteorTab{};
-    std::array<SDL_FRect, 4> ropeButtons{};
+    std::array<SDL_FRect, 6> ropeButtons{};
     SDL_FRect meteorSpawnButton{};
 };
 
