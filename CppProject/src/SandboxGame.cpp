@@ -1866,7 +1866,7 @@ void SandboxGame::update(float deltaTime)
         {
             const float intensity = std::clamp((impactSpeed - 2.5f) / 13.0f,
                                                0.15f, 1.0f);
-            playSoundCue(physics_.map() == MapKind::WinterLake
+            playSoundCue(physics_.lastImpactWasSnow()
                 ? SoundCue::SnowCrunch : SoundCue::Impact, intensity);
             impactSoundCooldown_ = physics_.map() == MapKind::WinterLake
                 ? 0.16f : 0.11f;
@@ -2095,6 +2095,24 @@ void SandboxGame::drawBox(float x, float y, float halfWidth, float halfHeight,
                     drawFilledCircle(renderer_, fastener.x, fastener.y,
                         1.7f, SDL_Color{42, 49, 57, 190});
                 }
+        }
+        else if (material == MaterialKind::Snow)
+        {
+            for (int flake = 0; flake < 11; ++flake)
+            {
+                const float fx = (static_cast<float>(flake % 6) - 2.5f) *
+                    halfWidth * 0.22f;
+                const float fy = (static_cast<float>(flake / 6) - 0.5f) *
+                    halfHeight * 0.52f;
+                const SDL_FPoint pointOnSnow = point(fx, fy);
+                const float radius = 0.8f + static_cast<float>(flake % 3) * 0.35f;
+                drawFilledCircle(renderer_, pointOnSnow.x, pointOnSnow.y,
+                    radius, SDL_Color{255, 255, 255, 215});
+            }
+            setColor(renderer_, SDL_Color{204, 222, 235, 175});
+            const SDL_FPoint seamA = point(-halfWidth * 0.84f, -halfHeight * 0.45f);
+            const SDL_FPoint seamB = point(halfWidth * 0.84f, -halfHeight * 0.45f);
+            SDL_RenderLine(renderer_, seamA.x, seamA.y, seamB.x, seamB.y);
         }
         else if (material == MaterialKind::Ice)
         {
@@ -2682,6 +2700,11 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
             corrosionPit = {81, 125, 151, 255};
             corrosionHighlight = {222, 239, 247, 255};
             corrosionTint = {197, 222, 235, 255};
+            break;
+        case MaterialKind::Snow:
+            corrosionPit = {151, 177, 193, 255};
+            corrosionHighlight = {255, 255, 255, 255};
+            corrosionTint = {223, 238, 247, 255};
             break;
         case MaterialKind::Plastic:
             corrosionPit = {99, 59, 43, 255};

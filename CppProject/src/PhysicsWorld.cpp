@@ -94,6 +94,9 @@ const MaterialProfile& materialProfile(MaterialKind material)
     static const MaterialProfile plastic{
         0.82f, 0.62f, 0.11f, 18.0f, 8.0f, 0.30f,
         {190, 105, 74, 255}};
+    static const MaterialProfile snow{
+        0.58f, 0.92f, 0.015f, 0.0f, 0.0f, 0.02f,
+        {232, 243, 250, 255}};
     static const MaterialProfile organic{
         1.0f, 0.68f, 0.02f, 0.0f, 5.0f, 1.25f,
         {128, 190, 135, 255}};
@@ -108,6 +111,7 @@ const MaterialProfile& materialProfile(MaterialKind material)
         case MaterialKind::Organic: return organic;
         case MaterialKind::Ice: return ice;
         case MaterialKind::Plastic: return plastic;
+        case MaterialKind::Snow: return snow;
     }
     return wood;
 }
@@ -758,13 +762,14 @@ void PhysicsWorld::buildMapGeometry()
             break;
 
         case MapKind::WinterLake:
-            // The frozen lake is a low-friction physical surface.
-            createBox(-10.0f, -4.55f, 2.7f, 0.18f, 0.0f,
-                      {229, 241, 248, 255}, true, false,
-                      -1, 1.0f, -1, MaterialKind::Concrete, false);
-            createBox(10.0f, -4.55f, 2.7f, 0.18f, 0.0f,
-                      {229, 241, 248, 255}, true, false,
-                      -1, 1.0f, -1, MaterialKind::Concrete, false);
+            // A low-friction ice lane runs through the center. Snow banks
+            // along both edges use a separate high-grip physical material.
+            createBox(-10.0f, -4.62f, 4.6f, 0.24f, 0.0f,
+                      {232, 243, 250, 255}, true, false,
+                      -1, 1.0f, -1, MaterialKind::Snow, false);
+            createBox(10.0f, -4.62f, 4.6f, 0.24f, 0.0f,
+                      {232, 243, 250, 255}, true, false,
+                      -1, 1.0f, -1, MaterialKind::Snow, false);
             createBox(-7.3f, -2.9f, 1.25f, 0.32f, 0.0f,
                       obstacle, true, false);
             createBox(7.3f, -2.9f, 1.25f, 0.32f, 0.0f,
@@ -1450,6 +1455,7 @@ void PhysicsWorld::step(float dt, int subSteps)
     updateMechanisms(dt);
     b2World_Step(world_, dt, subSteps);
     lastImpactSpeed_ = 0.0f;
+    lastImpactWasSnow_ = false;
     processImpactEvents();
 
     // Keep articulated characters stable under small incidental impacts.
@@ -1544,6 +1550,8 @@ void PhysicsWorld::processImpactEvents()
         BodyRecord& record = records_[recordIndex];
         if (std::isfinite(approachSpeed))
             lastImpactSpeed_ = std::max(lastImpactSpeed_, approachSpeed);
+        if (record.material == MaterialKind::Snow)
+            lastImpactWasSnow_ = true;
 
         const auto rememberImpactPoint = [&](float strength)
         {

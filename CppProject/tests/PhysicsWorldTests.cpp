@@ -1279,6 +1279,33 @@ int main()
             restoredCharacterDamageTotal += record.impactDamage;
     CHECK(restoredCharacterDamageTotal > 0.025f);
 
+    // The winter map separates slippery ice from grippy snow banks.
+    // Collision audio distinguishes impacts on snow from impacts on the ice lane.
+    PhysicsWorld snowContactWorld;
+    snowContactWorld.setMap(MapKind::WinterLake, false);
+    const int snowContactBall = snowContactWorld.spawnBall(-10.0f, -3.2f);
+    CHECK(snowContactBall >= 0);
+    bool detectedSnowImpact = false;
+    for (int i = 0; i < 120; ++i)
+    {
+        snowContactWorld.step(1.0f / 60.0f, 4);
+        detectedSnowImpact = detectedSnowImpact ||
+            snowContactWorld.lastImpactWasSnow();
+    }
+    CHECK(detectedSnowImpact);
+
+    PhysicsWorld iceLaneWorld;
+    iceLaneWorld.setMap(MapKind::WinterLake, false);
+    const int iceLaneBall = iceLaneWorld.spawnBall(0.0f, -3.2f);
+    CHECK(iceLaneBall >= 0);
+    bool falseSnowImpact = false;
+    for (int i = 0; i < 120; ++i)
+    {
+        iceLaneWorld.step(1.0f / 60.0f, 4);
+        falseSnowImpact = falseSnowImpact || iceLaneWorld.lastImpactWasSnow();
+    }
+    CHECK(!falseSnowImpact);
+
     // A fallen character receives a gentle self-righting force.
     PhysicsWorld selfRightingWorld;
     selfRightingWorld.setMap(MapKind::Platform, false);

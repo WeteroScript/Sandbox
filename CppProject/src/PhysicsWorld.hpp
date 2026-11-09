@@ -11,7 +11,7 @@
 #include <vector>
 
 enum class BodyShape : std::uint8_t { Box, Circle };
-enum class MaterialKind : std::uint8_t { Wood, Metal, Glass, Rubber, Concrete, Organic, Ice, Plastic };
+enum class MaterialKind : std::uint8_t { Wood, Metal, Glass, Rubber, Concrete, Organic, Ice, Plastic, Snow };
 enum class MapKind : std::uint8_t { TestRange, City, Laboratory, LavaLake, WinterLake, Ocean, Platform };
 enum class SurfaceKind : std::uint8_t { Water, Lava, Acid };
 enum class BucketKind : std::uint8_t { None, Water, Lava, Acid };
@@ -113,6 +113,7 @@ public:
     bool interactAt(float x, float y);
     bool releaseBucketIfTilted(int index);
     float lastImpactSpeed() const { return lastImpactSpeed_; }
+    bool lastImpactWasSnow() const { return lastImpactWasSnow_; }
     std::size_t applyMeteorImpact(
         float x, float y, float radius, float impulseStrength);
     bool createMeteorCrater(
@@ -149,6 +150,7 @@ private:
     bool mechanismsEnabled_ = true;
     float environmentTime_ = 0.0f;
     float lastImpactSpeed_ = 0.0f;
+    bool lastImpactWasSnow_ = false;
     std::array<b2BodyId, 5> meteorCraterBodies_{};
     bool meteorCraterFloorSaved_ = false;
     float meteorCraterRemaining_ = 0.0f;
