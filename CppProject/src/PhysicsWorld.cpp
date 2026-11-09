@@ -813,7 +813,8 @@ bool PhysicsWorld::createMeteorCrater(
 
     const float leftHalfWidth = (gapLeft - leftEdge) * 0.5f;
     const float rightHalfWidth = (rightEdge - gapRight) * 0.5f;
-    const float lowerInset = radius * 0.36f;
+    // Keep the lower opening wide enough for standard sandbox props.
+    const float lowerInset = radius * 0.66f;
     const float rampDrop = 0.92f;
     const float rampRun = radius - lowerInset;
     const float rampLength = std::hypot(rampRun, rampDrop);
