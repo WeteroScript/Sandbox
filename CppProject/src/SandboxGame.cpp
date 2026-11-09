@@ -374,7 +374,7 @@ void SandboxGame::processEvents()
                     if (meteorEvent_.active())
                     {
                         const bool selectingTarget = meteorEvent_.waitingForTarget();
-        meteorEvent_.cancel();
+                        meteorEvent_.cancel();
                         physics_.clearMeteorCrater();
                         notice_ = selectingTarget
                             ? "Meteor targeting cancelled"
@@ -810,7 +810,7 @@ void SandboxGame::handleUiClick(float x, float y)
             else
             {
                 const bool selectingTarget = meteorEvent_.waitingForTarget();
-        meteorEvent_.cancel();
+                meteorEvent_.cancel();
                 physics_.clearMeteorCrater();
                 notice_ = selectingTarget
                     ? "Meteor targeting cancelled"
@@ -931,7 +931,7 @@ void SandboxGame::handleUiClick(float x, float y)
             std::vector<std::uint8_t> before;
             const bool canUndo = hadContent && captureHistorySnapshot(before);
             physics_.clearDynamic();
-        meteorEvent_.cancel();
+            meteorEvent_.cancel();
             physics_.clearMeteorCrater();
             if (canUndo) pushUndoSnapshot(std::move(before));
             grabbedIndex_ = -1;
@@ -1120,7 +1120,7 @@ void SandboxGame::cycleMap()
     std::vector<std::uint8_t> before;
     const bool canUndo = captureHistorySnapshot(before);
     physics_.setMap(next, true);
-        meteorEvent_.cancel();
+    meteorEvent_.cancel();
     physics_.clearMeteorCrater();
     if (canUndo) pushUndoSnapshot(std::move(before));
     cameraX_ = 0.0f;
@@ -1256,6 +1256,7 @@ void SandboxGame::undoScene()
         return;
     }
 
+    meteorEvent_.cancel();
     redoHistory_.push_back(std::move(current));
     if (redoHistory_.size() > kHistoryLimit)
         redoHistory_.erase(redoHistory_.begin());
@@ -1292,6 +1293,7 @@ void SandboxGame::redoScene()
         return;
     }
 
+    meteorEvent_.cancel();
     undoHistory_.push_back(std::move(current));
     if (undoHistory_.size() > kHistoryLimit)
         undoHistory_.erase(undoHistory_.begin());

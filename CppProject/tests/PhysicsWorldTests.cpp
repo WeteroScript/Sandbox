@@ -156,6 +156,11 @@ int main()
     CHECK(!craterWorld.meteorCraterActive());
     CHECK(craterWorld.records().size() == originalTerrainRecords + 1);
 
+    CHECK(craterWorld.createMeteorCrater(0.0f, -4.8f, 1.65f, 5.0f));
+    craterWorld.setMap(MapKind::City, false);
+    CHECK(!craterWorld.meteorCraterActive());
+    CHECK(craterWorld.records().size() == 6);
+
     PhysicsWorld world;
     const std::size_t initialCount = world.dynamicCount();
     CHECK(initialCount == 8);
