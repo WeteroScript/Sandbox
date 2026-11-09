@@ -166,7 +166,7 @@ bool SandboxGame::initialize()
     SDL_SetRenderVSync(renderer_, 1);
     SDL_SetRenderDrawBlendMode(renderer_, SDL_BLENDMODE_BLEND);
     SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
-    loadScene(true);
+    physics_.setMap(selectedMap_, false);
     return true;
 }
 
@@ -371,6 +371,17 @@ void SandboxGame::processEvents()
             case SDL_EVENT_KEY_DOWN:
                 if (!event.key.repeat && event.key.key == SDLK_AC_BACK)
                 {
+                    if (screen_ == GameScreen::MainMenu)
+                    {
+                        running_ = false;
+                        break;
+                    }
+                    if (screen_ == GameScreen::MapSelect)
+                    {
+                        screen_ = mapSelectFromGame_
+                            ? GameScreen::Playing : GameScreen::MainMenu;
+                        break;
+                    }
                     if (meteorEvent_.active())
                     {
                         const bool selectingTarget = meteorEvent_.waitingForTarget();
@@ -427,10 +438,202 @@ bool SandboxGame::pointInRect(float x, float y, const SDL_FRect& rect) const
            x <= rect.x + rect.w && y <= rect.y + rect.h;
 }
 
+
+SDL_FRect SandboxGame::mainMenuButtonRect(std::size_t index) const
+{
+    if (index >= 3)
+        return {};
+
+    const float scale = clampFloat(
+        std::min(static_cast<float>(outputWidth_) / 900.0f,
+                 static_cast<float>(outputHeight_) / 540.0f),
+        0.75f, 1.30f);
+    const float width = std::min(360.0f * scale,
+                                 static_cast<float>(outputWidth_) * 0.72f);
+    const float height = 60.0f * scale;
+    const float gap = 13.0f * scale;
+    const float stackHeight = height * 3.0f + gap * 2.0f;
+    const float top = (static_cast<float>(outputHeight_) - stackHeight) * 0.5f +
+                      55.0f * scale;
+    return {
+        (static_cast<float>(outputWidth_) - width) * 0.5f,
+        top + static_cast<float>(index) * (height + gap),
+        width, height
+    };
+}
+
+SDL_FRect SandboxGame::mapOptionRect(std::size_t index) const
+{
+    const float scale = clampFloat(
+        std::min(static_cast<float>(outputWidth_) / 900.0f,
+                 static_cast<float>(outputHeight_) / 540.0f),
+        0.72f, 1.25f);
+    if (index >= 4)
+    {
+        const float width = 190.0f * scale;
+        const float height = 48.0f * scale;
+        return {
+            (static_cast<float>(outputWidth_) - width) * 0.5f,
+            static_cast<float>(outputHeight_) - height - 22.0f * scale,
+            width, height
+        };
+    }
+
+    const float width = std::min(350.0f * scale,
+                                 static_cast<float>(outputWidth_) * 0.43f);
+    const float height = 76.0f * scale;
+    const float gapX = 16.0f * scale;
+    const float gapY = 14.0f * scale;
+    const float totalWidth = width * 2.0f + gapX;
+    const float startX = (static_cast<float>(outputWidth_) - totalWidth) * 0.5f;
+    const float startY = static_cast<float>(outputHeight_) * 0.5f -
+                         height - gapY * 0.5f + 12.0f * scale;
+    const std::size_t row = index / 2;
+    const std::size_t column = index % 2;
+    return {
+        startX + static_cast<float>(column) * (width + gapX),
+        startY + static_cast<float>(row) * (height + gapY),
+        width, height
+    };
+}
+
+void SandboxGame::handleMenuClick(float x, float y)
+{
+    if (screen_ == GameScreen::MainMenu)
+    {
+        if (pointInRect(x, y, mainMenuButtonRect(0)))
+        {
+            physics_.setMap(selectedMap_, true);
+            meteorEvent_.cancel();
+            physics_.clearMeteorCrater();
+            screen_ = GameScreen::Playing;
+            paused_ = false;
+            cameraX_ = 0.0f;
+            cameraY_ = 0.0f;
+            pixelsPerMeter_ = 44.0f;
+            grabbedIndex_ = -1;
+            spawnPlacementActive_ = false;
+            notice_ = "Sandbox ready";
+            noticeTimer_ = 2.0f;
+        }
+        else if (pointInRect(x, y, mainMenuButtonRect(1)))
+        {
+            mapSelectFromGame_ = false;
+            screen_ = GameScreen::MapSelect;
+        }
+        else if (pointInRect(x, y, mainMenuButtonRect(2)))
+            running_ = false;
+        return;
+    }
+
+    if (screen_ != GameScreen::MapSelect)
+        return;
+
+    static constexpr std::array<MapKind, 4> availableMaps{
+        MapKind::LavaLake, MapKind::WinterLake,
+        MapKind::Ocean, MapKind::Platform
+    };
+    for (std::size_t i = 0; i < availableMaps.size(); ++i)
+    {
+        if (!pointInRect(x, y, mapOptionRect(i)))
+            continue;
+
+        selectedMap_ = availableMaps[i];
+        if (mapSelectFromGame_)
+        {
+            physics_.setMap(selectedMap_, true);
+            meteorEvent_.cancel();
+            physics_.clearMeteorCrater();
+            screen_ = GameScreen::Playing;
+            cameraX_ = 0.0f;
+            cameraY_ = 0.0f;
+            pixelsPerMeter_ = 44.0f;
+            grabbedIndex_ = -1;
+            spawnPlacementActive_ = false;
+        }
+        else
+            screen_ = GameScreen::MainMenu;
+        return;
+    }
+
+    if (pointInRect(x, y, mapOptionRect(4)))
+        screen_ = mapSelectFromGame_
+            ? GameScreen::Playing : GameScreen::MainMenu;
+}
+
+void SandboxGame::drawMainMenu()
+{
+    SDL_FRect shade{0.0f, 0.0f,
+        static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+    setColor(renderer_, makeColor(8, 13, 21, 176));
+    SDL_RenderFillRect(renderer_, &shade);
+
+    const float centerX = static_cast<float>(outputWidth_) * 0.5f;
+    const float titleY = static_cast<float>(outputHeight_) * 0.5f - 188.0f;
+    setColor(renderer_, makeColor(243, 248, 252));
+    SDL_RenderDebugText(renderer_, centerX - 28.0f, titleY, "SANDBOX");
+    setColor(renderer_, makeColor(148, 176, 198));
+    SDL_RenderDebugText(renderer_, centerX - 84.0f, titleY + 22.0f,
+                        "PHYSICS PLAYGROUND");
+
+    static constexpr std::array<const char*, 3> labels{
+        "START", "SELECT MAP", "EXIT"
+    };
+    for (std::size_t i = 0; i < labels.size(); ++i)
+        drawButton(mainMenuButtonRect(i), labels[i], i == 0);
+
+    const char* selected = "PLATFORM";
+    switch (selectedMap_)
+    {
+        case MapKind::LavaLake: selected = "LAVA LAKE"; break;
+        case MapKind::WinterLake: selected = "WINTER LAKE"; break;
+        case MapKind::Ocean: selected = "OCEAN"; break;
+        case MapKind::Platform: selected = "PLATFORM"; break;
+        case MapKind::TestRange: selected = "TEST RANGE"; break;
+        case MapKind::City: selected = "CITY"; break;
+        case MapKind::Laboratory: selected = "LABORATORY"; break;
+    }
+    char status[80]{};
+    std::snprintf(status, sizeof(status), "SELECTED MAP: %s", selected);
+    setColor(renderer_, makeColor(190, 205, 218));
+    SDL_RenderDebugText(renderer_, centerX - 72.0f,
+        mainMenuButtonRect(2).y + mainMenuButtonRect(2).h + 19.0f, status);
+}
+
+void SandboxGame::drawMapSelection()
+{
+    SDL_FRect shade{0.0f, 0.0f,
+        static_cast<float>(outputWidth_), static_cast<float>(outputHeight_)};
+    setColor(renderer_, makeColor(8, 13, 21, 190));
+    SDL_RenderFillRect(renderer_, &shade);
+
+    const float centerX = static_cast<float>(outputWidth_) * 0.5f;
+    setColor(renderer_, makeColor(243, 248, 252));
+    SDL_RenderDebugText(renderer_, centerX - 40.0f,
+        static_cast<float>(outputHeight_) * 0.5f - 154.0f, "CHOOSE MAP");
+
+    static constexpr std::array<const char*, 4> labels{
+        "LAVA LAKE", "WINTER LAKE", "OCEAN", "PLATFORM"
+    };
+    static constexpr std::array<MapKind, 4> maps{
+        MapKind::LavaLake, MapKind::WinterLake, MapKind::Ocean, MapKind::Platform
+    };
+    for (std::size_t i = 0; i < labels.size(); ++i)
+        drawButton(mapOptionRect(i), labels[i], selectedMap_ == maps[i]);
+    drawButton(mapOptionRect(4), "BACK", false);
+}
+
 void SandboxGame::handlePointerDown(float x, float y)
 {
     pointerX_ = x;
     pointerY_ = y;
+    if (screen_ != GameScreen::Playing)
+    {
+        handleMenuClick(x, y);
+        pointerDown_ = false;
+        panning_ = false;
+        return;
+    }
     pointerDown_ = true;
     panning_ = false;
 
@@ -651,7 +854,7 @@ void SandboxGame::handleFingerMove(SDL_FingerID fingerId, float x, float y)
         const float midY = (secondaryTouchY_ + primaryTouchY_) * 0.5f;
         const float oldScale = pixelsPerMeter_;
         const float newScale = pinchDistance_ > 1.0f
-            ? clampFloat(oldScale * newDistance / pinchDistance_, 24.0f, 100.0f)
+            ? clampFloat(oldScale * newDistance / pinchDistance_, 12.0f, 160.0f)
             : oldScale;
 
         // Preserve the world point under the previous pinch midpoint while it moves.
@@ -824,7 +1027,9 @@ void SandboxGame::handleUiClick(float x, float y)
 
     if (pointInRect(x, y, layout.mapButton))
     {
-        cycleMap();
+        selectedMap_ = physics_.map();
+        mapSelectFromGame_ = true;
+        screen_ = GameScreen::MapSelect;
         return;
     }
 
@@ -1103,19 +1308,13 @@ void SandboxGame::placeSelected(float worldX, float worldY)
 
 void SandboxGame::cycleMap()
 {
-    MapKind next = MapKind::TestRange;
-    switch (physics_.map())
-    {
-        case MapKind::TestRange:
-            next = MapKind::City;
-            break;
-        case MapKind::City:
-            next = MapKind::Laboratory;
-            break;
-        case MapKind::Laboratory:
-            next = MapKind::TestRange;
-            break;
-    }
+    static constexpr std::array<MapKind, 4> maps{
+        MapKind::LavaLake, MapKind::WinterLake, MapKind::Ocean, MapKind::Platform
+    };
+    const auto current = std::find(maps.begin(), maps.end(), physics_.map());
+    const std::size_t nextIndex = current == maps.end() ? 0U
+        : (static_cast<std::size_t>(current - maps.begin()) + 1U) % maps.size();
+    const MapKind next = maps[nextIndex];
 
     std::vector<std::uint8_t> before;
     const bool canUndo = captureHistorySnapshot(before);
@@ -1134,6 +1333,10 @@ void SandboxGame::cycleMap()
         case MapKind::TestRange: notice_ = "MAP: TEST RANGE"; break;
         case MapKind::City: notice_ = "MAP: CITY"; break;
         case MapKind::Laboratory: notice_ = "MAP: LABORATORY"; break;
+        case MapKind::LavaLake: notice_ = "MAP: LAVA LAKE"; break;
+        case MapKind::WinterLake: notice_ = "MAP: WINTER LAKE"; break;
+        case MapKind::Ocean: notice_ = "MAP: OCEAN"; break;
+        case MapKind::Platform: notice_ = "MAP: PLATFORM"; break;
     }
     noticeTimer_ = 2.5f;
 }
@@ -1311,6 +1514,8 @@ void SandboxGame::update(float deltaTime)
 {
     noticeTimer_ = std::max(0.0f, noticeTimer_ - deltaTime);
     clearConfirmTimer_ = std::max(0.0f, clearConfirmTimer_ - deltaTime);
+    if (screen_ != GameScreen::Playing)
+        return;
 
     if (grabbedIndex_ >= 0 && pointerDown_ && tool_ == SandboxTool::Grab &&
         !suppressObjectDragUntilAllFingersUp_)
@@ -2191,16 +2396,19 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
 
     // A compact contact shadow ties the object to the ground while keeping
     // airborne props readable. Two translucent ellipses approximate a soft penumbra.
-    const SDL_FPoint shadow = worldToScreen(x, y - extentY - 0.025f);
-    const float shadowWidth = std::max(3.0f, extentX * pixelsPerMeter_ * 0.90f);
-    const float shadowHeight = std::clamp(
-        extentY * pixelsPerMeter_ * 0.13f, 2.0f, 9.0f);
-    drawFilledEllipse(renderer_, shadow.x, shadow.y,
-        shadowWidth * 1.16f, shadowHeight * 1.55f,
-        SDL_Color{5, 8, 12, 24});
-    drawFilledEllipse(renderer_, shadow.x, shadow.y,
-        shadowWidth, shadowHeight,
-        SDL_Color{3, 5, 8, 48});
+    if (body.groupId < 0)
+    {
+        const SDL_FPoint shadow = worldToScreen(x, y - extentY - 0.025f);
+        const float shadowWidth = std::max(3.0f, extentX * pixelsPerMeter_ * 0.90f);
+        const float shadowHeight = std::clamp(
+            extentY * pixelsPerMeter_ * 0.13f, 2.0f, 9.0f);
+        drawFilledEllipse(renderer_, shadow.x, shadow.y,
+            shadowWidth * 1.16f, shadowHeight * 1.55f,
+            SDL_Color{5, 8, 12, 24});
+        drawFilledEllipse(renderer_, shadow.x, shadow.y,
+            shadowWidth, shadowHeight,
+            SDL_Color{3, 5, 8, 48});
+    }
 
     const bool melonSideProfile = body.groupId >= 0 && body.partIndex == 1 &&
         tint.g > tint.r * 1.18f && tint.g > tint.b * 1.08f;
@@ -2742,12 +2950,16 @@ void SandboxGame::drawUi()
 
     drawButton(layout.extrasButton, "EXTRAS", extrasPanelOpen_);
 
-    const char* mapLabel = "TEST RANGE";
+    const char* mapLabel = "PLATFORM";
     switch (physics_.map())
     {
         case MapKind::TestRange: mapLabel = "TEST RANGE"; break;
         case MapKind::City: mapLabel = "CITY"; break;
         case MapKind::Laboratory: mapLabel = "LAB"; break;
+        case MapKind::LavaLake: mapLabel = "LAVA LAKE"; break;
+        case MapKind::WinterLake: mapLabel = "WINTER LAKE"; break;
+        case MapKind::Ocean: mapLabel = "OCEAN"; break;
+        case MapKind::Platform: mapLabel = "PLATFORM"; break;
     }
     drawButton(layout.mapButton, "MAP", false);
 
@@ -3049,15 +3261,13 @@ void SandboxGame::drawBackground()
     SDL_Color background = makeColor(18, 23, 31);
     switch (physics_.map())
     {
-        case MapKind::TestRange:
-            background = makeColor(18, 23, 31);
-            break;
-        case MapKind::City:
-            background = makeColor(28, 34, 44);
-            break;
-        case MapKind::Laboratory:
-            background = makeColor(16, 37, 40);
-            break;
+        case MapKind::TestRange: background = makeColor(18, 23, 31); break;
+        case MapKind::City: background = makeColor(28, 34, 44); break;
+        case MapKind::Laboratory: background = makeColor(16, 37, 40); break;
+        case MapKind::LavaLake: background = makeColor(52, 22, 18); break;
+        case MapKind::WinterLake: background = makeColor(113, 151, 176); break;
+        case MapKind::Ocean: background = makeColor(16, 69, 103); break;
+        case MapKind::Platform: background = makeColor(31, 42, 56); break;
     }
 
     setColor(renderer_, background);
@@ -3180,9 +3390,71 @@ void SandboxGame::drawBackground()
             SDL_RenderLine(renderer_, b.x, b.y, c.x, c.y);
         }
     }
-    else
+    else if (physics_.map() == MapKind::LavaLake)
     {
-        // Concrete range wall panels and faded warning marks along the floor.
+        const float time = static_cast<float>(SDL_GetTicks()) * 0.001f;
+        for (int ridge = 0; ridge < 7; ++ridge)
+        {
+            const float x = static_cast<float>(ridge) *
+                static_cast<float>(outputWidth_) / 6.0f;
+            const float peakY = static_cast<float>(outputHeight_) *
+                (0.38f + 0.07f * static_cast<float>(ridge % 3));
+            setColor(renderer_, makeColor(91, 39, 27, 210));
+            SDL_RenderLine(renderer_, x - 95.0f, outputHeight_ * 0.72f,
+                           x, peakY);
+            SDL_RenderLine(renderer_, x, peakY,
+                           x + 100.0f, outputHeight_ * 0.72f);
+        }
+        for (int ember = 0; ember < 30; ++ember)
+        {
+            const float phase = time * (0.35f + static_cast<float>(ember % 5) * 0.08f) + ember * 0.37f;
+            const float x = std::fmod(static_cast<float>(ember) * 97.0f + phase * 31.0f,
+                                      std::max(1.0f, static_cast<float>(outputWidth_)));
+            const float y = static_cast<float>(outputHeight_) * 0.20f +
+                std::fmod(static_cast<float>(ember) * 43.0f - phase * 18.0f + 800.0f,
+                          static_cast<float>(outputHeight_) * 0.55f);
+            drawFilledCircle(renderer_, x, y, 1.0f + static_cast<float>(ember % 3),
+                             makeColor(255, 142, 69, 120));
+        }
+    }
+    else if (physics_.map() == MapKind::WinterLake)
+    {
+        const float time = static_cast<float>(SDL_GetTicks()) * 0.001f;
+        for (int flake = 0; flake < 42; ++flake)
+        {
+            const float x = std::fmod(static_cast<float>(flake) * 83.0f + time *
+                (8.0f + static_cast<float>(flake % 4) * 2.0f),
+                std::max(1.0f, static_cast<float>(outputWidth_)));
+            const float y = std::fmod(static_cast<float>(flake) * 47.0f + time *
+                (13.0f + static_cast<float>(flake % 3) * 3.0f),
+                std::max(1.0f, static_cast<float>(outputHeight_)));
+            const float radius = 1.0f + static_cast<float>(flake % 3) * 0.45f;
+            setColor(renderer_, makeColor(238, 248, 255, 170));
+            SDL_RenderLine(renderer_, x - radius * 1.8f, y, x + radius * 1.8f, y);
+            SDL_RenderLine(renderer_, x, y - radius * 1.8f, x, y + radius * 1.8f);
+        }
+    }
+    else if (physics_.map() == MapKind::Ocean)
+    {
+        const float time = static_cast<float>(SDL_GetTicks()) * 0.001f;
+        for (int wave = 0; wave < 18; ++wave)
+        {
+            const float y = static_cast<float>(outputHeight_) * 0.12f + wave * 19.0f;
+            setColor(renderer_, makeColor(108, 191, 221,
+                static_cast<Uint8>(25 + (wave % 3) * 9)));
+            for (int segment = 0; segment < 24; ++segment)
+            {
+                const float x1 = static_cast<float>(segment) * outputWidth_ / 24.0f;
+                const float x2 = static_cast<float>(segment + 1) * outputWidth_ / 24.0f;
+                const float y1 = y + std::sin(time * 0.7f + segment * 0.55f + wave) * 3.0f;
+                const float y2 = y + std::sin(time * 0.7f + (segment + 1) * 0.55f + wave) * 3.0f;
+                SDL_RenderLine(renderer_, x1, y1, x2, y2);
+            }
+        }
+    }
+    else if (physics_.map() == MapKind::Platform || physics_.map() == MapKind::TestRange)
+    {
+        // Industrial platforms and faded warning marks along the floor.
         for (int panel = -7; panel <= 7; ++panel)
         {
             const SDL_FPoint a = worldToScreen(static_cast<float>(panel) * 2.0f, -5.0f);
@@ -3966,14 +4238,88 @@ void SandboxGame::drawMechanisms()
     }
 }
 
+
+void SandboxGame::drawCharacterShadows()
+{
+    struct ShadowBounds
+    {
+        int groupId = -1;
+        float left = 0.0f;
+        float right = 0.0f;
+        float lowest = 0.0f;
+        bool initialized = false;
+    };
+
+    std::vector<ShadowBounds> groups;
+    for (const BodyRecord& body : physics_.records())
+    {
+        if (body.groupId < 0 || !b2Body_IsValid(body.id))
+            continue;
+
+        const b2Pos position = b2Body_GetPosition(body.id);
+        const b2Rot rotation = b2Body_GetRotation(body.id);
+        const float x = static_cast<float>(position.x);
+        const float y = static_cast<float>(position.y);
+        const float c = std::abs(static_cast<float>(rotation.c));
+        const float s = std::abs(static_cast<float>(rotation.s));
+        const float extentX = body.shape == BodyShape::Circle
+            ? body.radius : c * body.halfWidth + s * body.halfHeight;
+        const float extentY = body.shape == BodyShape::Circle
+            ? body.radius : s * body.halfWidth + c * body.halfHeight;
+
+        auto found = std::find_if(groups.begin(), groups.end(),
+            [&](const ShadowBounds& shadow) { return shadow.groupId == body.groupId; });
+        if (found == groups.end())
+        {
+            groups.push_back({body.groupId, x - extentX, x + extentX,
+                              y - extentY, true});
+        }
+        else
+        {
+            found->left = std::min(found->left, x - extentX);
+            found->right = std::max(found->right, x + extentX);
+            found->lowest = std::min(found->lowest, y - extentY);
+        }
+    }
+
+    for (const ShadowBounds& bounds : groups)
+    {
+        if (!bounds.initialized)
+            continue;
+        const float widthWorld = std::max(0.45f, bounds.right - bounds.left);
+        const SDL_FPoint shadow = worldToScreen(
+            (bounds.left + bounds.right) * 0.5f, bounds.lowest - 0.035f);
+        const float shadowWidth = std::clamp(
+            widthWorld * pixelsPerMeter_ * 0.31f, 8.0f, 90.0f);
+        const float shadowHeight = std::clamp(
+            shadowWidth * 0.16f, 2.5f, 8.0f);
+        drawFilledEllipse(renderer_, shadow.x, shadow.y,
+            shadowWidth * 1.28f, shadowHeight * 1.7f,
+            SDL_Color{5, 8, 12, 22});
+        drawFilledEllipse(renderer_, shadow.x, shadow.y,
+            shadowWidth, shadowHeight,
+            SDL_Color{3, 5, 8, 48});
+    }
+}
+
 void SandboxGame::render()
 {
     SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
     drawBackground();
+    if (screen_ != GameScreen::Playing)
+    {
+        if (screen_ == GameScreen::MainMenu)
+            drawMainMenu();
+        else
+            drawMapSelection();
+        SDL_RenderPresent(renderer_);
+        return;
+    }
     drawGrid();
     drawSurfaces();
     drawMeteorEffects();
 
+    drawCharacterShadows();
     const auto& records = physics_.records();
     for (std::size_t i = 0; i < records.size(); ++i)
         drawBody(records[i], static_cast<int>(i) == grabbedIndex_);

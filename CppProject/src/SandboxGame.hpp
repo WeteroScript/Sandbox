@@ -12,6 +12,7 @@
 enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
 enum class SpawnCategory { Props, Mechanisms, Misc, Materials, Power };
 enum class ExtraPanelSection : std::uint8_t { Ropes, Meteor };
+enum class GameScreen : std::uint8_t { MainMenu, MapSelect, Playing };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
@@ -63,6 +64,9 @@ private:
     SDL_Renderer* renderer_ = nullptr;
     PhysicsWorld physics_;
 
+    GameScreen screen_ = GameScreen::MainMenu;
+    MapKind selectedMap_ = MapKind::Platform;
+    bool mapSelectFromGame_ = false;
     bool running_ = true;
     bool paused_ = false;
     bool spawnPanelOpen_ = true;
@@ -126,6 +130,9 @@ private:
     void handleFingerMove(SDL_FingerID fingerId, float x, float y);
     void handleFingerUp(SDL_FingerID fingerId);
     void handleUiClick(float x, float y);
+    void handleMenuClick(float x, float y);
+    SDL_FRect mainMenuButtonRect(std::size_t index) const;
+    SDL_FRect mapOptionRect(std::size_t index) const;
     void placeSelected(float worldX, float worldY);
     void cycleMap();
     void saveScene();
@@ -162,6 +169,9 @@ private:
                     const std::array<ImpactMark, kMaxImpactMarks>& impactMarks,
                     std::uint8_t impactMarkCount, bool outline);
     void drawUi();
+    void drawMainMenu();
+    void drawMapSelection();
+    void drawCharacterShadows();
     void drawButton(const SDL_FRect& rect, const char* label, bool active);
     bool pointInRect(float x, float y, const SDL_FRect& rect) const;
 };

@@ -692,15 +692,24 @@ void PhysicsWorld::setMap(MapKind selectedMap, bool addStarterObjects)
 
 void PhysicsWorld::buildMapGeometry()
 {
-    const SDL_Color boundary{45,55,68,255};
-    const SDL_Color obstacle = map_ == MapKind::TestRange
-        ? SDL_Color{115,123,132,255}
-        : map_ == MapKind::City
-            ? SDL_Color{92,103,114,255}
-            : SDL_Color{75,124,118,255};
+    const SDL_Color boundary{45, 55, 68, 255};
+    SDL_Color obstacle{115, 123, 132, 255};
+    switch (map_)
+    {
+        case MapKind::TestRange: obstacle = {115, 123, 132, 255}; break;
+        case MapKind::City: obstacle = {92, 103, 114, 255}; break;
+        case MapKind::Laboratory: obstacle = {75, 124, 118, 255}; break;
+        case MapKind::LavaLake: obstacle = {93, 57, 48, 255}; break;
+        case MapKind::WinterLake: obstacle = {186, 216, 231, 255}; break;
+        case MapKind::Ocean: obstacle = {64, 126, 158, 255}; break;
+        case MapKind::Platform: obstacle = {105, 119, 137, 255}; break;
+    }
 
+    const MaterialKind floorMaterial = map_ == MapKind::WinterLake
+        ? MaterialKind::Ice : MaterialKind::Concrete;
     createBox(0.0f, -5.35f, 16.0f, 0.55f, 0.0f,
-              {54,64,77,255}, true, false);
+              {54, 64, 77, 255}, true, false,
+              -1, 1.0f, -1, floorMaterial, false);
     createBox(-15.45f, 0.0f, 0.55f, 12.0f, 0.0f,
               boundary, true, false);
     createBox(15.45f, 0.0f, 0.55f, 12.0f, 0.0f,
@@ -734,6 +743,53 @@ void PhysicsWorld::buildMapGeometry()
                       obstacle, true, false);
             addSurface(SurfaceKind::Water, -5.0f, -3.2f, 1.8f, 1.0f);
             addSurface(SurfaceKind::Lava, 5.0f, -3.2f, 1.8f, 1.0f);
+            break;
+
+        case MapKind::LavaLake:
+            createBox(-10.2f, -3.55f, 2.0f, 0.45f, -0.04f,
+                      obstacle, true, false);
+            createBox(10.2f, -3.55f, 2.0f, 0.45f, 0.04f,
+                      obstacle, true, false);
+            createBox(-6.2f, -1.9f, 2.1f, 0.28f, 0.0f,
+                      obstacle, true, false);
+            createBox(6.2f, -1.9f, 2.1f, 0.28f, 0.0f,
+                      obstacle, true, false);
+            addSurface(SurfaceKind::Lava, 0.0f, -4.05f, 14.4f, 0.72f);
+            break;
+
+        case MapKind::WinterLake:
+            // The frozen lake is a low-friction physical surface.
+            createBox(-10.0f, -4.55f, 2.7f, 0.18f, 0.0f,
+                      {229, 241, 248, 255}, true, false,
+                      -1, 1.0f, -1, MaterialKind::Concrete, false);
+            createBox(10.0f, -4.55f, 2.7f, 0.18f, 0.0f,
+                      {229, 241, 248, 255}, true, false,
+                      -1, 1.0f, -1, MaterialKind::Concrete, false);
+            createBox(-7.3f, -2.9f, 1.25f, 0.32f, 0.0f,
+                      obstacle, true, false);
+            createBox(7.3f, -2.9f, 1.25f, 0.32f, 0.0f,
+                      obstacle, true, false);
+            break;
+
+        case MapKind::Ocean:
+            addSurface(SurfaceKind::Water, 0.0f, -3.95f, 14.3f, 1.15f);
+            createBox(-8.0f, -1.85f, 2.7f, 0.28f, 0.0f,
+                      obstacle, true, false);
+            createBox(0.0f, -1.35f, 2.2f, 0.28f, 0.0f,
+                      obstacle, true, false);
+            createBox(8.0f, -1.85f, 2.7f, 0.28f, 0.0f,
+                      obstacle, true, false);
+            break;
+
+        case MapKind::Platform:
+            createBox(-9.0f, -3.65f, 2.6f, 0.30f, 0.0f,
+                      obstacle, true, false);
+            createBox(-2.6f, -2.15f, 2.4f, 0.30f, 0.0f,
+                      obstacle, true, false);
+            createBox(4.2f, -3.05f, 3.1f, 0.30f, 0.0f,
+                      obstacle, true, false);
+            createBox(10.3f, -1.2f, 2.0f, 0.30f, 0.0f,
+                      obstacle, true, false);
             break;
     }
 }

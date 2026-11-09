@@ -12,7 +12,7 @@
 
 enum class BodyShape : std::uint8_t { Box, Circle };
 enum class MaterialKind : std::uint8_t { Wood, Metal, Glass, Rubber, Concrete, Organic, Ice, Plastic };
-enum class MapKind : std::uint8_t { TestRange, City, Laboratory };
+enum class MapKind : std::uint8_t { TestRange, City, Laboratory, LavaLake, WinterLake, Ocean, Platform };
 enum class SurfaceKind : std::uint8_t { Water, Lava, Acid };
 enum class BucketKind : std::uint8_t { None, Water, Lava, Acid };
 enum class MechanismKind : std::uint8_t { Rod, Rope, Spring, Piston, Button, Toggle, Chain, ElasticRope, Cable, Wire, Switch, Motor };
