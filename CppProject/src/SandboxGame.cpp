@@ -3507,6 +3507,44 @@ void SandboxGame::drawMeteorEffects()
         const float progress = meteorEvent_.explosionProgress();
         const float fade = 1.0f - progress;
         const float radius = pixelsPerMeter_ * (0.55f + progress * 2.4f);
+
+        // Expand a ground shockwave to the same radius as the physical impulse.
+        const float shockwaveRadius =
+            MeteorEvent::kImpactRadius * pixelsPerMeter_ *
+            (0.08f + 0.92f * progress);
+        const float trailingRadius = shockwaveRadius * 0.88f;
+        constexpr int shockwaveSegments = 96;
+        for (int segment = 0; segment < shockwaveSegments; ++segment)
+        {
+            const float a0 = 2.0f * kPi *
+                static_cast<float>(segment) / shockwaveSegments;
+            const float a1 = 2.0f * kPi *
+                static_cast<float>(segment + 1) / shockwaveSegments;
+            const float x0 = std::cos(a0);
+            const float y0 = std::sin(a0);
+            const float x1 = std::cos(a1);
+            const float y1 = std::sin(a1);
+
+            setColor(renderer_, makeColor(255, 205, 145,
+                static_cast<Uint8>(205.0f * fade)));
+            SDL_RenderLine(renderer_,
+                target.x + x0 * shockwaveRadius,
+                target.y + y0 * shockwaveRadius,
+                target.x + x1 * shockwaveRadius,
+                target.y + y1 * shockwaveRadius);
+
+            if (segment % 2 == 0)
+            {
+                setColor(renderer_, makeColor(255, 150, 91,
+                    static_cast<Uint8>(82.0f * fade)));
+                SDL_RenderLine(renderer_,
+                    target.x + x0 * trailingRadius,
+                    target.y + y0 * trailingRadius,
+                    target.x + x1 * trailingRadius,
+                    target.y + y1 * trailingRadius);
+            }
+        }
+
         drawFilledCircle(renderer_, target.x, target.y,
             radius * 1.55f, makeColor(255, 125, 54,
                 static_cast<Uint8>(65.0f * fade)));
