@@ -1902,7 +1902,7 @@ void SandboxGame::updateLiquidEffects()
         float surfaceY = 0.0f;
         for (const SurfaceZone& zone : physics_.surfaces())
         {
-            if (zone.kind == SurfaceKind::Acid || zone.volume <= 0.0f)
+            if (zone.kind == SurfaceKind::Acid)
                 continue;
             if (x + extentX <= zone.x - zone.halfWidth ||
                 x - extentX >= zone.x + zone.halfWidth ||
