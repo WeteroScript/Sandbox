@@ -76,7 +76,7 @@ jobs:
               exit 1
             fi
 
-            if grep -E "FATAL EXCEPTION|Fatal signal [0-9]+ \\(" artifacts/logcat.txt; then
+            if grep -E "FATAL EXCEPTION|Fatal signal" artifacts/logcat.txt; then
               echo "Crash signature found in logcat." | tee artifacts/smoke-test-result.txt
               exit 1
             fi
