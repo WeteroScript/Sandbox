@@ -70,6 +70,15 @@ int main()
     meteor.cancel();
     CHECK(meteor.stage() == MeteorStage::Idle);
 
+    // Cancelling a scheduled meteor clears its timer and pending effects.
+    meteor.beginTargetSelection();
+    CHECK(meteor.setTarget(-4.0f, 2.0f));
+    meteor.update(17.0f);
+    CHECK(meteor.countdownActive());
+    meteor.cancel();
+    CHECK(meteor.stage() == MeteorStage::Idle);
+    CHECK(!meteor.consumeImpact());
+
     PhysicsWorld meteorPhysics;
     meteorPhysics.setMap(MapKind::TestRange, false);
     const int impactCenter = meteorPhysics.spawnBall(0.0f, 1.0f);

@@ -369,10 +369,13 @@ void SandboxGame::processEvents()
             case SDL_EVENT_KEY_DOWN:
                 if (!event.key.repeat && event.key.key == SDLK_AC_BACK)
                 {
-                    if (meteorEvent_.waitingForTarget())
+                    if (meteorEvent_.active())
                     {
+                        const bool selectingTarget = meteorEvent_.waitingForTarget();
                         meteorEvent_.cancel();
-                        notice_ = "Meteor targeting cancelled";
+                        notice_ = selectingTarget
+                            ? "Meteor targeting cancelled"
+                            : "Meteor event cancelled";
                         noticeTimer_ = 2.0f;
                     }
                     else if (spawnPlacementActive_)
@@ -801,15 +804,13 @@ void SandboxGame::handleUiClick(float x, float y)
                 notice_ = "Tap the meteor impact point";
                 noticeTimer_ = 3.0f;
             }
-            else if (meteorEvent_.waitingForTarget())
-            {
-                meteorEvent_.cancel();
-                notice_ = "Meteor targeting cancelled";
-                noticeTimer_ = 2.0f;
-            }
             else
             {
-                notice_ = "A meteor event is already active";
+                const bool selectingTarget = meteorEvent_.waitingForTarget();
+                meteorEvent_.cancel();
+                notice_ = selectingTarget
+                    ? "Meteor targeting cancelled"
+                    : "Meteor event cancelled";
                 noticeTimer_ = 2.0f;
             }
             return;
@@ -2878,12 +2879,10 @@ void SandboxGame::drawUi()
             const char* meteorLabel = "SPAWN METEOR";
             bool buttonActive = false;
             if (meteorEvent_.waitingForTarget())
-            {
                 meteorLabel = "CANCEL TARGET";
-                buttonActive = true;
-            }
             else if (meteorEvent_.active())
-                meteorLabel = "EVENT ACTIVE";
+                meteorLabel = "CANCEL EVENT";
+            buttonActive = meteorEvent_.active();
             drawButton(layout.meteorSpawnButton, meteorLabel, buttonActive);
 
             char meteorStatus[64]{};
