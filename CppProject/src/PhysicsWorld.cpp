@@ -890,16 +890,19 @@ void PhysicsWorld::updateSurfaces(float dt)
         const float y = static_cast<float>(position.y);
 
         bool immersedInAcid = false;
+        float totalImmersion = 0.0f;
+        float weightedBuoyancy = 0.0f;
+        float weightedDrag = 0.0f;
+        float weightedCurrentX = 0.0f;
+        float weightedCurrentY = 0.0f;
+        float weightedWave = 0.0f;
+
         for (const SurfaceZone& zone : surfaces_)
         {
             const float immersion =
                 bodyRectangleOverlap(record, x, y, rotation, zone);
             if (immersion <= 0.001f)
                 continue;
-
-            const float mass = std::max(0.1f, b2Body_GetMass(record.id));
-            const b2Vec2 velocity = b2Body_GetLinearVelocity(record.id);
-            const float angularVelocity = b2Body_GetAngularVelocity(record.id);
 
             float buoyancyScale = 15.8f;
             float dragScale = 2.0f;
@@ -930,27 +933,46 @@ void PhysicsWorld::updateSurfaces(float dt)
                     break;
             }
 
-            // Buoyancy scales with the exact submerged shape area. Drag acts
-            // on velocity relative to the gently moving liquid, not on world speed.
+            totalImmersion += immersion;
+            weightedBuoyancy += buoyancyScale * immersion;
+            weightedDrag += dragScale * immersion;
+            weightedCurrentX += currentX * immersion;
+            weightedCurrentY += currentY * immersion;
+            weightedWave += waveForce * immersion;
+        }
+
+        if (totalImmersion > 0.001f)
+        {
+            // Independently poured zones can overlap. Blend their physical
+            // properties, but cap submerged area so stacked pools cannot
+            // create more than full-body buoyancy or drag.
+            const float effectiveImmersion = std::min(1.0f, totalImmersion);
+            const float inverseWeight = 1.0f / totalImmersion;
+            const float buoyancyScale = weightedBuoyancy * inverseWeight;
+            const float dragScale = weightedDrag * inverseWeight;
+            const float currentX = weightedCurrentX * inverseWeight;
+            const float currentY = weightedCurrentY * inverseWeight;
+            const float waveForce = weightedWave * inverseWeight;
+
+            const float mass = std::max(0.1f, b2Body_GetMass(record.id));
+            const b2Vec2 velocity = b2Body_GetLinearVelocity(record.id);
+            const float angularVelocity = b2Body_GetAngularVelocity(record.id);
             b2Body_ApplyForceToCenter(
                 record.id,
-                {0.0f, mass * buoyancyScale * immersion}, true);
+                {0.0f, mass * (buoyancyScale + waveForce) *
+                    effectiveImmersion}, true);
 
             const float relativeX = velocity.x - currentX;
             const float relativeY = velocity.y - currentY;
-            const float drag = mass * dragScale * immersion;
+            const float drag = mass * dragScale * effectiveImmersion;
             b2Body_ApplyForceToCenter(
                 record.id,
                 {-relativeX * drag, -relativeY * drag}, true);
 
-            if (waveForce != 0.0f)
-                b2Body_ApplyForceToCenter(
-                    record.id, {0.0f, mass * waveForce * immersion}, true);
-
             b2Body_ApplyTorque(
                 record.id,
-                -angularVelocity * mass * dragScale * 0.45f * immersion,
-                true);
+                -angularVelocity * mass * dragScale *
+                    0.45f * effectiveImmersion, true);
         }
 
         if (immersedInAcid)

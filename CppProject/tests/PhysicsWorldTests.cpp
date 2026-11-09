@@ -735,6 +735,35 @@ int main()
         acidWorld.step(1.0f / 60.0f, 4);
     CHECK(!b2Body_IsValid(acidTargetId));
 
+    // Overlapping water and acid spills share one capped submerged fraction.
+    // Acid contact still accumulates independently of the blended buoyancy.
+    PhysicsWorld overlappingLiquidWorld;
+    overlappingLiquidWorld.setMap(MapKind::TestRange, false);
+    const int overlapWaterBucket =
+        overlappingLiquidWorld.spawnBucket(BucketKind::Water, -0.10f, -3.35f);
+    const int overlapAcidBucket =
+        overlappingLiquidWorld.spawnBucket(BucketKind::Acid, 0.10f, -3.35f);
+    CHECK(overlapWaterBucket >= 0 && overlapAcidBucket >= 0);
+    CHECK(overlappingLiquidWorld.interactAt(-0.10f, -3.35f));
+    CHECK(overlappingLiquidWorld.interactAt(0.10f, -3.35f));
+    CHECK(overlappingLiquidWorld.surfaces().size() == 2);
+    const int overlapTarget =
+        overlappingLiquidWorld.spawnBox(0.0f, -4.05f);
+    CHECK(overlapTarget >= 0);
+    const b2BodyId overlapTargetId =
+        overlappingLiquidWorld.records()[static_cast<std::size_t>(overlapTarget)].id;
+    for (int i = 0; i < 30; ++i)
+        overlappingLiquidWorld.step(1.0f / 60.0f, 4);
+    CHECK(b2Body_IsValid(overlapTargetId));
+    const BodyRecord& overlapTargetBody =
+        overlappingLiquidWorld.records()[static_cast<std::size_t>(overlapTarget)];
+    CHECK(overlapTargetBody.acidExposure > 0.0f);
+    const b2Vec2 overlapVelocity =
+        b2Body_GetLinearVelocity(overlapTargetId);
+    CHECK(std::isfinite(overlapVelocity.x));
+    CHECK(std::isfinite(overlapVelocity.y));
+    CHECK(std::abs(overlapVelocity.y) < 40.0f);
+
     // A single electrical switch controls piston, spring and elastic-rope actuators.
     PhysicsWorld powerWorld;
     CHECK(powerWorld.spawnBox(-3.0f, 5.0f) >= 0);
