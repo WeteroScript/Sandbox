@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <string>
@@ -2137,6 +2138,64 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                 body.material, drawableImpact, body.impactLocalX,
                 body.impactLocalY, body.impactMarks,
                 body.impactMarkCount, selected);
+
+    // Acid damage gradually reveals small, deterministic surface pits. The
+    // pattern is derived from the body ID, so it stays stable across frames.
+    const float corrosion = std::clamp(body.acidExposure / 8.0f, 0.0f, 1.0f);
+    if (corrosion > 0.12f)
+    {
+        std::uint32_t seed =
+            static_cast<std::uint32_t>(body.id.index1) * 747796405u ^
+            static_cast<std::uint32_t>(body.id.generation) * 2891336453u;
+        const int pitCount = 1 + static_cast<int>(corrosion * 6.0f);
+        const float pitSize = std::clamp(
+            pixelsPerMeter_ * (0.012f + corrosion * 0.018f),
+            1.0f, 3.2f);
+        const float cosine = std::cos(angle);
+        const float sine = std::sin(angle);
+
+        for (int pit = 0; pit < pitCount; ++pit)
+        {
+            seed = seed * 1664525u + 1013904223u;
+            const float localXUnit =
+                static_cast<float>((seed >> 8) & 0xffffu) / 32767.5f - 1.0f;
+            seed = seed * 1664525u + 1013904223u;
+            const float localYUnit =
+                static_cast<float>((seed >> 8) & 0xffffu) / 32767.5f - 1.0f;
+
+            float localX = 0.0f;
+            float localY = 0.0f;
+            if (body.shape == BodyShape::Circle)
+            {
+                const float distanceSquared =
+                    localXUnit * localXUnit + localYUnit * localYUnit;
+                const float scale = distanceSquared > 0.72f
+                    ? std::sqrt(0.72f / distanceSquared) : 1.0f;
+                localX = localXUnit * scale * body.radius;
+                localY = localYUnit * scale * body.radius;
+            }
+            else
+            {
+                localX = localXUnit * body.halfWidth * 0.78f;
+                localY = localYUnit * body.halfHeight * 0.78f;
+            }
+
+            const SDL_FPoint point = worldToScreen(
+                x + cosine * localX - sine * localY,
+                y + sine * localX + cosine * localY);
+            const Uint8 pitAlpha = static_cast<Uint8>(
+                75.0f + corrosion * 105.0f);
+            drawFilledEllipse(renderer_, point.x, point.y,
+                pitSize * 1.45f, pitSize * 0.92f,
+                SDL_Color{37, 73, 43, pitAlpha});
+            drawFilledEllipse(renderer_,
+                point.x - pitSize * 0.20f,
+                point.y - pitSize * 0.18f,
+                pitSize * 0.38f, pitSize * 0.28f,
+                SDL_Color{176, 187, 112,
+                    static_cast<Uint8>(pitAlpha * 0.55f)});
+        }
+    }
 
     // The blue steel mannequin gets a compact mechanical visual language:
     // a glassy visor, chest module, status lamps and joint-side limb bands.
