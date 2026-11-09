@@ -2782,14 +2782,43 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         SDL_RenderLine(renderer_, rindA.x, rindA.y, rindB.x, rindB.y);
         SDL_RenderLine(renderer_, rindB.x, rindB.y, rindC.x, rindC.y);
 
+        const float animationTime =
+            static_cast<float>(SDL_GetTicks()) * 0.001f;
+        const float blinkPhase = std::fmod(
+            animationTime * 0.21f + static_cast<float>(body.groupId) * 0.173f,
+            1.0f);
+        const bool blinking = blinkPhase > 0.975f && blinkPhase < 0.992f;
+        const b2Vec2 headVelocity = b2Body_GetLinearVelocity(body.id);
+        const float eyeLookX = std::clamp(
+            static_cast<float>(headVelocity.x) * 0.012f, -0.045f, 0.045f);
+        const float eyeLookY = std::clamp(
+            static_cast<float>(headVelocity.y) * 0.007f, -0.025f, 0.025f);
         const SDL_FPoint eye = facePoint(0.36f, 0.21f);
-        const SDL_FPoint pupil = facePoint(0.40f, 0.22f);
-        drawFilledCircle(renderer_, eye.x, eye.y,
+        const SDL_FPoint pupil = facePoint(
+            0.40f + eyeLookX, 0.22f + eyeLookY);
+        const float eyeHeight = std::max(1.5f,
+            radiusPixels * (blinking ? 0.026f : 0.105f));
+        drawFilledEllipse(renderer_, eye.x, eye.y,
             std::max(2.0f, radiusPixels * 0.105f),
-            SDL_Color{241, 247, 226, 255});
-        drawFilledCircle(renderer_, pupil.x, pupil.y,
-            std::max(1.4f, radiusPixels * 0.052f),
-            SDL_Color{24, 39, 28, 255});
+            eyeHeight, SDL_Color{241, 247, 226, 255});
+        if (!blinking)
+        {
+            drawFilledCircle(renderer_, pupil.x, pupil.y,
+                std::max(1.4f, radiusPixels * 0.052f),
+                SDL_Color{24, 39, 28, 255});
+            drawFilledCircle(renderer_,
+                pupil.x - std::max(0.7f, radiusPixels * 0.018f),
+                pupil.y - std::max(0.7f, radiusPixels * 0.018f),
+                std::max(0.55f, radiusPixels * 0.018f),
+                SDL_Color{248, 255, 238, 230});
+        }
+        else
+        {
+            setColor(renderer_, SDL_Color{42, 105, 57, 245});
+            SDL_RenderLine(renderer_,
+                eye.x - radiusPixels * 0.10f, eye.y,
+                eye.x + radiusPixels * 0.11f, eye.y);
+        }
 
         const SDL_FPoint noseA = facePoint(0.72f, 0.02f);
         const SDL_FPoint noseB = facePoint(0.82f, -0.04f);
@@ -2895,10 +2924,20 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                    drawableImpact, body.impactLocalX, body.impactLocalY,
                    body.impactMarks, body.impactMarkCount, selected);
     else
-        drawBox(x, y, body.halfWidth, body.halfHeight, angle, tint,
+    {
+        const bool organicTorso = body.groupId >= 0 && body.partIndex == 0 &&
+            tint.g > tint.r * 1.20f && tint.g > tint.b * 1.08f;
+        const float breathing = organicTorso
+            ? 1.0f + std::sin(
+                static_cast<float>(SDL_GetTicks()) * 0.0018f +
+                static_cast<float>(body.groupId) * 0.61f) * 0.012f
+            : 1.0f;
+        drawBox(x, y, body.halfWidth * breathing,
+                body.halfHeight * (2.0f - breathing), angle, tint,
                 body.material, drawableImpact, body.impactLocalX,
                 body.impactLocalY, body.impactMarks,
                 body.impactMarkCount, selected);
+    }
 
     // Articulated character marks are short surface scuffs, not fracture cracks.
     if (body.groupId >= 0 && !melonSideProfile)

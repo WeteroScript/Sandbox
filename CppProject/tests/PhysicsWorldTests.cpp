@@ -1325,6 +1325,41 @@ int main()
         static_cast<float>(recoveredRotation.c));
     CHECK(std::abs(recoveredAngle) < 1.05f);
 
+    // Head and arms receive gentle posture assistance after a strong wobble.
+    PhysicsWorld balancedCharacterWorld;
+    balancedCharacterWorld.setMap(MapKind::Platform, false);
+    const int balancedGroup = balancedCharacterWorld.spawnRagdoll(0.0f, -2.6f);
+    CHECK(balancedGroup >= 0);
+    b2BodyId balancedTorso = b2_nullBodyId;
+    b2BodyId balancedHead = b2_nullBodyId;
+    b2BodyId balancedArm = b2_nullBodyId;
+    for (const BodyRecord& record : balancedCharacterWorld.records())
+    {
+        if (record.groupId != balancedGroup)
+            continue;
+        if (record.partIndex == 0) balancedTorso = record.id;
+        if (record.partIndex == 1) balancedHead = record.id;
+        if (record.partIndex == 2) balancedArm = record.id;
+    }
+    CHECK(b2Body_IsValid(balancedTorso));
+    CHECK(b2Body_IsValid(balancedHead));
+    CHECK(b2Body_IsValid(balancedArm));
+    b2Body_SetAngularVelocity(balancedHead, 5.0f);
+    b2Body_SetAngularVelocity(balancedArm, -4.0f);
+    for (int i = 0; i < 210; ++i)
+        balancedCharacterWorld.step(1.0f / 60.0f, 4);
+    const auto bodyAngle = [](b2BodyId id)
+    {
+        const b2Rot rotation = b2Body_GetRotation(id);
+        return std::atan2(
+            static_cast<float>(rotation.s), static_cast<float>(rotation.c));
+    };
+    const float torsoAngle = bodyAngle(balancedTorso);
+    CHECK(std::abs(std::remainder(
+        bodyAngle(balancedHead) - torsoAngle, 6.28318530718f)) < 1.25f);
+    CHECK(std::abs(std::remainder(
+        bodyAngle(balancedArm) - torsoAngle, 6.28318530718f)) < 1.45f);
+
     // A character part stays inside a bounded motion envelope after a hit.
     PhysicsWorld stableCharacterWorld;
     stableCharacterWorld.setMap(MapKind::Laboratory, false);

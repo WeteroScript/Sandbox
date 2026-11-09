@@ -1492,27 +1492,55 @@ void PhysicsWorld::step(float dt, int subSteps)
             std::abs(torsoAngularVelocity) > 1.2f)
             b2Body_ApplyTorque(torso.id, uprightTorque, true);
 
-        // Once the torso is nearly upright, gently bring both legs underneath it.
+        // Once the torso is nearly upright, help the character gather its
+        // limbs into a balanced standing pose. Each joint stays compliant:
+        // large falls and impacts still move the ragdoll freely.
         if (std::abs(torsoAngle) < 0.70f)
         {
-            for (BodyRecord& leg : records_)
+            for (BodyRecord& part : records_)
             {
-                if (leg.groupId != torso.groupId ||
-                    (leg.partIndex != 4 && leg.partIndex != 5) ||
-                    leg.frozen || !b2Body_IsValid(leg.id))
+                if (part.groupId != torso.groupId || part.partIndex < 1 ||
+                    part.partIndex > 5 || part.frozen ||
+                    !b2Body_IsValid(part.id))
                     continue;
 
-                const b2Rot legRotation = b2Body_GetRotation(leg.id);
-                const float legAngle = std::remainder(
-                    std::atan2(static_cast<float>(legRotation.s),
-                               static_cast<float>(legRotation.c)), fullTurn);
-                const float legAngularVelocity = b2Body_GetAngularVelocity(leg.id);
-                const float legTorque = std::clamp(
-                    -legAngle * 3.1f - legAngularVelocity * 1.25f,
-                    -7.0f, 7.0f);
-                if (std::abs(legAngle) > 0.28f ||
-                    std::abs(legAngularVelocity) > 1.0f)
-                    b2Body_ApplyTorque(leg.id, legTorque, true);
+                const b2Rot partRotation = b2Body_GetRotation(part.id);
+                const float partAngle = std::atan2(
+                    static_cast<float>(partRotation.s),
+                    static_cast<float>(partRotation.c));
+                const float relativeAngle = std::remainder(
+                    partAngle - torsoAngle, fullTurn);
+                const float relativeAngularVelocity =
+                    b2Body_GetAngularVelocity(part.id) - torsoAngularVelocity;
+
+                float targetAngle = 0.0f;
+                float stiffness = 3.0f;
+                float damping = 1.35f;
+                float maxTorque = 7.0f;
+
+                if (part.partIndex == 1)
+                {
+                    // Keep the face oriented with the torso while allowing nodding.
+                    stiffness = 3.6f;
+                    damping = 1.55f;
+                    maxTorque = 8.0f;
+                }
+                else if (part.partIndex == 2 || part.partIndex == 3)
+                {
+                    // A slight outward arm angle gives the body a relaxed stance.
+                    targetAngle = part.partIndex == 2 ? -0.16f : 0.16f;
+                    stiffness = 1.9f;
+                    damping = 1.05f;
+                    maxTorque = 4.5f;
+                }
+
+                const float correction = std::clamp(
+                    (targetAngle - relativeAngle) * stiffness -
+                        relativeAngularVelocity * damping,
+                    -maxTorque, maxTorque);
+                if (std::abs(targetAngle - relativeAngle) > 0.16f ||
+                    std::abs(relativeAngularVelocity) > 0.85f)
+                    b2Body_ApplyTorque(part.id, correction, true);
             }
         }
     }
