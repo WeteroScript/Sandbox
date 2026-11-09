@@ -735,6 +735,38 @@ int main()
         acidWorld.step(1.0f / 60.0f, 4);
     CHECK(!b2Body_IsValid(acidTargetId));
 
+    // Corrosion speed depends on the object's material, not only contact time.
+    const auto measureAcidExposure = [](MaterialKind material)
+    {
+        PhysicsWorld sampleWorld;
+        sampleWorld.setMap(MapKind::TestRange, false);
+        const int bucket = sampleWorld.spawnBucket(BucketKind::Acid, -5.0f, 5.0f);
+        if (bucket < 0 || !sampleWorld.interactAt(-5.0f, 5.0f))
+            return -1.0f;
+        const int target =
+            sampleWorld.spawnMaterialBlock(material, -5.0f, -4.2f);
+        if (target < 0)
+            return -1.0f;
+        const b2BodyId targetId =
+            sampleWorld.records()[static_cast<std::size_t>(target)].id;
+        for (int i = 0; i < 90; ++i)
+            sampleWorld.step(1.0f / 60.0f, 4);
+        if (!b2Body_IsValid(targetId))
+            return -1.0f;
+        return sampleWorld.records()[static_cast<std::size_t>(target)].acidExposure;
+    };
+    const float woodAcidExposure =
+        measureAcidExposure(MaterialKind::Wood);
+    const float metalAcidExposure =
+        measureAcidExposure(MaterialKind::Metal);
+    const float glassAcidExposure =
+        measureAcidExposure(MaterialKind::Glass);
+    CHECK(woodAcidExposure > 0.5f);
+    CHECK(metalAcidExposure > 0.0f);
+    CHECK(glassAcidExposure > 0.0f);
+    CHECK(woodAcidExposure > metalAcidExposure * 2.0f);
+    CHECK(woodAcidExposure > glassAcidExposure * 2.0f);
+
     // Overlapping water and acid spills share one capped submerged fraction.
     // Acid contact still accumulates independently of the blended buoyancy.
     PhysicsWorld overlappingLiquidWorld;

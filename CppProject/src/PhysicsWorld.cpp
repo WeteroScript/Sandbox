@@ -67,27 +67,36 @@ struct MaterialProfile
     float restitution;
     float fractureSpeed;
     float surfaceDamageSpeed;
+    float acidCorrosionRate;
     SDL_Color tint;
 };
 
 const MaterialProfile& materialProfile(MaterialKind material)
 {
     static const MaterialProfile wood{
-        0.95f, 0.82f, 0.035f, 14.0f, 7.0f, {174, 121, 68, 255}};
+        0.95f, 0.82f, 0.035f, 14.0f, 7.0f, 1.00f,
+        {174, 121, 68, 255}};
     static const MaterialProfile metal{
-        2.80f, 0.46f, 0.11f, 30.0f, 14.0f, {137, 155, 173, 255}};
+        2.80f, 0.46f, 0.11f, 30.0f, 14.0f, 0.22f,
+        {137, 155, 173, 255}};
     static const MaterialProfile glass{
-        1.35f, 0.32f, 0.12f, 9.0f, 4.5f, {126, 190, 211, 220}};
+        1.35f, 0.32f, 0.12f, 9.0f, 4.5f, 0.15f,
+        {126, 190, 211, 220}};
     static const MaterialProfile rubber{
-        1.15f, 0.98f, 0.58f, 0.0f, 6.5f, {55, 67, 78, 255}};
+        1.15f, 0.98f, 0.58f, 0.0f, 6.5f, 0.35f,
+        {55, 67, 78, 255}};
     static const MaterialProfile concrete{
-        2.25f, 0.84f, 0.015f, 24.0f, 12.0f, {139, 147, 155, 255}};
+        2.25f, 0.84f, 0.015f, 24.0f, 12.0f, 0.45f,
+        {139, 147, 155, 255}};
     static const MaterialProfile ice{
-        0.92f, 0.045f, 0.025f, 11.5f, 5.0f, {151, 205, 228, 255}};
+        0.92f, 0.045f, 0.025f, 11.5f, 5.0f, 0.80f,
+        {151, 205, 228, 255}};
     static const MaterialProfile plastic{
-        0.82f, 0.62f, 0.11f, 18.0f, 8.0f, {190, 105, 74, 255}};
+        0.82f, 0.62f, 0.11f, 18.0f, 8.0f, 0.30f,
+        {190, 105, 74, 255}};
     static const MaterialProfile organic{
-        1.0f, 0.68f, 0.02f, 0.0f, 5.0f, {128, 190, 135, 255}};
+        1.0f, 0.68f, 0.02f, 0.0f, 5.0f, 1.25f,
+        {128, 190, 135, 255}};
 
     switch (material)
     {
@@ -976,7 +985,12 @@ void PhysicsWorld::updateSurfaces(float dt)
         }
 
         if (immersedInAcid)
-            record.acidExposure += dt;
+        {
+            // Exposure is normalized material damage progress: resistant
+            // surfaces corrode more slowly without changing save data.
+            record.acidExposure +=
+                dt * materialProfile(record.material).acidCorrosionRate;
+        }
         else
             record.acidExposure = std::max(0.0f, record.acidExposure - dt * 0.08f);
 
