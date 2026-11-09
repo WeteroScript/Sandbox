@@ -374,7 +374,8 @@ void SandboxGame::processEvents()
                     if (meteorEvent_.active())
                     {
                         const bool selectingTarget = meteorEvent_.waitingForTarget();
-                        meteorEvent_.cancel();
+        meteorEvent_.cancel();
+                        physics_.clearMeteorCrater();
                         notice_ = selectingTarget
                             ? "Meteor targeting cancelled"
                             : "Meteor event cancelled";
@@ -809,7 +810,8 @@ void SandboxGame::handleUiClick(float x, float y)
             else
             {
                 const bool selectingTarget = meteorEvent_.waitingForTarget();
-                meteorEvent_.cancel();
+        meteorEvent_.cancel();
+                physics_.clearMeteorCrater();
                 notice_ = selectingTarget
                     ? "Meteor targeting cancelled"
                     : "Meteor event cancelled";
@@ -929,7 +931,8 @@ void SandboxGame::handleUiClick(float x, float y)
             std::vector<std::uint8_t> before;
             const bool canUndo = hadContent && captureHistorySnapshot(before);
             physics_.clearDynamic();
-            meteorEvent_.cancel();
+        meteorEvent_.cancel();
+            physics_.clearMeteorCrater();
             if (canUndo) pushUndoSnapshot(std::move(before));
             grabbedIndex_ = -1;
             clearConfirmTimer_ = 0.0f;
@@ -1117,7 +1120,8 @@ void SandboxGame::cycleMap()
     std::vector<std::uint8_t> before;
     const bool canUndo = captureHistorySnapshot(before);
     physics_.setMap(next, true);
-    meteorEvent_.cancel();
+        meteorEvent_.cancel();
+    physics_.clearMeteorCrater();
     if (canUndo) pushUndoSnapshot(std::move(before));
     cameraX_ = 0.0f;
     cameraY_ = 0.0f;
@@ -1183,6 +1187,7 @@ void SandboxGame::loadScene(bool silent)
     if (loaded)
     {
         meteorEvent_.cancel();
+        physics_.clearMeteorCrater();
         if (canUndo) pushUndoSnapshot(std::move(before));
         grabbedIndex_ = -1;
         accumulator_ = 0.0f;
@@ -1329,6 +1334,10 @@ void SandboxGame::update(float deltaTime)
         physics_.applyMeteorImpact(
             meteorEvent_.targetX(), meteorEvent_.targetY(),
             MeteorEvent::kImpactRadius, MeteorEvent::kImpactImpulseStrength);
+        physics_.createMeteorCrater(
+            meteorEvent_.targetX(), meteorEvent_.targetY(),
+            MeteorEvent::kCraterRadius,
+            MeteorEvent::kExplosionSeconds + MeteorEvent::kCraterSeconds);
         cameraShakeRemaining_ = kMeteorShakeSeconds;
     }
     accumulator_ = std::min(accumulator_ + simulationDelta, 0.20f);

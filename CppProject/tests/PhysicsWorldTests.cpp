@@ -126,6 +126,36 @@ int main()
     CHECK(meteorPhysics.applyMeteorImpact(
         0.0f, 1.0f, 0.0f, 18.0f) == 0);
 
+    // A ground-level meteor creates a temporary opening in the arena floor.
+    // Objects can settle into the bowl until the original floor is restored.
+    PhysicsWorld craterWorld;
+    craterWorld.setMap(MapKind::TestRange, false);
+    const std::size_t originalTerrainRecords = craterWorld.records().size();
+    CHECK(!craterWorld.createMeteorCrater(0.0f, 0.0f, 1.65f, 2.0f));
+    CHECK(!craterWorld.meteorCraterActive());
+    CHECK(craterWorld.records().size() == originalTerrainRecords);
+    CHECK(craterWorld.createMeteorCrater(0.0f, -4.8f, 1.65f, 2.0f));
+    CHECK(craterWorld.meteorCraterActive());
+    CHECK(craterWorld.records().size() == originalTerrainRecords + 4);
+    const int craterBall = craterWorld.spawnBall(0.0f, -4.05f);
+    CHECK(craterBall >= 0);
+    for (int i = 0; i < 30; ++i)
+        craterWorld.step(1.0f / 60.0f, 4);
+    const b2Pos craterBallPosition = b2Body_GetPosition(
+        craterWorld.records()[static_cast<std::size_t>(craterBall)].id);
+    CHECK(static_cast<float>(craterBallPosition.y) < -5.0f);
+    CHECK(craterWorld.meteorCraterActive());
+    for (int i = 0; i < 100; ++i)
+        craterWorld.step(1.0f / 60.0f, 4);
+    CHECK(!craterWorld.meteorCraterActive());
+    CHECK(craterWorld.records().size() == originalTerrainRecords + 1);
+
+    CHECK(craterWorld.createMeteorCrater(0.0f, -4.8f, 1.65f, 5.0f));
+    CHECK(craterWorld.meteorCraterActive());
+    craterWorld.clearMeteorCrater();
+    CHECK(!craterWorld.meteorCraterActive());
+    CHECK(craterWorld.records().size() == originalTerrainRecords + 1);
+
     PhysicsWorld world;
     const std::size_t initialCount = world.dynamicCount();
     CHECK(initialCount == 8);

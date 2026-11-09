@@ -21,7 +21,7 @@ struct MeteorPoint
 };
 
 // A timed sandbox event with a one-shot, bounded in-game impulse.
-// All timings use the simulation clock; terrain deformation remains visual.
+// All timings use the simulation clock; floor craters are restored automatically.
 class MeteorEvent
 {
 public:
@@ -29,6 +29,7 @@ public:
     static constexpr float kFlightSeconds = 3.0f;
     static constexpr float kImpactRadius = 8.5f;
     static constexpr float kImpactImpulseStrength = 21.0f;
+    static constexpr float kCraterRadius = 1.65f;
     static constexpr float kExplosionSeconds = 1.15f;
     static constexpr float kCraterSeconds = 60.0f;
 

@@ -113,6 +113,10 @@ public:
     bool interactAt(float x, float y);
     std::size_t applyMeteorImpact(
         float x, float y, float radius, float impulseStrength);
+    bool createMeteorCrater(
+        float x, float surfaceY, float radius, float duration);
+    void clearMeteorCrater();
+    bool meteorCraterActive() const { return meteorCraterFloorSaved_; }
 
     int pickBody(float worldX, float worldY) const;
     void updateGrab(int index, float targetX, float targetY, float deltaTime);
@@ -142,6 +146,14 @@ private:
     MapKind map_ = MapKind::TestRange;
     bool mechanismsEnabled_ = true;
     float environmentTime_ = 0.0f;
+    std::array<b2BodyId, 5> meteorCraterBodies_{};
+    bool meteorCraterFloorSaved_ = false;
+    float meteorCraterRemaining_ = 0.0f;
+    float meteorCraterFloorX_ = 0.0f;
+    float meteorCraterFloorY_ = 0.0f;
+    float meteorCraterFloorHalfWidth_ = 0.0f;
+    float meteorCraterFloorHalfHeight_ = 0.0f;
+    SDL_Color meteorCraterFloorColor_{54, 64, 77, 255};
 
     int createBox(float x, float y, float halfWidth, float halfHeight, float angle,
                   SDL_Color color, bool isStatic, bool selectable,

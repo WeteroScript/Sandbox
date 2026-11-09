@@ -651,6 +651,10 @@ PhysicsWorld::PhysicsWorld()
 
 void PhysicsWorld::clearWorldBodies()
 {
+    meteorCraterBodies_.fill(b2_nullBodyId);
+    meteorCraterFloorSaved_ = false;
+    meteorCraterRemaining_ = 0.0f;
+
     for (MechanismRecord& mechanism : mechanisms_)
         if (b2Joint_IsValid(mechanism.joint))
             b2DestroyJoint(mechanism.joint);
@@ -732,6 +736,137 @@ void PhysicsWorld::buildMapGeometry()
             addSurface(SurfaceKind::Lava, 5.0f, -3.2f, 1.8f, 1.0f);
             break;
     }
+}
+
+bool PhysicsWorld::createMeteorCrater(
+    float x, float surfaceY, float radius, float duration)
+{
+    if (!b2World_IsValid(world_) || !finite(x) || !finite(surfaceY) ||
+        !finite(radius) || !finite(duration) || radius < 0.8f ||
+        radius > 3.0f || duration < 0.1f || duration > 120.0f ||
+        std::abs(x) > 100000.0f || std::abs(surfaceY) > 100000.0f)
+        return false;
+
+    if (meteorCraterFloorSaved_)
+        clearMeteorCrater();
+
+    const auto floor = std::find_if(records_.begin(), records_.end(),
+        [](const BodyRecord& record)
+        {
+            if (record.selectable || record.shape != BodyShape::Box ||
+                !b2Body_IsValid(record.id) || record.halfWidth < 15.0f ||
+                record.halfHeight < 0.35f || record.halfHeight > 0.75f)
+                return false;
+            const b2Pos position = b2Body_GetPosition(record.id);
+            const b2Rot rotation = b2Body_GetRotation(record.id);
+            return std::abs(static_cast<float>(position.x)) < 0.05f &&
+                std::abs(static_cast<float>(rotation.s)) < 0.001f &&
+                static_cast<float>(rotation.c) > 0.999f;
+        });
+    if (floor == records_.end())
+        return false;
+
+    const std::size_t floorIndex =
+        static_cast<std::size_t>(floor - records_.begin());
+    const b2Pos floorPosition = b2Body_GetPosition(floor->id);
+    const float floorX = static_cast<float>(floorPosition.x);
+    const float floorY = static_cast<float>(floorPosition.y);
+    const float halfWidth = floor->halfWidth;
+    const float halfHeight = floor->halfHeight;
+    const float surfaceTop = floorY + halfHeight;
+    const float leftEdge = floorX - halfWidth;
+    const float rightEdge = floorX + halfWidth;
+    const float gapLeft = x - radius;
+    const float gapRight = x + radius;
+
+    // Only cut the arena floor when the chosen point is actually on it.
+    // Impacts elsewhere keep their ordinary visual crater.
+    if (std::abs(surfaceY - surfaceTop) > 0.45f ||
+        gapLeft <= leftEdge + 0.35f ||
+        gapRight >= rightEdge - 0.35f)
+        return false;
+
+    meteorCraterFloorX_ = floorX;
+    meteorCraterFloorY_ = floorY;
+    meteorCraterFloorHalfWidth_ = halfWidth;
+    meteorCraterFloorHalfHeight_ = halfHeight;
+    meteorCraterFloorColor_ = floor->color;
+    meteorCraterFloorSaved_ = true;
+    meteorCraterRemaining_ = duration;
+    meteorCraterBodies_.fill(b2_nullBodyId);
+
+    eraseRecord(floorIndex);
+
+    const auto addPiece = [&](std::size_t slot, float pieceX, float pieceY,
+                              float pieceHalfWidth, float pieceHalfHeight,
+                              float angle) -> bool
+    {
+        const int index = createBox(pieceX, pieceY,
+            pieceHalfWidth, pieceHalfHeight, angle,
+            meteorCraterFloorColor_, true, false);
+        if (index < 0)
+            return false;
+        meteorCraterBodies_[slot] =
+            records_[static_cast<std::size_t>(index)].id;
+        return true;
+    };
+
+    const float leftHalfWidth = (gapLeft - leftEdge) * 0.5f;
+    const float rightHalfWidth = (rightEdge - gapRight) * 0.5f;
+    const float lowerInset = radius * 0.36f;
+    const float rampDrop = 0.92f;
+    const float rampRun = radius - lowerInset;
+    const float rampLength = std::hypot(rampRun, rampDrop);
+    const float rampHalfLength = rampLength * 0.56f;
+    const float rampAngle = std::atan2(rampDrop, rampRun);
+    const float rampCenterY = surfaceTop - rampDrop * 0.5f;
+    const float lowerY = surfaceTop - rampDrop;
+
+    const bool built =
+        addPiece(0, (leftEdge + gapLeft) * 0.5f, floorY,
+                 leftHalfWidth, halfHeight, 0.0f) &&
+        addPiece(1, (gapRight + rightEdge) * 0.5f, floorY,
+                 rightHalfWidth, halfHeight, 0.0f) &&
+        addPiece(2, x - (radius + lowerInset) * 0.5f, rampCenterY,
+                 rampHalfLength, 0.16f, -rampAngle) &&
+        addPiece(3, x + (radius + lowerInset) * 0.5f, rampCenterY,
+                 rampHalfLength, 0.16f, rampAngle) &&
+        addPiece(4, x, lowerY - 0.10f,
+                 lowerInset + 0.25f, 0.16f, 0.0f);
+
+    if (!built)
+    {
+        clearMeteorCrater();
+        return false;
+    }
+    return true;
+}
+
+void PhysicsWorld::clearMeteorCrater()
+{
+    if (!meteorCraterFloorSaved_)
+        return;
+
+    for (const b2BodyId body : meteorCraterBodies_)
+    {
+        if (!b2Body_IsValid(body))
+            continue;
+        const auto found = std::find_if(records_.begin(), records_.end(),
+            [body](const BodyRecord& record)
+            {
+                return sameBodyId(record.id, body);
+            });
+        if (found != records_.end())
+            eraseRecord(static_cast<std::size_t>(found - records_.begin()));
+    }
+
+    createBox(meteorCraterFloorX_, meteorCraterFloorY_,
+        meteorCraterFloorHalfWidth_, meteorCraterFloorHalfHeight_,
+        0.0f, meteorCraterFloorColor_, true, false);
+
+    meteorCraterBodies_.fill(b2_nullBodyId);
+    meteorCraterFloorSaved_ = false;
+    meteorCraterRemaining_ = 0.0f;
 }
 
 void PhysicsWorld::addSurface(
@@ -1211,6 +1346,12 @@ void PhysicsWorld::step(float dt, int subSteps)
 
     dt = std::clamp(dt, 1.0f / 240.0f, 1.0f / 30.0f);
     subSteps = std::clamp(subSteps, 1, 8);
+    if (meteorCraterFloorSaved_)
+    {
+        meteorCraterRemaining_ -= dt;
+        if (meteorCraterRemaining_ <= 0.0f)
+            clearMeteorCrater();
+    }
     updateSurfaces(dt);
     updateMechanisms(dt);
     b2World_Step(world_, dt, subSteps);
