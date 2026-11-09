@@ -27,6 +27,8 @@ int main()
     // independently testable countdown / flight / explosion / crater lifecycle.
     MeteorEvent meteor;
     CHECK(meteor.stage() == MeteorStage::Idle);
+    CHECK(MeteorEvent::kImpactRadius > 0.0f);
+    CHECK(MeteorEvent::kImpactImpulseStrength > 0.0f);
     meteor.beginTargetSelection();
     CHECK(meteor.waitingForTarget());
     CHECK(!meteor.setTarget(std::numeric_limits<float>::quiet_NaN(), 4.0f));

@@ -27,6 +27,8 @@ class MeteorEvent
 public:
     static constexpr float kCountdownSeconds = 60.0f;
     static constexpr float kFlightSeconds = 3.0f;
+    static constexpr float kImpactRadius = 8.5f;
+    static constexpr float kImpactImpulseStrength = 21.0f;
     static constexpr float kExplosionSeconds = 1.15f;
     static constexpr float kCraterSeconds = 60.0f;
 

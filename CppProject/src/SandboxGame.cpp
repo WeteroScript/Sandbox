@@ -1327,7 +1327,8 @@ void SandboxGame::update(float deltaTime)
     if (meteorEvent_.consumeImpact())
     {
         physics_.applyMeteorImpact(
-            meteorEvent_.targetX(), meteorEvent_.targetY(), 8.5f, 21.0f);
+            meteorEvent_.targetX(), meteorEvent_.targetY(),
+            MeteorEvent::kImpactRadius, MeteorEvent::kImpactImpulseStrength);
         cameraShakeRemaining_ = kMeteorShakeSeconds;
     }
     accumulator_ = std::min(accumulator_ + simulationDelta, 0.20f);
@@ -3375,13 +3376,15 @@ void SandboxGame::drawMeteorEffects()
     {
         const float pulse = 1.0f +
             std::sin(static_cast<float>(SDL_GetTicks()) * 0.005f) * 0.08f;
-        const float radius = 22.0f * pulse;
-        const auto drawRing = [&](float ringRadius, SDL_Color tint)
+        const float markerRadius = 22.0f * pulse;
+        const auto drawRing = [&](float ringRadius, SDL_Color tint,
+                                  int segments, int dashPeriod = 1)
         {
             setColor(renderer_, tint);
-            constexpr int segments = 32;
             for (int segment = 0; segment < segments; ++segment)
             {
+                if (dashPeriod > 1 && segment % dashPeriod == dashPeriod - 1)
+                    continue;
                 const float a0 = 2.0f * kPi *
                     static_cast<float>(segment) / segments;
                 const float a1 = 2.0f * kPi *
@@ -3393,17 +3396,50 @@ void SandboxGame::drawMeteorEffects()
                     target.y + std::sin(a1) * ringRadius);
             }
         };
-        drawRing(radius, makeColor(255, 174, 91, 210));
-        drawRing(radius * 0.62f, makeColor(255, 218, 165, 175));
-        SDL_RenderLine(renderer_, target.x - radius * 1.45f, target.y,
-                       target.x - radius * 0.78f, target.y);
-        SDL_RenderLine(renderer_, target.x + radius * 0.78f, target.y,
-                       target.x + radius * 1.45f, target.y);
-        SDL_RenderLine(renderer_, target.x, target.y - radius * 1.45f,
-                       target.x, target.y - radius * 0.78f);
-        SDL_RenderLine(renderer_, target.x, target.y + radius * 0.78f,
-                       target.x, target.y + radius * 1.45f);
+
+        // Match the preview to the exact world-space impulse radius.
+        const float impactRadius = MeteorEvent::kImpactRadius * pixelsPerMeter_;
+        drawRing(impactRadius, makeColor(255, 150, 82, 105), 96, 4);
+        drawRing(impactRadius * 0.52f, makeColor(255, 184, 117, 54), 64, 3);
+        drawRing(markerRadius, makeColor(255, 174, 91, 230), 40);
+        drawRing(markerRadius * 0.62f, makeColor(255, 218, 165, 185), 40);
+
+        setColor(renderer_, makeColor(255, 204, 157, 205));
+        const float tickInner = markerRadius * 1.2f;
+        const float tickOuter = markerRadius * 1.75f;
+        for (int tick = 0; tick < 4; ++tick)
+        {
+            const float angle = static_cast<float>(tick) * kPi * 0.5f;
+            SDL_RenderLine(renderer_,
+                target.x + std::cos(angle) * tickInner,
+                target.y + std::sin(angle) * tickInner,
+                target.x + std::cos(angle) * tickOuter,
+                target.y + std::sin(angle) * tickOuter);
+        }
+        drawFilledCircle(renderer_, target.x, target.y,
+            std::max(2.5f, pixelsPerMeter_ * 0.065f),
+            makeColor(255, 232, 205, 235));
         return;
+    }
+
+    if (meteorEvent_.inAtmosphere())
+    {
+        // Keep the planned impact location readable beneath the incoming trail.
+        const float radius = MeteorEvent::kImpactRadius * pixelsPerMeter_;
+        setColor(renderer_, makeColor(255, 162, 100, 72));
+        constexpr int segments = 72;
+        for (int segment = 0; segment < segments; ++segment)
+        {
+            if (segment % 3 == 2)
+                continue;
+            const float a0 = 2.0f * kPi * static_cast<float>(segment) / segments;
+            const float a1 = 2.0f * kPi * static_cast<float>(segment + 1) / segments;
+            SDL_RenderLine(renderer_,
+                target.x + std::cos(a0) * radius,
+                target.y + std::sin(a0) * radius,
+                target.x + std::cos(a1) * radius,
+                target.y + std::sin(a1) * radius);
+        }
     }
 
     if (meteorEvent_.inAtmosphere())
