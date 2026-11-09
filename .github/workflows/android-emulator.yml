@@ -13,6 +13,10 @@ on:
       - "CppProject/**"
       - ".github/workflows/android-emulator.yml"
 
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
