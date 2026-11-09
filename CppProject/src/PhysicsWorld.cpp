@@ -2560,6 +2560,23 @@ bool PhysicsWorld::driveCharacter(
             torsoAngularVelocity * 1.8f, -8.0f, 8.0f);
     b2Body_ApplyTorque(torso->id, leanTorque, true);
 
+    // Keep the articulated group translating as one physical assembly.
+    // Correcting every part's horizontal velocity avoids planted-foot friction
+    // cancelling the torso drive while leaving vertical motion and contacts intact.
+    const float velocityBlend = std::clamp(deltaTime * 7.0f, 0.0f, 0.30f);
+    const float groupTargetSpeed = direction * 3.4f;
+    for (BodyRecord& member : records_)
+    {
+        if (member.groupId != groupId || member.frozen ||
+            !b2Body_IsValid(member.id))
+            continue;
+
+        b2Vec2 memberVelocity = b2Body_GetLinearVelocity(member.id);
+        memberVelocity.x +=
+            (groupTargetSpeed - memberVelocity.x) * velocityBlend;
+        b2Body_SetLinearVelocity(member.id, memberVelocity);
+    }
+
     constexpr float halfTurn = 3.14159265358979323846f;
     const float gaitStrength = std::abs(direction);
     for (BodyRecord& part : records_)
