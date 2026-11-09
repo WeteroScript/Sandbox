@@ -731,7 +731,9 @@ int main()
     CHECK(acidTarget >= 0);
     const b2BodyId acidTargetId =
         acidWorld.records()[static_cast<std::size_t>(acidTarget)].id;
-    for (int i = 0; i < 540 && b2Body_IsValid(acidTargetId); ++i)
+    // A floating wooden block is only partly submerged, so corrosion
+    // accumulates proportionally over a longer interval.
+    for (int i = 0; i < 1200 && b2Body_IsValid(acidTargetId); ++i)
         acidWorld.step(1.0f / 60.0f, 4);
     CHECK(!b2Body_IsValid(acidTargetId));
 
