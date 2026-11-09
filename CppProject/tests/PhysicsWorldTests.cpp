@@ -79,6 +79,15 @@ int main()
     CHECK(meteor.stage() == MeteorStage::Idle);
     CHECK(!meteor.consumeImpact());
 
+    // A cancellation during the impact frame discards the queued pulse.
+    meteor.beginTargetSelection();
+    CHECK(meteor.setTarget(3.0f, -1.0f));
+    meteor.update(MeteorEvent::kCountdownSeconds + MeteorEvent::kFlightSeconds);
+    CHECK(meteor.exploding());
+    meteor.cancel();
+    CHECK(meteor.stage() == MeteorStage::Idle);
+    CHECK(!meteor.consumeImpact());
+
     PhysicsWorld meteorPhysics;
     meteorPhysics.setMap(MapKind::TestRange, false);
     const int impactCenter = meteorPhysics.spawnBall(0.0f, 1.0f);

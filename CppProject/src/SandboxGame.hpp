@@ -93,6 +93,7 @@ private:
     int speedIndex_ = 2;
 
     float simulationSpeed_ = 1.0f;
+    float cameraShakeRemaining_ = 0.0f;
     float cameraX_ = 0.0f;
     float cameraY_ = 0.0f;
     float pixelsPerMeter_ = 44.0f;
@@ -137,6 +138,7 @@ private:
     void update(float deltaTime);
     void render();
 
+    SDL_FPoint cameraShakeOffset() const;
     b2Vec2 screenToWorld(float x, float y) const;
     SDL_FPoint worldToScreen(float x, float y) const;
 

@@ -14,6 +14,8 @@ namespace
 {
 constexpr float kFixedStep = 1.0f / 60.0f;
 constexpr float kPi = 3.14159265358979323846f;
+constexpr float kMeteorShakeSeconds = 0.42f;
+constexpr float kMeteorShakePixels = 10.0f;
 constexpr std::size_t kHistoryLimit = 20;
 constexpr std::array<float, 4> kSpeeds{0.25f, 0.5f, 1.0f, 2.0f};
 constexpr std::array<const char*, 4> kSpeedLabels{"0.25x", "0.5x", "1x", "2x"};
@@ -1319,11 +1321,14 @@ void SandboxGame::update(float deltaTime)
         return;
 
     const float simulationDelta = deltaTime * simulationSpeed_;
+    cameraShakeRemaining_ = std::max(
+        0.0f, cameraShakeRemaining_ - simulationDelta);
     meteorEvent_.update(simulationDelta);
     if (meteorEvent_.consumeImpact())
     {
         physics_.applyMeteorImpact(
             meteorEvent_.targetX(), meteorEvent_.targetY(), 8.5f, 21.0f);
+        cameraShakeRemaining_ = kMeteorShakeSeconds;
     }
     accumulator_ = std::min(accumulator_ + simulationDelta, 0.20f);
 
@@ -1336,19 +1341,41 @@ void SandboxGame::update(float deltaTime)
     }
 }
 
+SDL_FPoint SandboxGame::cameraShakeOffset() const
+{
+    if (!std::isfinite(cameraShakeRemaining_) || cameraShakeRemaining_ <= 0.0f)
+        return {0.0f, 0.0f};
+
+    const float remaining = std::clamp(
+        cameraShakeRemaining_, 0.0f, kMeteorShakeSeconds);
+    const float elapsed = kMeteorShakeSeconds - remaining;
+    const float envelope = remaining / kMeteorShakeSeconds;
+    const float phase = elapsed * 78.0f;
+    return {
+        std::sin(phase) * kMeteorShakePixels * envelope,
+        std::cos(phase * 0.87f) * kMeteorShakePixels * 0.68f * envelope
+    };
+}
+
 b2Vec2 SandboxGame::screenToWorld(float x, float y) const
 {
+    const SDL_FPoint shake = cameraShakeOffset();
     return {
-        cameraX_ + (x - static_cast<float>(outputWidth_) * 0.5f) / pixelsPerMeter_,
-        cameraY_ - (y - static_cast<float>(outputHeight_) * 0.5f) / pixelsPerMeter_
+        cameraX_ + (x - shake.x -
+            static_cast<float>(outputWidth_) * 0.5f) / pixelsPerMeter_,
+        cameraY_ - (y - shake.y -
+            static_cast<float>(outputHeight_) * 0.5f) / pixelsPerMeter_
     };
 }
 
 SDL_FPoint SandboxGame::worldToScreen(float x, float y) const
 {
+    const SDL_FPoint shake = cameraShakeOffset();
     return {
-        static_cast<float>(outputWidth_) * 0.5f + (x - cameraX_) * pixelsPerMeter_,
-        static_cast<float>(outputHeight_) * 0.5f - (y - cameraY_) * pixelsPerMeter_
+        static_cast<float>(outputWidth_) * 0.5f +
+            (x - cameraX_) * pixelsPerMeter_ + shake.x,
+        static_cast<float>(outputHeight_) * 0.5f -
+            (y - cameraY_) * pixelsPerMeter_ + shake.y
     };
 }
 
