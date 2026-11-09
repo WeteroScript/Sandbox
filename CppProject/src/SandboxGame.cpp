@@ -136,6 +136,11 @@ float clampFloat(float value, float low, float high)
 
 SandboxGame::~SandboxGame()
 {
+    if (audioStream_)
+    {
+        SDL_DestroyAudioStream(audioStream_);
+        audioStream_ = nullptr;
+    }
     if (renderer_)
         SDL_DestroyRenderer(renderer_);
     if (window_)
@@ -149,6 +154,17 @@ bool SandboxGame::initialize()
         return false;
 
     SDL_SetAppMetadata("Sandbox", "0.2.0", "com.weteroscript.sandbox");
+
+    // Audio is optional: devices without an output route must not prevent
+    // the sandbox from starting.
+    if (SDL_InitSubSystem(SDL_INIT_AUDIO))
+    {
+        const SDL_AudioSpec audioSpec{SDL_AUDIO_F32, 2, 44100};
+        audioStream_ = SDL_OpenAudioDeviceStream(
+            SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audioSpec, nullptr, nullptr);
+        if (audioStream_)
+            SDL_ResumeAudioStreamDevice(audioStream_);
+    }
 
     window_ = SDL_CreateWindow(
         "Sandbox",
@@ -168,6 +184,79 @@ bool SandboxGame::initialize()
     SDL_GetRenderOutputSize(renderer_, &outputWidth_, &outputHeight_);
     physics_.setMap(selectedMap_, false);
     return true;
+}
+
+void SandboxGame::playSoundCue(SoundCue cue, float intensity)
+{
+    if (!audioStream_)
+        return;
+
+    constexpr int sampleRate = 44100;
+    float frequency = 520.0f;
+    float duration = 0.055f;
+    float toneMix = 0.78f;
+    float noiseMix = 0.02f;
+    float gain = 0.075f;
+    float decay = 25.0f;
+
+    intensity = std::clamp(intensity, 0.15f, 1.0f);
+    switch (cue)
+    {
+        case SoundCue::Menu:
+            frequency = 690.0f;
+            break;
+        case SoundCue::Impact:
+            frequency = 105.0f + intensity * 155.0f;
+            duration = 0.145f;
+            toneMix = 0.58f;
+            noiseMix = 0.48f;
+            gain = 0.14f * intensity;
+            decay = 16.0f;
+            break;
+        case SoundCue::SnowCrunch:
+            frequency = 245.0f + intensity * 90.0f;
+            duration = 0.115f;
+            toneMix = 0.12f;
+            noiseMix = 0.92f;
+            gain = 0.12f * intensity;
+            decay = 23.0f;
+            break;
+        case SoundCue::LiquidPour:
+            frequency = 145.0f;
+            duration = 0.24f;
+            toneMix = 0.42f;
+            noiseMix = 0.66f;
+            gain = 0.095f;
+            decay = 11.0f;
+            break;
+    }
+
+    const int frameCount = static_cast<int>(duration * sampleRate);
+    std::vector<float> samples(static_cast<std::size_t>(frameCount) * 2U);
+    std::uint32_t seed = static_cast<std::uint32_t>(SDL_GetTicks()) ^
+        (static_cast<std::uint32_t>(cue) + 1U) * 2654435761U;
+    float phase = 0.0f;
+
+    for (int frame = 0; frame < frameCount; ++frame)
+    {
+        const float time = static_cast<float>(frame) / sampleRate;
+        const float envelope = std::exp(-decay * time) *
+            std::min(1.0f, time * 180.0f + 0.08f);
+        seed = seed * 1664525U + 1013904223U;
+        const float noise = static_cast<float>((seed >> 8U) & 0xffffU) /
+            32767.5f - 1.0f;
+        phase += 2.0f * kPi * frequency *
+            (1.0f - 0.18f * time / duration) / sampleRate;
+        const float fundamental = std::sin(phase);
+        const float harmonic = std::sin(phase * 2.03f) * 0.16f;
+        const float sample = (fundamental * toneMix +
+            harmonic * toneMix + noise * noiseMix) * envelope * gain;
+        samples[static_cast<std::size_t>(frame) * 2U] = sample * 0.96f;
+        samples[static_cast<std::size_t>(frame) * 2U + 1U] = sample;
+    }
+
+    SDL_PutAudioStreamData(audioStream_, samples.data(),
+        static_cast<int>(samples.size() * sizeof(float)));
 }
 
 int SandboxGame::run()
@@ -499,6 +588,7 @@ SDL_FRect SandboxGame::mapOptionRect(std::size_t index) const
 
 void SandboxGame::handleMenuClick(float x, float y)
 {
+    playSoundCue(SoundCue::Menu);
     if (screen_ == GameScreen::MainMenu)
     {
         if (pointInRect(x, y, mainMenuButtonRect(0)))
@@ -689,7 +779,7 @@ void SandboxGame::handlePointerDown(float x, float y)
         const bool tappedBucket = touchedBody >= 0 &&
             physics_.records()[static_cast<std::size_t>(touchedBody)].bucketKind !=
                 BucketKind::None;
-        if (physics_.interactAt(world.x, world.y))
+        if (!tappedBucket && physics_.interactAt(world.x, world.y))
         {
             if (hasPreInteractionSnapshot)
                 pushUndoSnapshot(std::move(preInteractionSnapshot));
@@ -788,7 +878,17 @@ void SandboxGame::handlePointerMove(float x, float y)
 
 void SandboxGame::handlePointerUp()
 {
+    const int releasedIndex = grabbedIndex_;
+    const bool releasedDraggedObject = releasedIndex >= 0 &&
+        tool_ == SandboxTool::Grab && dragChanged_;
     finishDragHistory();
+    if (releasedDraggedObject &&
+        physics_.releaseBucketIfTilted(releasedIndex))
+    {
+        playSoundCue(SoundCue::LiquidPour);
+        notice_ = "Liquid poured";
+        noticeTimer_ = 1.8f;
+    }
     pointerDown_ = false;
     panning_ = false;
     grabbedIndex_ = -1;
@@ -935,6 +1035,7 @@ void SandboxGame::handleFingerUp(SDL_FingerID fingerId)
 
 void SandboxGame::handleUiClick(float x, float y)
 {
+    playSoundCue(SoundCue::Menu);
     const UiLayout layout = makeUiLayout();
     const std::array<SandboxTool, 5> tools{
         SandboxTool::Grab,
@@ -1514,6 +1615,7 @@ void SandboxGame::update(float deltaTime)
 {
     noticeTimer_ = std::max(0.0f, noticeTimer_ - deltaTime);
     clearConfirmTimer_ = std::max(0.0f, clearConfirmTimer_ - deltaTime);
+    impactSoundCooldown_ = std::max(0.0f, impactSoundCooldown_ - deltaTime);
     if (screen_ != GameScreen::Playing)
         return;
 
@@ -1553,6 +1655,16 @@ void SandboxGame::update(float deltaTime)
     while (accumulator_ >= kFixedStep && steps < 12)
     {
         physics_.step(kFixedStep, 4);
+        const float impactSpeed = physics_.lastImpactSpeed();
+        if (impactSoundCooldown_ <= 0.0f && impactSpeed > 3.0f)
+        {
+            const float intensity = std::clamp((impactSpeed - 2.5f) / 13.0f,
+                                               0.15f, 1.0f);
+            playSoundCue(physics_.map() == MapKind::WinterLake
+                ? SoundCue::SnowCrunch : SoundCue::Impact, intensity);
+            impactSoundCooldown_ = physics_.map() == MapKind::WinterLake
+                ? 0.16f : 0.11f;
+        }
         accumulator_ -= kFixedStep;
         ++steps;
     }

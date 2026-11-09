@@ -111,6 +111,8 @@ public:
     int spawnRobot(float x, float y);
     int spawnMechanism(MechanismKind kind, float x, float y);
     bool interactAt(float x, float y);
+    bool releaseBucketIfTilted(int index);
+    float lastImpactSpeed() const { return lastImpactSpeed_; }
     std::size_t applyMeteorImpact(
         float x, float y, float radius, float impulseStrength);
     bool createMeteorCrater(
@@ -146,6 +148,7 @@ private:
     MapKind map_ = MapKind::TestRange;
     bool mechanismsEnabled_ = true;
     float environmentTime_ = 0.0f;
+    float lastImpactSpeed_ = 0.0f;
     std::array<b2BodyId, 5> meteorCraterBodies_{};
     bool meteorCraterFloorSaved_ = false;
     float meteorCraterRemaining_ = 0.0f;

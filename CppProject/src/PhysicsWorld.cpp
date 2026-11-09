@@ -939,7 +939,15 @@ void PhysicsWorld::addPouredLiquid(
     if (!std::isfinite(volume) || volume <= 0.0f)
         return;
 
-    const float halfWidth = std::clamp(0.48f + volume * 0.31f, 0.55f, 8.0f);
+    float spreadPerVolume = 0.31f;
+    switch (kind)
+    {
+        case SurfaceKind::Water: spreadPerVolume = 0.31f; break;
+        case SurfaceKind::Lava: spreadPerVolume = 0.18f; break;
+        case SurfaceKind::Acid: spreadPerVolume = 0.26f; break;
+    }
+    const float halfWidth = std::clamp(
+        0.48f + volume * spreadPerVolume, 0.55f, 8.0f);
     const float halfHeight = std::clamp(0.34f + volume * 0.05f, 0.40f, 1.0f);
 
     // Join nearby puddles of the same liquid instead of creating hundreds
@@ -960,8 +968,15 @@ void PhysicsWorld::addPouredLiquid(
         zone.x = (zone.x * zone.volume + x * volume) / totalVolume;
         zone.y = (zone.y * zone.volume + y * volume) / totalVolume;
         zone.volume = totalVolume;
+        float mergedSpread = 0.31f;
+        switch (kind)
+        {
+            case SurfaceKind::Water: mergedSpread = 0.31f; break;
+            case SurfaceKind::Lava: mergedSpread = 0.18f; break;
+            case SurfaceKind::Acid: mergedSpread = 0.26f; break;
+        }
         zone.halfWidth = std::clamp(
-            0.48f + totalVolume * 0.31f, 0.55f, 8.0f);
+            0.48f + totalVolume * mergedSpread, 0.55f, 8.0f);
         zone.halfHeight = std::clamp(
             0.34f + totalVolume * 0.05f, 0.40f, 1.0f);
         return;
@@ -1036,6 +1051,23 @@ int PhysicsWorld::spawnBucket(BucketKind kind, float x, float y)
     return index;
 }
 
+bool PhysicsWorld::releaseBucketIfTilted(int index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= records_.size())
+        return false;
+
+    const BodyRecord& bucket = records_[static_cast<std::size_t>(index)];
+    if (bucket.bucketKind == BucketKind::None || !b2Body_IsValid(bucket.id))
+        return false;
+
+    const b2Rot rotation = b2Body_GetRotation(bucket.id);
+    // The local +Y rim must point downward before release can pour.
+    if (static_cast<float>(rotation.c) > -0.45f)
+        return false;
+
+    return pourBucket(index);
+}
+
 bool PhysicsWorld::pourBucket(int index)
 {
     if (index < 0 || static_cast<std::size_t>(index) >= records_.size())
@@ -1057,8 +1089,13 @@ bool PhysicsWorld::pourBucket(int index)
     }
 
     const b2Pos position = b2Body_GetPosition(bucket.id);
-    const float sourceX = static_cast<float>(position.x);
-    const float sourceY = static_cast<float>(position.y) - bucket.halfHeight;
+    const b2Rot rotation = b2Body_GetRotation(bucket.id);
+    // Buckets are open at local +Y. Use the rotated mouth position as the
+    // spill origin, so liquid leaves the side actually facing downward.
+    const float sourceX = static_cast<float>(position.x) -
+        static_cast<float>(rotation.s) * bucket.halfHeight;
+    const float sourceY = static_cast<float>(position.y) +
+        static_cast<float>(rotation.c) * bucket.halfHeight;
     const float puddleHalfHeight = std::clamp(
         0.34f + bucket.bucketVolume * 0.05f, 0.40f, 1.0f);
     const float supportY = findLiquidSupportY(sourceX, sourceY);
@@ -1122,8 +1159,8 @@ void PhysicsWorld::updateSurfaces(float dt)
                     break;
                 case SurfaceKind::Lava:
                     buoyancyScale = 13.4f;
-                    dragScale = 0.72f;
-                    currentX = std::sin(environmentTime_ * 0.45f + y) * 0.20f;
+                    dragScale = 4.6f;
+                    currentX = std::sin(environmentTime_ * 0.45f + y) * 0.08f;
                     waveForce = std::sin(environmentTime_ * 1.7f + x) * 0.75f;
                     break;
                 case SurfaceKind::Acid:
@@ -1412,6 +1449,7 @@ void PhysicsWorld::step(float dt, int subSteps)
     updateSurfaces(dt);
     updateMechanisms(dt);
     b2World_Step(world_, dt, subSteps);
+    lastImpactSpeed_ = 0.0f;
     processImpactEvents();
 
     // Keep articulated characters stable under small incidental impacts.
@@ -1504,6 +1542,8 @@ void PhysicsWorld::processImpactEvents()
 
         const std::size_t recordIndex = found->second;
         BodyRecord& record = records_[recordIndex];
+        if (std::isfinite(approachSpeed))
+            lastImpactSpeed_ = std::max(lastImpactSpeed_, approachSpeed);
 
         const auto rememberImpactPoint = [&](float strength)
         {

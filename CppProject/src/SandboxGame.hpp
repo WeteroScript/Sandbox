@@ -3,6 +3,7 @@
 #include "PhysicsWorld.hpp"
 #include "MeteorEvent.hpp"
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_audio.h>
 
 #include <array>
 #include <cstdint>
@@ -13,6 +14,7 @@ enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
 enum class SpawnCategory { Props, Mechanisms, Misc, Materials, Power };
 enum class ExtraPanelSection : std::uint8_t { Ropes, Meteor };
 enum class GameScreen : std::uint8_t { MainMenu, MapSelect, Playing };
+enum class SoundCue : std::uint8_t { Menu, Impact, SnowCrunch, LiquidPour };
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
@@ -62,6 +64,8 @@ public:
 private:
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
+    SDL_AudioStream* audioStream_ = nullptr;
+    float impactSoundCooldown_ = 0.0f;
     PhysicsWorld physics_;
 
     GameScreen screen_ = GameScreen::MainMenu;
@@ -143,6 +147,7 @@ private:
     void undoScene();
     void redoScene();
     void update(float deltaTime);
+    void playSoundCue(SoundCue cue, float intensity = 1.0f);
     void render();
 
     SDL_FPoint cameraShakeOffset() const;

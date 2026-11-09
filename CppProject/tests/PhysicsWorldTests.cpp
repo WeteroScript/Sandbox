@@ -855,6 +855,23 @@ int main()
     }
     CHECK(restoredBucketCount == 3);
 
+    // A bucket only releases its contents after its open mouth points down.
+    PhysicsWorld tiltedBucketWorld;
+    tiltedBucketWorld.setMap(MapKind::Platform, false);
+    const int tiltedBucket = tiltedBucketWorld.spawnBucket(
+        BucketKind::Water, 0.0f, 4.5f);
+    CHECK(tiltedBucket >= 0);
+    CHECK(!tiltedBucketWorld.releaseBucketIfTilted(tiltedBucket));
+    CHECK(tiltedBucketWorld.records()[
+        static_cast<std::size_t>(tiltedBucket)].bucketVolume > 4.0f);
+    for (int rotation = 0; rotation < 12; ++rotation)
+        tiltedBucketWorld.rotateAt(tiltedBucket, 3.14159265358979323846f / 12.0f);
+    CHECK(tiltedBucketWorld.releaseBucketIfTilted(tiltedBucket));
+    CHECK(tiltedBucketWorld.records()[
+        static_cast<std::size_t>(tiltedBucket)].bucketVolume == 0.0f);
+    CHECK(tiltedBucketWorld.surfaces().size() == 1);
+    CHECK(tiltedBucketWorld.surfaces()[0].kind == SurfaceKind::Water);
+
     // Moving bodies lose horizontal momentum in water faster than in air.
     PhysicsWorld waterDragWorld;
     waterDragWorld.setMap(MapKind::TestRange, false);
