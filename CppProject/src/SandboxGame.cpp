@@ -1944,13 +1944,68 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
         tint.g = static_cast<Uint8>(tint.g * 0.86f);
         tint.b = static_cast<Uint8>(tint.b * 1.08f);
     }
-    if (body.acidExposure > 0.0f)
+    const float corrosion = std::clamp(body.acidExposure / 8.0f, 0.0f, 1.0f);
+    SDL_Color corrosionPit{37, 73, 43, 255};
+    SDL_Color corrosionHighlight{176, 187, 112, 255};
+    SDL_Color corrosionTint{121, 145, 83, 255};
+
+    switch (body.material)
     {
-        const float corrosion = std::clamp(body.acidExposure / 8.0f, 0.0f, 1.0f);
-        tint.r = static_cast<Uint8>(tint.r * (1.0f - corrosion * 0.45f));
-        tint.g = static_cast<Uint8>(std::min(
-            255.0f, static_cast<float>(tint.g) + corrosion * 70.0f));
-        tint.b = static_cast<Uint8>(tint.b * (1.0f - corrosion * 0.30f));
+        case MaterialKind::Wood:
+            corrosionPit = {67, 45, 27, 255};
+            corrosionHighlight = {177, 132, 76, 255};
+            corrosionTint = {103, 82, 56, 255};
+            break;
+        case MaterialKind::Metal:
+            corrosionPit = {83, 51, 32, 255};
+            corrosionHighlight = {206, 139, 80, 255};
+            corrosionTint = {151, 103, 66, 255};
+            break;
+        case MaterialKind::Glass:
+            corrosionPit = {71, 111, 126, 255};
+            corrosionHighlight = {220, 237, 244, 255};
+            corrosionTint = {194, 214, 222, 255};
+            break;
+        case MaterialKind::Rubber:
+            corrosionPit = {30, 35, 39, 255};
+            corrosionHighlight = {139, 143, 143, 255};
+            corrosionTint = {80, 83, 84, 255};
+            break;
+        case MaterialKind::Concrete:
+            corrosionPit = {74, 75, 73, 255};
+            corrosionHighlight = {198, 194, 176, 255};
+            corrosionTint = {169, 168, 154, 255};
+            break;
+        case MaterialKind::Ice:
+            corrosionPit = {81, 125, 151, 255};
+            corrosionHighlight = {222, 239, 247, 255};
+            corrosionTint = {197, 222, 235, 255};
+            break;
+        case MaterialKind::Plastic:
+            corrosionPit = {99, 59, 43, 255};
+            corrosionHighlight = {217, 150, 114, 255};
+            corrosionTint = {182, 136, 110, 255};
+            break;
+        case MaterialKind::Organic:
+            corrosionPit = {37, 73, 43, 255};
+            corrosionHighlight = {176, 187, 112, 255};
+            corrosionTint = {121, 145, 83, 255};
+            break;
+    }
+
+    if (corrosion > 0.0f)
+    {
+        const float tintAmount = corrosion * 0.62f;
+        const auto blendChannel = [tintAmount](Uint8 source, Uint8 target)
+        {
+            const float blended = static_cast<float>(source) +
+                (static_cast<float>(target) - static_cast<float>(source)) *
+                tintAmount;
+            return static_cast<Uint8>(std::clamp(blended, 0.0f, 255.0f));
+        };
+        tint.r = blendChannel(tint.r, corrosionTint.r);
+        tint.g = blendChannel(tint.g, corrosionTint.g);
+        tint.b = blendChannel(tint.b, corrosionTint.b);
     }
 
     const float drawableImpact = body.groupId >= 0 ? 0.0f : body.impactDamage;
@@ -2187,12 +2242,14 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                 75.0f + corrosion * 105.0f);
             drawFilledEllipse(renderer_, point.x, point.y,
                 pitSize * 1.45f, pitSize * 0.92f,
-                SDL_Color{37, 73, 43, pitAlpha});
+                SDL_Color{corrosionPit.r, corrosionPit.g,
+                    corrosionPit.b, pitAlpha});
             drawFilledEllipse(renderer_,
                 point.x - pitSize * 0.20f,
                 point.y - pitSize * 0.18f,
                 pitSize * 0.38f, pitSize * 0.28f,
-                SDL_Color{176, 187, 112,
+                SDL_Color{corrosionHighlight.r, corrosionHighlight.g,
+                    corrosionHighlight.b,
                     static_cast<Uint8>(pitAlpha * 0.55f)});
         }
     }
