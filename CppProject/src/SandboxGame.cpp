@@ -3023,6 +3023,52 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
                 hand.y - handRadius * 0.22f,
                 handRadius * 0.34f, handRadius * 0.24f,
                 SDL_Color{245, 252, 235, 175});
+
+            // Small articulated line details make the palm readable at
+            // normal phone scale. Fingers curl inward while a hand is holding
+            // an object and stay slightly spread when it is free.
+            const bool gripping = physics_.characterHandHoldingObject(
+                body.groupId, body.partIndex);
+            const SDL_Color fingerColor = shadeColor(
+                tint, gripping ? 0.72f : 0.88f);
+            SDL_SetRenderDrawColor(renderer_, fingerColor.r, fingerColor.g,
+                fingerColor.b, fingerColor.a);
+            const auto handPoint = [&](float localX, float localY)
+            {
+                return worldToScreen(
+                    x + std::cos(angle) * localX -
+                        std::sin(angle) * localY,
+                    y + std::sin(angle) * localX +
+                        std::cos(angle) * localY);
+            };
+            const float fingerSpread = body.halfWidth * 0.43f;
+            const float fingerLength = std::max(
+                0.105f, body.halfHeight * 0.27f);
+            for (int finger = -1; finger <= 1; ++finger)
+            {
+                const float offset = static_cast<float>(finger) * fingerSpread;
+                const SDL_FPoint root = handPoint(
+                    offset, handLocalY - 0.005f);
+                const SDL_FPoint middle = handPoint(
+                    offset + (gripping ? -static_cast<float>(finger) * 0.012f
+                                       : static_cast<float>(finger) * 0.008f),
+                    handLocalY - fingerLength * 0.56f);
+                const SDL_FPoint tip = handPoint(
+                    gripping ? offset * 0.62f : offset * 1.12f,
+                    handLocalY - fingerLength);
+                SDL_RenderLine(renderer_, root.x, root.y, middle.x, middle.y);
+                SDL_RenderLine(renderer_, middle.x, middle.y, tip.x, tip.y);
+            }
+
+            const float thumbSide = body.partIndex == 2 ? 1.0f : -1.0f;
+            const SDL_FPoint thumbRoot = handPoint(
+                thumbSide * body.halfWidth * 0.48f,
+                handLocalY + 0.012f);
+            const SDL_FPoint thumbTip = handPoint(
+                thumbSide * body.halfWidth * (gripping ? 0.10f : 0.76f),
+                handLocalY - fingerLength * (gripping ? 0.46f : 0.20f));
+            SDL_RenderLine(renderer_, thumbRoot.x, thumbRoot.y,
+                thumbTip.x, thumbTip.y);
         }
 
         const auto drawScuff = [&](float localX, float localY, float strength)

@@ -1384,6 +1384,8 @@ int main()
         handInteractionWorld.step(1.0f / 60.0f, 4);
     }
     CHECK(handInteractionWorld.characterHoldingObject(handCharacter));
+    CHECK(handInteractionWorld.characterHandHoldingObject(handCharacter, 3));
+    CHECK(!handInteractionWorld.characterHandHoldingObject(handCharacter, 2));
     const float handPropEndX =
         static_cast<float>(b2Body_GetPosition(handPropBody).x);
     CHECK(handPropEndX > handPropStartX + 0.15f);
@@ -1399,6 +1401,8 @@ int main()
     CHECK(!handInteractionWorld.driveCharacter(
         handCharacter, 0.0f, handGaitPhase, 1.0f / 60.0f));
     CHECK(!handInteractionWorld.characterHoldingObject(handCharacter));
+    CHECK(!handInteractionWorld.characterHandHoldingObject(handCharacter, 2));
+    CHECK(!handInteractionWorld.characterHandHoldingObject(handCharacter, 3));
 
     // The grip refuses a heavy object instead of attaching it to the hand.
     PhysicsWorld heavyHandWorld;
@@ -1434,6 +1438,8 @@ int main()
     }
     CHECK(twoHandWorld.characterHoldingObject(twoHandCharacter));
     CHECK(twoHandWorld.characterHoldingWithBothHands(twoHandCharacter));
+    CHECK(twoHandWorld.characterHandHoldingObject(twoHandCharacter, 2));
+    CHECK(twoHandWorld.characterHandHoldingObject(twoHandCharacter, 3));
     for (int i = 0; i < 24; ++i)
     {
         twoHandGaitPhase += (1.0f / 60.0f) * 8.6f;

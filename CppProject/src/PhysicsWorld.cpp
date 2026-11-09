@@ -25,6 +25,46 @@ b2Vec2 clampVector(b2Vec2 v, float maxLength)
     return {v.x * scale, v.y * scale};
 }
 
+// Return the closest point on the actual circle/rotated box surface. This
+// avoids treating the corners of a rotated box's broad-phase AABB as grip
+// points and gives both hands a stable, geometry-aware contact anchor.
+b2Vec2 closestPointOnBodyShape(const BodyRecord& body, b2Vec2 worldPoint)
+{
+    const b2Pos position = b2Body_GetPosition(body.id);
+    const b2Rot rotation = b2Body_GetRotation(body.id);
+    const float dx = worldPoint.x - static_cast<float>(position.x);
+    const float dy = worldPoint.y - static_cast<float>(position.y);
+    float localX = static_cast<float>(rotation.c) * dx +
+                   static_cast<float>(rotation.s) * dy;
+    float localY = -static_cast<float>(rotation.s) * dx +
+                    static_cast<float>(rotation.c) * dy;
+
+    if (body.shape == BodyShape::Circle)
+    {
+        const float distance = std::hypot(localX, localY);
+        if (distance > body.radius && distance > 0.000001f)
+        {
+            const float scale = body.radius / distance;
+            localX *= scale;
+            localY *= scale;
+        }
+    }
+    else
+    {
+        localX = std::clamp(localX, -body.halfWidth, body.halfWidth);
+        localY = std::clamp(localY, -body.halfHeight, body.halfHeight);
+    }
+
+    return {
+        static_cast<float>(position.x) +
+            static_cast<float>(rotation.c) * localX -
+            static_cast<float>(rotation.s) * localY,
+        static_cast<float>(position.y) +
+            static_cast<float>(rotation.s) * localX +
+            static_cast<float>(rotation.c) * localY
+    };
+}
+
 template <typename T>
 bool writeValue(std::ostream& stream, const T& value)
 {
@@ -2694,8 +2734,16 @@ bool PhysicsWorld::driveCharacter(
                 verticalGap > extentY + 0.28f)
                 continue;
 
+            const b2Vec2 surfacePoint = closestPointOnBodyShape(
+                prop, {handX, handY});
+            const float contactDx = surfacePoint.x - handX;
+            const float contactDy = surfacePoint.y - handY;
             const float distanceSquared =
-                forwardGap * forwardGap + verticalGap * verticalGap;
+                contactDx * contactDx + contactDy * contactDy;
+            constexpr float maxPalmGap = 0.38f;
+            if (distanceSquared > maxPalmGap * maxPalmGap)
+                continue;
+
             if (!candidate || distanceSquared < nearestDistanceSquared)
             {
                 candidate = &prop;
@@ -2705,7 +2753,14 @@ bool PhysicsWorld::driveCharacter(
 
         if (candidate)
         {
-            const b2Pos worldAnchor{handX, handY};
+            const b2Vec2 contactPoint = closestPointOnBodyShape(
+                *candidate, {handX, handY});
+            // Put both local anchors at the midpoint of the palm/surface gap:
+            // the joint starts without a positional correction impulse.
+            const b2Vec2 worldAnchor{
+                (handX + contactPoint.x) * 0.5f,
+                (handY + contactPoint.y) * 0.5f
+            };
             b2WeldJointDef definition = b2DefaultWeldJointDef();
             definition.base.bodyIdA = leadingArmForGrip->id;
             definition.base.bodyIdB = candidate->id;
@@ -2799,22 +2854,29 @@ bool PhysicsWorld::driveCharacter(
                         ? heldObject->radius
                         : sine * heldObject->halfWidth +
                             cosine * heldObject->halfHeight;
-                    const float handGapX = std::abs(
-                        handPosition.x - static_cast<float>(objectPosition.x));
-                    const float handGapY = std::abs(
-                        handPosition.y - static_cast<float>(objectPosition.y));
+                    const b2Vec2 surfacePoint = closestPointOnBodyShape(
+                        *heldObject, handPosition);
+                    const float contactDx = surfacePoint.x - handPosition.x;
+                    const float contactDy = surfacePoint.y - handPosition.y;
+                    const float contactDistanceSquared =
+                        contactDx * contactDx + contactDy * contactDy;
+                    constexpr float maxSecondPalmGap = 0.42f;
 
-                    if (handGapX <= extentX + 0.38f &&
-                        handGapY <= extentY + 0.36f)
+                    if (contactDistanceSquared <=
+                        maxSecondPalmGap * maxSecondPalmGap)
                     {
+                        const b2Vec2 sharedAnchor{
+                            (handPosition.x + surfacePoint.x) * 0.5f,
+                            (handPosition.y + surfacePoint.y) * 0.5f
+                        };
                         b2WeldJointDef definition = b2DefaultWeldJointDef();
                         definition.base.bodyIdA = secondArm->id;
                         definition.base.bodyIdB = heldObject->id;
                         definition.base.collideConnected = false;
                         definition.base.localFrameA.p =
-                            b2Body_GetLocalPoint(secondArm->id, handPosition);
+                            b2Body_GetLocalPoint(secondArm->id, sharedAnchor);
                         definition.base.localFrameB.p =
-                            b2Body_GetLocalPoint(heldObject->id, handPosition);
+                            b2Body_GetLocalPoint(heldObject->id, sharedAnchor);
                         definition.linearHertz = 5.5f;
                         definition.angularHertz = 4.2f;
                         definition.linearDampingRatio = 0.82f;
@@ -3006,22 +3068,26 @@ bool PhysicsWorld::characterHoldingObject(int groupId) const
         });
 }
 
-bool PhysicsWorld::characterHoldingWithBothHands(int groupId) const
+bool PhysicsWorld::characterHandHoldingObject(
+    int groupId, int handPart) const
 {
-    if (groupId < 0)
+    if (groupId < 0 || (handPart != 2 && handPart != 3))
         return false;
 
-    std::array<bool, 2> attached{};
-    for (const CharacterGripRecord& grip : characterGrips_)
-    {
-        if (grip.groupId != groupId || !b2Joint_IsValid(grip.joint) ||
-            !b2Body_IsValid(grip.handBody) ||
-            !b2Body_IsValid(grip.objectBody))
-            continue;
-        if (grip.handPart == 2) attached[0] = true;
-        if (grip.handPart == 3) attached[1] = true;
-    }
-    return attached[0] && attached[1];
+    return std::any_of(characterGrips_.begin(), characterGrips_.end(),
+        [groupId, handPart](const CharacterGripRecord& grip)
+        {
+            return grip.groupId == groupId && grip.handPart == handPart &&
+                b2Joint_IsValid(grip.joint) &&
+                b2Body_IsValid(grip.handBody) &&
+                b2Body_IsValid(grip.objectBody);
+        });
+}
+
+bool PhysicsWorld::characterHoldingWithBothHands(int groupId) const
+{
+    return characterHandHoldingObject(groupId, 2) &&
+           characterHandHoldingObject(groupId, 3);
 }
 
 void PhysicsWorld::releaseCharacterGrip(int groupId)

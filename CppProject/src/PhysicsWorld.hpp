@@ -124,6 +124,7 @@ public:
     float lastImpactSpeed() const { return lastImpactSpeed_; }
     bool lastImpactWasSnow() const { return lastImpactWasSnow_; }
     bool characterHoldingObject(int groupId) const;
+    bool characterHandHoldingObject(int groupId, int handPart) const;
     bool characterHoldingWithBothHands(int groupId) const;
     std::size_t applyMeteorImpact(
         float x, float y, float radius, float impulseStrength);
