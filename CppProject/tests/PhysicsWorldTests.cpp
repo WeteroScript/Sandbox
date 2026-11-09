@@ -139,11 +139,20 @@ int main()
     CHECK(craterWorld.records().size() == originalTerrainRecords + 4);
     const int craterBall = craterWorld.spawnBall(0.0f, -4.05f);
     CHECK(craterBall >= 0);
+    const b2BodyId craterBallBody =
+        craterWorld.records()[static_cast<std::size_t>(craterBall)].id;
+    float lowestCraterBallY = static_cast<float>(
+        b2Body_GetPosition(craterBallBody).y);
     for (int i = 0; i < 30; ++i)
+    {
         craterWorld.step(1.0f / 60.0f, 4);
-    const b2Pos craterBallPosition = b2Body_GetPosition(
-        craterWorld.records()[static_cast<std::size_t>(craterBall)].id);
-    CHECK(static_cast<float>(craterBallPosition.y) < -5.0f);
+        const b2Pos position = b2Body_GetPosition(craterBallBody);
+        lowestCraterBallY = std::min(
+            lowestCraterBallY, static_cast<float>(position.y));
+    }
+    // Rubber has a high restitution, so the ball may already have bounced
+    // off the crater bottom by the final step. Check its lowest point instead.
+    CHECK(lowestCraterBallY < -5.0f);
     CHECK(craterWorld.meteorCraterActive());
     for (int i = 0; i < 100; ++i)
         craterWorld.step(1.0f / 60.0f, 4);
