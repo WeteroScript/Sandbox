@@ -2209,6 +2209,11 @@ void PhysicsWorld::cloneAt(int index)
             BodyRecord& clone = records_[static_cast<std::size_t>(copy)];
             clone.bucketVolume = selected.bucketVolume;
             clone.acidExposure = selected.acidExposure;
+            clone.impactDamage = selected.impactDamage;
+            clone.impactLocalX = selected.impactLocalX;
+            clone.impactLocalY = selected.impactLocalY;
+            clone.impactMarks = selected.impactMarks;
+            clone.impactMarkCount = selected.impactMarkCount;
         }
         return;
     }

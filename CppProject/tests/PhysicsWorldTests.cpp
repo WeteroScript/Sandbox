@@ -1401,6 +1401,58 @@ int main()
     }
     CHECK(clonedWearMark);
 
+    // Buckets use a dedicated clone path because their contents are stateful.
+    // Surface damage must survive that path just like a normal prop.
+    PhysicsWorld bucketCloneWorld;
+    bucketCloneWorld.setMap(MapKind::TestRange, false);
+    const int damagedBucketIndex =
+        bucketCloneWorld.spawnBucket(BucketKind::Water, 0.0f, 5.0f);
+    const int bucketImpactBall =
+        bucketCloneWorld.spawnBall(-2.2f, 5.0f);
+    CHECK(damagedBucketIndex >= 0 && bucketImpactBall >= 0);
+    const b2BodyId damagedBucketId =
+        bucketCloneWorld.records()[static_cast<std::size_t>(damagedBucketIndex)].id;
+    b2Body_SetLinearVelocity(
+        bucketCloneWorld.records()[static_cast<std::size_t>(bucketImpactBall)].id,
+        {25.0f, 0.0f});
+    for (int i = 0; i < 24; ++i)
+        bucketCloneWorld.step(1.0f / 60.0f, 4);
+    CHECK(b2Body_IsValid(damagedBucketId));
+    const BodyRecord& damagedBucket =
+        bucketCloneWorld.records()[static_cast<std::size_t>(damagedBucketIndex)];
+    CHECK(damagedBucket.bucketKind == BucketKind::Water);
+    CHECK(damagedBucket.bucketVolume > 0.0f);
+    CHECK(damagedBucket.impactDamage > 0.0f);
+    CHECK(damagedBucket.impactMarkCount > 0);
+    const float expectedBucketDamage = damagedBucket.impactDamage;
+    const auto expectedBucketMarks = damagedBucket.impactMarks;
+    const std::uint8_t expectedBucketMarkCount = damagedBucket.impactMarkCount;
+    const float expectedBucketVolume = damagedBucket.bucketVolume;
+
+    bucketCloneWorld.cloneAt(damagedBucketIndex);
+    bool foundDamagedBucketClone = false;
+    for (std::size_t i = 0; i < bucketCloneWorld.records().size(); ++i)
+    {
+        const BodyRecord& body = bucketCloneWorld.records()[i];
+        if (sameBodyId(body.id, damagedBucketId) ||
+            body.bucketKind != BucketKind::Water)
+            continue;
+        CHECK(std::abs(body.bucketVolume - expectedBucketVolume) < 0.0001f);
+        CHECK(std::abs(body.impactDamage - expectedBucketDamage) < 0.0001f);
+        CHECK(body.impactMarkCount == expectedBucketMarkCount);
+        for (std::size_t mark = 0; mark < body.impactMarkCount; ++mark)
+        {
+            CHECK(std::abs(body.impactMarks[mark].localX -
+                           expectedBucketMarks[mark].localX) < 0.0001f);
+            CHECK(std::abs(body.impactMarks[mark].localY -
+                           expectedBucketMarks[mark].localY) < 0.0001f);
+            CHECK(std::abs(body.impactMarks[mark].strength -
+                           expectedBucketMarks[mark].strength) < 0.0001f);
+        }
+        foundDamagedBucketClone = true;
+    }
+    CHECK(foundDamagedBucketClone);
+
     // A light collision creates no breakage; a high-speed hit fractures wood into four pieces.
     PhysicsWorld lightImpactWorld;
     lightImpactWorld.setMap(MapKind::Laboratory, false);
