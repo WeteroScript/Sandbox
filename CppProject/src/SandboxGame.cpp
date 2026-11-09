@@ -2950,6 +2950,49 @@ void SandboxGame::drawUi()
                             static_cast<float>(notice_.size()) * 4.0f;
         SDL_RenderDebugText(renderer_, textX, 58.0f, notice_.c_str());
     }
+
+    if (meteorEvent_.active() && !meteorEvent_.waitingForTarget())
+    {
+        char meteorHud[72]{};
+        switch (meteorEvent_.stage())
+        {
+            case MeteorStage::Countdown:
+            {
+                const int seconds = meteorEvent_.countdownSecondsRounded();
+                std::snprintf(meteorHud, sizeof(meteorHud),
+                    "METEOR IMPACT IN %02d:%02d",
+                    seconds / 60, seconds % 60);
+                break;
+            }
+            case MeteorStage::AtmosphericEntry:
+                std::snprintf(meteorHud, sizeof(meteorHud),
+                    "METEOR ENTERING ATMOSPHERE");
+                break;
+            case MeteorStage::Explosion:
+                std::snprintf(meteorHud, sizeof(meteorHud),
+                    "METEOR IMPACT");
+                break;
+            case MeteorStage::Crater:
+            {
+                const int seconds = static_cast<int>(
+                    std::ceil(meteorEvent_.secondsRemaining()));
+                std::snprintf(meteorHud, sizeof(meteorHud),
+                    "CRATER RESTORES IN %02d:%02d",
+                    seconds / 60, seconds % 60);
+                break;
+            }
+            case MeteorStage::Idle:
+            case MeteorStage::SelectingTarget:
+                break;
+        }
+        if (meteorHud[0] != '\0')
+        {
+            setColor(renderer_, makeColor(255, 190, 125));
+            const float textX = static_cast<float>(outputWidth_) * 0.5f -
+                static_cast<float>(std::strlen(meteorHud)) * 4.0f;
+            SDL_RenderDebugText(renderer_, textX, 82.0f, meteorHud);
+        }
+    }
 }
 void SandboxGame::drawBackground()
 {
