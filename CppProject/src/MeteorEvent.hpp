@@ -143,6 +143,12 @@ public:
         return std::clamp(stageRemaining_ / kCraterSeconds, 0.0f, 1.0f);
     }
 
+    float craterScale() const
+    {
+        // The crater contracts as loose material settles back into it.
+        return 0.42f + 0.58f * std::sqrt(craterFade());
+    }
+
     float targetX() const { return targetX_; }
     float targetY() const { return targetY_; }
 

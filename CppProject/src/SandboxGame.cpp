@@ -3558,8 +3558,9 @@ void SandboxGame::drawMeteorEffects()
     if (meteorEvent_.hasCrater())
     {
         const float fade = meteorEvent_.craterFade();
-        const float radiusX = pixelsPerMeter_ * 1.75f;
-        const float radiusY = pixelsPerMeter_ * 0.62f;
+        const float recoveryScale = meteorEvent_.craterScale();
+        const float radiusX = pixelsPerMeter_ * 1.75f * recoveryScale;
+        const float radiusY = pixelsPerMeter_ * 0.62f * recoveryScale;
         const Uint8 alpha = static_cast<Uint8>(205.0f * fade);
 
         drawFilledEllipse(renderer_, target.x, target.y + radiusY * 0.08f,
