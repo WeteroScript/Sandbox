@@ -1,8 +1,8 @@
-def ciEmulator = project.hasProperty("ciEmulator")
-
 plugins {
     id "com.android.application"
 }
+
+def ciEmulator = project.hasProperty("ciEmulator")
 
 android {
     namespace "com.weteroscript.sandbox"
