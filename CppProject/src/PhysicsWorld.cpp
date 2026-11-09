@@ -2579,6 +2579,44 @@ bool PhysicsWorld::driveCharacter(
 
     constexpr float halfTurn = 3.14159265358979323846f;
     const float gaitStrength = std::abs(direction);
+    const int leadingPart = direction > 0.0f ? 3 : 2;
+    const auto hasPropInHandReach = [&](const BodyRecord& arm)
+    {
+        const b2Pos armPosition = b2Body_GetPosition(arm.id);
+        const b2Rot armRotation = b2Body_GetRotation(arm.id);
+        const float localHandY = -arm.halfHeight * 0.90f;
+        const float handX = static_cast<float>(armPosition.x) -
+            static_cast<float>(armRotation.s) * localHandY;
+        const float handY = static_cast<float>(armPosition.y) +
+            static_cast<float>(armRotation.c) * localHandY;
+
+        for (const BodyRecord& prop : records_)
+        {
+            if (!prop.selectable || prop.frozen || prop.groupId >= 0 ||
+                prop.partIndex >= 0 || !b2Body_IsValid(prop.id))
+                continue;
+            const b2Pos position = b2Body_GetPosition(prop.id);
+            const b2Rot rotation = b2Body_GetRotation(prop.id);
+            const float cosine = std::abs(static_cast<float>(rotation.c));
+            const float sine = std::abs(static_cast<float>(rotation.s));
+            const float extentX = prop.shape == BodyShape::Circle
+                ? prop.radius
+                : cosine * prop.halfWidth + sine * prop.halfHeight;
+            const float extentY = prop.shape == BodyShape::Circle
+                ? prop.radius
+                : sine * prop.halfWidth + cosine * prop.halfHeight;
+            const float forwardGap =
+                (static_cast<float>(position.x) - handX) * direction;
+            const float verticalGap =
+                std::abs(static_cast<float>(position.y) - handY);
+            if (forwardGap >= -0.08f &&
+                forwardGap <= extentX + 0.24f &&
+                verticalGap <= extentY + 0.30f)
+                return true;
+        }
+        return false;
+    };
+
     for (BodyRecord& part : records_)
     {
         if (part.groupId != groupId || part.partIndex < 1 ||
@@ -2621,11 +2659,10 @@ bool PhysicsWorld::driveCharacter(
         }
         else if (part.partIndex == 2 || part.partIndex == 3)
         {
-            const bool leadingArm = direction > 0.0f
-                ? part.partIndex == 3 : part.partIndex == 2;
-            if (leadingArm)
+            const bool leadingArm = part.partIndex == leadingPart;
+            if (leadingArm && hasPropInHandReach(part))
             {
-                // The front hand reaches ahead to make contact with props.
+                // Reach toward an object only when it is actually beside the palm.
                 targetAngle = direction * 0.46f +
                     std::sin(gaitPhase) * 0.07f * gaitStrength;
                 stiffness = 6.2f;
@@ -2634,6 +2671,7 @@ bool PhysicsWorld::driveCharacter(
             }
             else
             {
+                // Keep the normal counter-swing when the hand has nothing to touch.
                 const float armPhase = part.partIndex == 2 ? halfTurn : 0.0f;
                 targetAngle = std::sin(gaitPhase + armPhase) *
                     0.20f * gaitStrength;
@@ -2659,7 +2697,6 @@ bool PhysicsWorld::driveCharacter(
 
     // The leading palm can push nearby loose props. The impulse is scaled
     // by object mass and only activates inside the palm's short reach window.
-    const int leadingPart = direction > 0.0f ? 3 : 2;
     const BodyRecord* leadingArm = nullptr;
     for (const BodyRecord& part : records_)
     {
