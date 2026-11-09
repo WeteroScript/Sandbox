@@ -2196,7 +2196,6 @@ void SandboxGame::drawBody(const BodyRecord& body, bool selected)
 
     // Acid damage gradually reveals small, deterministic surface pits. The
     // pattern is derived from the body ID, so it stays stable across frames.
-    const float corrosion = std::clamp(body.acidExposure / 8.0f, 0.0f, 1.0f);
     if (corrosion > 0.12f)
     {
         std::uint32_t seed =
