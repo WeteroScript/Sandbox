@@ -1434,7 +1434,9 @@ int main()
     for (std::size_t i = 0; i < bucketCloneWorld.records().size(); ++i)
     {
         const BodyRecord& body = bucketCloneWorld.records()[i];
-        if (sameBodyId(body.id, damagedBucketId) ||
+        if ((body.id.index1 == damagedBucketId.index1 &&
+             body.id.world0 == damagedBucketId.world0 &&
+             body.id.generation == damagedBucketId.generation) ||
             body.bucketKind != BucketKind::Water)
             continue;
         CHECK(std::abs(body.bucketVolume - expectedBucketVolume) < 0.0001f);
