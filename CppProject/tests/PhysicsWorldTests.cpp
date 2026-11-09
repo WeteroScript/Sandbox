@@ -48,6 +48,8 @@ int main()
     CHECK(entryMiddle.y < entryStart.y);
     meteor.update(1.5f);
     CHECK(meteor.exploding());
+    CHECK(meteor.consumeImpact());
+    CHECK(!meteor.consumeImpact());
     meteor.update(MeteorEvent::kExplosionSeconds);
     CHECK(meteor.hasCrater());
     CHECK(std::abs(meteor.secondsRemaining() - MeteorEvent::kCraterSeconds) < 0.0001f);
@@ -67,6 +69,37 @@ int main()
     CHECK(meteor.waitingForTarget());
     meteor.cancel();
     CHECK(meteor.stage() == MeteorStage::Idle);
+
+    PhysicsWorld meteorPhysics;
+    meteorPhysics.setMap(MapKind::TestRange, false);
+    const int impactCenter = meteorPhysics.spawnBall(0.0f, 1.0f);
+    const int impactNear = meteorPhysics.spawnBox(2.0f, 1.0f);
+    const int impactFrozen = meteorPhysics.spawnBall(-2.0f, 1.0f);
+    const int impactFar = meteorPhysics.spawnBox(12.0f, 1.0f);
+    CHECK(impactCenter >= 0 && impactNear >= 0 &&
+          impactFrozen >= 0 && impactFar >= 0);
+    meteorPhysics.toggleFreeze(impactFrozen);
+    CHECK(meteorPhysics.applyMeteorImpact(
+        0.0f, 1.0f, 6.0f, 18.0f) == 2);
+    const auto velocityAt = [&meteorPhysics](int index)
+    {
+        return b2Body_GetLinearVelocity(
+            meteorPhysics.records()[static_cast<std::size_t>(index)].id);
+    };
+    const b2Vec2 centerVelocity = velocityAt(impactCenter);
+    const b2Vec2 nearVelocity = velocityAt(impactNear);
+    const b2Vec2 frozenVelocity = velocityAt(impactFrozen);
+    const b2Vec2 farVelocity = velocityAt(impactFar);
+    CHECK(centerVelocity.y > 0.0f);
+    CHECK(nearVelocity.x > 0.0f);
+    CHECK(std::abs(frozenVelocity.x) < 0.0001f);
+    CHECK(std::abs(frozenVelocity.y) < 0.0001f);
+    CHECK(std::abs(farVelocity.x) < 0.0001f);
+    CHECK(std::abs(farVelocity.y) < 0.0001f);
+    CHECK(meteorPhysics.applyMeteorImpact(
+        std::numeric_limits<float>::infinity(), 1.0f, 6.0f, 18.0f) == 0);
+    CHECK(meteorPhysics.applyMeteorImpact(
+        0.0f, 1.0f, 0.0f, 18.0f) == 0);
 
     PhysicsWorld world;
     const std::size_t initialCount = world.dynamicCount();

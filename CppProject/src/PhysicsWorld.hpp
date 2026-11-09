@@ -111,6 +111,8 @@ public:
     int spawnRobot(float x, float y);
     int spawnMechanism(MechanismKind kind, float x, float y);
     bool interactAt(float x, float y);
+    std::size_t applyMeteorImpact(
+        float x, float y, float radius, float impulseStrength);
 
     int pickBody(float worldX, float worldY) const;
     void updateGrab(int index, float targetX, float targetY, float deltaTime);

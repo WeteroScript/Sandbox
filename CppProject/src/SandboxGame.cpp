@@ -1312,6 +1312,11 @@ void SandboxGame::update(float deltaTime)
 
     const float simulationDelta = deltaTime * simulationSpeed_;
     meteorEvent_.update(simulationDelta);
+    if (meteorEvent_.consumeImpact())
+    {
+        physics_.applyMeteorImpact(
+            meteorEvent_.targetX(), meteorEvent_.targetY(), 8.5f, 21.0f);
+    }
     accumulator_ = std::min(accumulator_ + simulationDelta, 0.20f);
 
     int steps = 0;
@@ -3527,6 +3532,40 @@ void SandboxGame::drawMeteorEffects()
             drawFilledCircle(renderer_, point.x, point.y,
                 std::max(2.0f, pixelsPerMeter_ * 0.085f),
                 makeColor(105, 96, 87, alpha));
+        }
+
+        // Soft dust puffs rise from the rim, spread outward and fade in
+        // sync with the crater's one-minute recovery timer.
+        const float recovered = 1.0f - fade;
+        const float dustTime = static_cast<float>(SDL_GetTicks()) * 0.00055f;
+        for (int puff = 0; puff < 7; ++puff)
+        {
+            const float angle = 2.0f * kPi *
+                static_cast<float>(puff) / 7.0f + dustTime * 0.10f;
+            const float drift = recovered * pixelsPerMeter_ *
+                (0.28f + static_cast<float>(puff % 3) * 0.12f);
+            const float bob = std::sin(dustTime + puff * 1.7f) *
+                pixelsPerMeter_ * 0.07f;
+            const SDL_FPoint point{
+                target.x + std::cos(angle) *
+                    (radiusX * (0.62f + recovered * 0.55f) + drift),
+                target.y - radiusY * (0.55f + recovered * 1.6f) +
+                    bob - drift * 0.35f
+            };
+            const float puffRadius = pixelsPerMeter_ *
+                (0.13f + (puff % 3) * 0.045f) *
+                (0.85f + recovered * 0.55f);
+            const Uint8 dustAlpha = static_cast<Uint8>(
+                70.0f * fade * (0.65f + 0.35f *
+                    std::sin(dustTime * 0.7f + puff)));
+            drawFilledEllipse(renderer_, point.x, point.y,
+                puffRadius * 1.35f, puffRadius * 0.72f,
+                makeColor(143, 132, 119, dustAlpha));
+            drawFilledEllipse(renderer_, point.x - puffRadius * 0.18f,
+                point.y - puffRadius * 0.12f,
+                puffRadius * 0.54f, puffRadius * 0.34f,
+                makeColor(184, 171, 151,
+                    static_cast<Uint8>(dustAlpha * 0.45f)));
         }
     }
 }

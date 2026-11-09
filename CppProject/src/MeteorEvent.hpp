@@ -55,6 +55,13 @@ public:
         reset();
     }
 
+    bool consumeImpact()
+    {
+        const bool pending = impactPending_;
+        impactPending_ = false;
+        return pending;
+    }
+
     void update(float deltaTime)
     {
         if (!std::isfinite(deltaTime) || deltaTime <= 0.0f ||
@@ -80,6 +87,7 @@ public:
                 case MeteorStage::AtmosphericEntry:
                     stage_ = MeteorStage::Explosion;
                     stageRemaining_ = kExplosionSeconds;
+                    impactPending_ = true;
                     break;
                 case MeteorStage::Explosion:
                     stage_ = MeteorStage::Crater;
@@ -152,6 +160,7 @@ private:
     {
         stage_ = MeteorStage::Idle;
         stageRemaining_ = 0.0f;
+        impactPending_ = false;
         targetX_ = 0.0f;
         targetY_ = 0.0f;
     }
@@ -160,4 +169,5 @@ private:
     float stageRemaining_ = 0.0f;
     float targetX_ = 0.0f;
     float targetY_ = 0.0f;
+    bool impactPending_ = false;
 };

@@ -2078,6 +2078,70 @@ int PhysicsWorld::spawnCharacter(float x, float y, bool robot)
     return group;
 }
 
+std::size_t PhysicsWorld::applyMeteorImpact(
+    float x, float y, float radius, float impulseStrength)
+{
+    if (!std::isfinite(x) || !std::isfinite(y) ||
+        !std::isfinite(radius) || !std::isfinite(impulseStrength) ||
+        radius <= 0.05f || radius > 100.0f ||
+        impulseStrength <= 0.0f || impulseStrength > 250.0f)
+        return 0;
+
+    std::size_t affected = 0;
+    const float inverseRadius = 1.0f / radius;
+    for (BodyRecord& record : records_)
+    {
+        if (!record.selectable || record.frozen ||
+            !b2Body_IsValid(record.id))
+            continue;
+
+        const b2Pos position = b2Body_GetPosition(record.id);
+        const float dx = static_cast<float>(position.x) - x;
+        const float dy = static_cast<float>(position.y) - y;
+        const float distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared >= radius * radius)
+            continue;
+
+        const float distance = std::sqrt(distanceSquared);
+        const float falloff = 1.0f - distance * inverseRadius;
+        const float shapedFalloff = falloff * falloff;
+
+        // The impulse spreads outward and slightly upward, with a smooth
+        // quadratic falloff to avoid a hard velocity discontinuity at radius.
+        float directionX = dx;
+        float directionY = dy + radius * 0.075f;
+        float directionLength = std::hypot(directionX, directionY);
+        if (directionLength <= 0.0001f)
+        {
+            directionX = 0.0f;
+            directionY = 1.0f;
+            directionLength = 1.0f;
+        }
+        directionX /= directionLength;
+        directionY /= directionLength;
+
+        const float mass = std::max(0.1f, b2Body_GetMass(record.id));
+        const float impulse = impulseStrength * shapedFalloff;
+        const b2Vec2 previousVelocity = b2Body_GetLinearVelocity(record.id);
+        const b2Vec2 nextVelocity = clampVector({
+            previousVelocity.x + directionX * impulse / mass,
+            previousVelocity.y + directionY * impulse / mass
+        }, 36.0f);
+        b2Body_SetLinearVelocity(record.id, nextVelocity);
+
+        const float spinSign = (dx * directionY - dy * directionX) >= 0.0f
+            ? 1.0f : -1.0f;
+        const float spin = spinSign * std::min(
+            3.0f, impulse * std::min(distance, radius) /
+                (mass * radius * 2.5f));
+        b2Body_SetAngularVelocity(record.id, std::clamp(
+            b2Body_GetAngularVelocity(record.id) + spin, -12.0f, 12.0f));
+        ++affected;
+    }
+
+    return affected;
+}
+
 int PhysicsWorld::pickBody(float wx, float wy) const
 {
     for (int i = static_cast<int>(records_.size()) - 1; i >= 0; --i)
