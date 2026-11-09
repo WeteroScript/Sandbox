@@ -2657,9 +2657,6 @@ bool PhysicsWorld::driveCharacter(
         b2Body_ApplyTorque(part.id, torque, true);
     }
 
-    return true;
-}
-
     // The leading palm can push nearby loose props. The impulse is scaled
     // by object mass and only activates inside the palm's short reach window.
     const int leadingPart = direction > 0.0f ? 3 : 2;
@@ -2720,6 +2717,9 @@ bool PhysicsWorld::driveCharacter(
                  std::min(effectiveMass * 1.25f * proximity, 4.0f)}, true);
         }
     }
+
+    return true;
+}
 
 void PhysicsWorld::setFrozen(BodyRecord& r, bool frozen)
 {
