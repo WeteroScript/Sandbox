@@ -2638,22 +2638,10 @@ bool PhysicsWorld::driveCharacter(
         }
     }
 
+    // A grip belongs to the hand that created it, not to the current
+    // leading hand. Keeping it across direction changes prevents accidental
+    // drops when the player reverses the walking direction.
     bool holdingObject = characterHoldingObject(groupId);
-    if (holdingObject && leadingArmForGrip)
-    {
-        const auto grip = std::find_if(characterGrips_.begin(),
-            characterGrips_.end(),
-            [groupId](const CharacterGripRecord& item)
-            {
-                return item.groupId == groupId;
-            });
-        if (grip != characterGrips_.end() &&
-            !sameBodyId(grip->handBody, leadingArmForGrip->id))
-        {
-            releaseCharacterGrip(groupId);
-            holdingObject = false;
-        }
-    }
 
     if (!holdingObject && leadingArmForGrip)
     {
@@ -2743,6 +2731,110 @@ bool PhysicsWorld::driveCharacter(
         }
     }
 
+    // A wide prop can be stabilized by the other hand once that palm reaches
+    // the same object. Both joints remain physical Box2D welds; no transform
+    // snapping or teleporting is used.
+    if (holdingObject)
+    {
+        const auto firstGrip = std::find_if(characterGrips_.begin(),
+            characterGrips_.end(),
+            [groupId](const CharacterGripRecord& grip)
+            {
+                return grip.groupId == groupId &&
+                    b2Joint_IsValid(grip.joint) &&
+                    b2Body_IsValid(grip.objectBody);
+            });
+        if (firstGrip != characterGrips_.end())
+        {
+            const int secondHandPart =
+                firstGrip->handPart == 2 ? 3 : 2;
+            const bool secondHandAlreadyAttached = std::any_of(
+                characterGrips_.begin(), characterGrips_.end(),
+                [groupId, secondHandPart](const CharacterGripRecord& grip)
+                {
+                    return grip.groupId == groupId &&
+                        grip.handPart == secondHandPart &&
+                        b2Joint_IsValid(grip.joint);
+                });
+            if (!secondHandAlreadyAttached)
+            {
+                BodyRecord* secondArm = nullptr;
+                BodyRecord* heldObject = nullptr;
+                for (BodyRecord& part : records_)
+                {
+                    if (part.groupId == groupId &&
+                        part.partIndex == secondHandPart &&
+                        !part.frozen && b2Body_IsValid(part.id))
+                        secondArm = &part;
+                    if (sameBodyId(part.id, firstGrip->objectBody) &&
+                        b2Body_IsValid(part.id))
+                        heldObject = &part;
+                }
+
+                if (secondArm && heldObject)
+                {
+                    const b2Pos armPosition = b2Body_GetPosition(secondArm->id);
+                    const b2Rot armRotation = b2Body_GetRotation(secondArm->id);
+                    const float localHandY = -secondArm->halfHeight * 0.90f;
+                    const b2Vec2 handPosition{
+                        static_cast<float>(armPosition.x) -
+                            static_cast<float>(armRotation.s) * localHandY,
+                        static_cast<float>(armPosition.y) +
+                            static_cast<float>(armRotation.c) * localHandY
+                    };
+
+                    const b2Pos objectPosition =
+                        b2Body_GetPosition(heldObject->id);
+                    const b2Rot objectRotation =
+                        b2Body_GetRotation(heldObject->id);
+                    const float cosine =
+                        std::abs(static_cast<float>(objectRotation.c));
+                    const float sine =
+                        std::abs(static_cast<float>(objectRotation.s));
+                    const float extentX = heldObject->shape == BodyShape::Circle
+                        ? heldObject->radius
+                        : cosine * heldObject->halfWidth +
+                            sine * heldObject->halfHeight;
+                    const float extentY = heldObject->shape == BodyShape::Circle
+                        ? heldObject->radius
+                        : sine * heldObject->halfWidth +
+                            cosine * heldObject->halfHeight;
+                    const float handGapX = std::abs(
+                        handPosition.x - static_cast<float>(objectPosition.x));
+                    const float handGapY = std::abs(
+                        handPosition.y - static_cast<float>(objectPosition.y));
+
+                    if (handGapX <= extentX + 0.38f &&
+                        handGapY <= extentY + 0.36f)
+                    {
+                        b2WeldJointDef definition = b2DefaultWeldJointDef();
+                        definition.base.bodyIdA = secondArm->id;
+                        definition.base.bodyIdB = heldObject->id;
+                        definition.base.collideConnected = false;
+                        definition.base.localFrameA.p =
+                            b2Body_GetLocalPoint(secondArm->id, handPosition);
+                        definition.base.localFrameB.p =
+                            b2Body_GetLocalPoint(heldObject->id, handPosition);
+                        definition.linearHertz = 5.5f;
+                        definition.angularHertz = 4.2f;
+                        definition.linearDampingRatio = 0.82f;
+                        definition.angularDampingRatio = 0.78f;
+
+                        const b2JointId joint =
+                            b2CreateWeldJoint(world_, &definition);
+                        if (b2Joint_IsValid(joint))
+                        {
+                            characterGrips_.push_back(CharacterGripRecord{
+                                groupId, secondHandPart, secondArm->id,
+                                heldObject->id, joint
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     for (BodyRecord& part : records_)
     {
         if (part.groupId != groupId || part.partIndex < 1 ||
@@ -2785,8 +2877,24 @@ bool PhysicsWorld::driveCharacter(
         }
         else if (part.partIndex == 2 || part.partIndex == 3)
         {
+            const bool holdingWithThisHand = std::any_of(
+                characterGrips_.begin(), characterGrips_.end(),
+                [groupId, &part](const CharacterGripRecord& grip)
+                {
+                    return grip.groupId == groupId &&
+                        sameBodyId(grip.handBody, part.id) &&
+                        b2Joint_IsValid(grip.joint);
+                });
             const bool leadingArm = part.partIndex == leadingPart;
-            if (leadingArm && hasPropInHandReach(part))
+            if (holdingWithThisHand)
+            {
+                // Let the weld define the carry pose; only damp arm wobble.
+                targetAngle = relativeAngle;
+                stiffness = 0.0f;
+                damping = 2.4f;
+                maxTorque = 8.0f;
+            }
+            else if (leadingArm && hasPropInHandReach(part))
             {
                 // Reach toward an object only when it is actually beside the palm.
                 targetAngle = direction * 0.46f +
@@ -2896,6 +3004,24 @@ bool PhysicsWorld::characterHoldingObject(int groupId) const
                 b2Body_IsValid(grip.handBody) &&
                 b2Body_IsValid(grip.objectBody);
         });
+}
+
+bool PhysicsWorld::characterHoldingWithBothHands(int groupId) const
+{
+    if (groupId < 0)
+        return false;
+
+    std::array<bool, 2> attached{};
+    for (const CharacterGripRecord& grip : characterGrips_)
+    {
+        if (grip.groupId != groupId || !b2Joint_IsValid(grip.joint) ||
+            !b2Body_IsValid(grip.handBody) ||
+            !b2Body_IsValid(grip.objectBody))
+            continue;
+        if (grip.handPart == 2) attached[0] = true;
+        if (grip.handPart == 3) attached[1] = true;
+    }
+    return attached[0] && attached[1];
 }
 
 void PhysicsWorld::releaseCharacterGrip(int groupId)

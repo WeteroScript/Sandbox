@@ -1387,6 +1387,15 @@ int main()
     const float handPropEndX =
         static_cast<float>(b2Body_GetPosition(handPropBody).x);
     CHECK(handPropEndX > handPropStartX + 0.15f);
+    // Reversing direction must not invalidate the weld on the original hand.
+    for (int i = 0; i < 24; ++i)
+    {
+        handGaitPhase += (1.0f / 60.0f) * 8.6f;
+        CHECK(handInteractionWorld.driveCharacter(
+            handCharacter, -1.0f, handGaitPhase, 1.0f / 60.0f));
+        handInteractionWorld.step(1.0f / 60.0f, 4);
+    }
+    CHECK(handInteractionWorld.characterHoldingObject(handCharacter));
     CHECK(!handInteractionWorld.driveCharacter(
         handCharacter, 0.0f, handGaitPhase, 1.0f / 60.0f));
     CHECK(!handInteractionWorld.characterHoldingObject(handCharacter));
@@ -1407,6 +1416,36 @@ int main()
         heavyHandWorld.step(1.0f / 60.0f, 4);
     }
     CHECK(!heavyHandWorld.characterHoldingObject(heavyHandCharacter));
+
+    // A long, light platform can be stabilized by both hands and remains
+    // attached while the character changes direction.
+    PhysicsWorld twoHandWorld;
+    twoHandWorld.setMap(MapKind::Platform, false);
+    const int twoHandCharacter = twoHandWorld.spawnRagdoll(0.0f, -2.6f);
+    const int twoHandProp = twoHandWorld.spawnPlatform(1.35f, -2.25f);
+    CHECK(twoHandCharacter >= 0 && twoHandProp >= 0);
+    float twoHandGaitPhase = 0.0f;
+    for (int i = 0; i < 45; ++i)
+    {
+        twoHandGaitPhase += (1.0f / 60.0f) * 8.6f;
+        CHECK(twoHandWorld.driveCharacter(
+            twoHandCharacter, 1.0f, twoHandGaitPhase, 1.0f / 60.0f));
+        twoHandWorld.step(1.0f / 60.0f, 4);
+    }
+    CHECK(twoHandWorld.characterHoldingObject(twoHandCharacter));
+    CHECK(twoHandWorld.characterHoldingWithBothHands(twoHandCharacter));
+    for (int i = 0; i < 24; ++i)
+    {
+        twoHandGaitPhase += (1.0f / 60.0f) * 8.6f;
+        CHECK(twoHandWorld.driveCharacter(
+            twoHandCharacter, -1.0f, twoHandGaitPhase, 1.0f / 60.0f));
+        twoHandWorld.step(1.0f / 60.0f, 4);
+    }
+    CHECK(twoHandWorld.characterHoldingObject(twoHandCharacter));
+    CHECK(twoHandWorld.characterHoldingWithBothHands(twoHandCharacter));
+    CHECK(!twoHandWorld.driveCharacter(
+        twoHandCharacter, 0.0f, twoHandGaitPhase, 1.0f / 60.0f));
+    CHECK(!twoHandWorld.characterHoldingObject(twoHandCharacter));
 
     // Head and arms receive gentle posture assistance after a strong wobble.
     PhysicsWorld balancedCharacterWorld;
