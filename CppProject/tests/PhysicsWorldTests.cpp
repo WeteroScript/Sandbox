@@ -759,13 +759,13 @@ int main()
         measureAcidExposure(MaterialKind::Wood);
     const float metalAcidExposure =
         measureAcidExposure(MaterialKind::Metal);
-    const float glassAcidExposure =
-        measureAcidExposure(MaterialKind::Glass);
+    const float rubberAcidExposure =
+        measureAcidExposure(MaterialKind::Rubber);
     CHECK(woodAcidExposure > 0.5f);
     CHECK(metalAcidExposure > 0.0f);
-    CHECK(glassAcidExposure > 0.0f);
+    CHECK(rubberAcidExposure > 0.0f);
     CHECK(woodAcidExposure > metalAcidExposure * 2.0f);
-    CHECK(woodAcidExposure > glassAcidExposure * 2.0f);
+    CHECK(woodAcidExposure > rubberAcidExposure * 2.0f);
 
     // A partially corroded prop keeps its material-weighted progress in
     // snapshots and when cloned through the ordinary prop path.
