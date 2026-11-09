@@ -2986,7 +2986,7 @@ bool PhysicsWorld::loadFromStream(std::istream& input)
 
     if (version >= 2 && !readValue(input, savedMapValue))
         return false;
-    if (savedMapValue > static_cast<std::uint8_t>(MapKind::Laboratory) ||
+    if (savedMapValue > static_cast<std::uint8_t>(MapKind::Platform) ||
         !readValue(input, count) || count > 10000)
         return false;
 

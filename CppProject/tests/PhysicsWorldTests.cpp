@@ -96,6 +96,21 @@ int main()
     CHECK(meteor.stage() == MeteorStage::Idle);
     CHECK(!meteor.consumeImpact());
 
+    // Newly added maps must survive scene snapshots and reloads.
+    const std::array<MapKind, 4> addedMaps{
+        MapKind::LavaLake, MapKind::WinterLake, MapKind::Ocean, MapKind::Platform
+    };
+    PhysicsWorld mapRoundTrip;
+    for (const MapKind map : addedMaps)
+    {
+        mapRoundTrip.setMap(map, false);
+        std::vector<std::uint8_t> mapSnapshot;
+        CHECK(mapRoundTrip.saveToSnapshot(mapSnapshot));
+        mapRoundTrip.setMap(MapKind::TestRange, false);
+        CHECK(mapRoundTrip.loadFromSnapshot(mapSnapshot));
+        CHECK(mapRoundTrip.map() == map);
+    }
+
     PhysicsWorld meteorPhysics;
     meteorPhysics.setMap(MapKind::TestRange, false);
     const int impactCenter = meteorPhysics.spawnBall(0.0f, 1.0f);
