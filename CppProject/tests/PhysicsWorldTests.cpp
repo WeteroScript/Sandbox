@@ -834,6 +834,10 @@ int main()
     CHECK(bucketWorld.surfaces()[1].kind == SurfaceKind::Lava);
     CHECK(bucketWorld.surfaces()[2].kind == SurfaceKind::Acid);
     CHECK(bucketWorld.surfaces()[0].volume > 4.0f);
+    CHECK(bucketWorld.surfaces()[0].halfWidth >
+          bucketWorld.surfaces()[2].halfWidth);
+    CHECK(bucketWorld.surfaces()[2].halfWidth >
+          bucketWorld.surfaces()[1].halfWidth);
     const SurfaceZone& groundedWater = bucketWorld.surfaces()[0];
     CHECK(std::abs(groundedWater.y - groundedWater.halfHeight + 4.8f) < 0.02f);
     const SurfaceZone& groundedAcid = bucketWorld.surfaces()[2];

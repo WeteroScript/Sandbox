@@ -82,6 +82,100 @@ void drawFilledEllipse(SDL_Renderer* renderer, float x, float y,
                        indices.data(), static_cast<int>(indices.size()));
 }
 
+void drawLiquidBlob(SDL_Renderer* renderer, const SDL_FRect& rect,
+                    SDL_Color topColor, SDL_Color bottomColor,
+                    float time, float phase)
+{
+    constexpr int segments = 48;
+    std::array<SDL_Vertex, segments + 1> vertices{};
+    std::array<int, segments * 3> indices{};
+    const float centerX = rect.x + rect.w * 0.5f;
+    const float centerY = rect.y + rect.h * 0.5f;
+    const float radiusX = rect.w * 0.5f;
+    const float radiusY = rect.h * 0.5f;
+
+    const auto mixColor = [](SDL_Color a, SDL_Color b, float amount)
+    {
+        amount = std::clamp(amount, 0.0f, 1.0f);
+        const auto channel = [amount](Uint8 first, Uint8 second)
+        {
+            return static_cast<Uint8>(std::clamp(
+                static_cast<float>(first) +
+                (static_cast<float>(second) - static_cast<float>(first)) * amount,
+                0.0f, 255.0f));
+        };
+        return SDL_Color{
+            channel(a.r, b.r), channel(a.g, b.g),
+            channel(a.b, b.b), channel(a.a, b.a)
+        };
+    };
+
+    vertices[0].position = {centerX, centerY};
+    vertices[0].color = toFloatColor(mixColor(topColor, bottomColor, 0.48f));
+    vertices[0].tex_coord = {0.0f, 0.0f};
+
+    for (int i = 0; i < segments; ++i)
+    {
+        const float angle = 2.0f * kPi * static_cast<float>(i) /
+            static_cast<float>(segments);
+        const float wobble = 1.0f +
+            0.035f * std::sin(angle * 3.0f + phase + time * 0.42f) +
+            0.018f * std::cos(angle * 5.0f - phase * 0.7f);
+        const float nx = std::cos(angle);
+        const float ny = std::sin(angle);
+        vertices[static_cast<std::size_t>(i + 1)].position = {
+            centerX + nx * radiusX * wobble,
+            centerY + ny * radiusY * wobble
+        };
+        const float depth = std::clamp((ny + 1.0f) * 0.5f, 0.0f, 1.0f);
+        vertices[static_cast<std::size_t>(i + 1)].color =
+            toFloatColor(mixColor(topColor, bottomColor, depth));
+        vertices[static_cast<std::size_t>(i + 1)].tex_coord = {0.0f, 0.0f};
+
+        const std::size_t base = static_cast<std::size_t>(i) * 3U;
+        indices[base] = 0;
+        indices[base + 1] = i + 1;
+        indices[base + 2] = (i + 1) % segments + 1;
+    }
+
+    SDL_RenderGeometry(renderer, nullptr, vertices.data(),
+        static_cast<int>(vertices.size()), indices.data(),
+        static_cast<int>(indices.size()));
+
+    // The outline follows the same uneven contour as the filled pool.
+    setColor(renderer, SDL_Color{
+        bottomColor.r, bottomColor.g, bottomColor.b, 150});
+    for (int i = 0; i < segments; ++i)
+    {
+        const SDL_FPoint a = vertices[static_cast<std::size_t>(i + 1)].position;
+        const SDL_FPoint b = vertices[static_cast<std::size_t>((i + 1) % segments + 1)].position;
+        SDL_RenderLine(renderer, a.x, a.y, b.x, b.y);
+    }
+
+    // Short surface glints stay inside the pool silhouette.
+    for (int ripple = 0; ripple < 3; ++ripple)
+    {
+        const float normalizedY = -0.16f + static_cast<float>(ripple) * 0.24f;
+        const float halfSpan = radiusX * 0.78f *
+            std::sqrt(std::max(0.0f, 1.0f - normalizedY * normalizedY));
+        const float y = centerY + normalizedY * radiusY;
+        const float phaseOffset = time * 1.9f + phase + ripple * 1.3f;
+        setColor(renderer, SDL_Color{
+            topColor.r, topColor.g, topColor.b,
+            static_cast<Uint8>(ripple == 0 ? 185 : 90)});
+        for (int segment = 0; segment < 7; ++segment)
+        {
+            const float t1 = -1.0f + 2.0f * static_cast<float>(segment) / 7.0f;
+            const float t2 = -1.0f + 2.0f * (static_cast<float>(segment) + 0.68f) / 7.0f;
+            const float x1 = centerX + halfSpan * t1;
+            const float x2 = centerX + halfSpan * t2;
+            const float y1 = y + std::sin(phaseOffset + segment * 0.68f) * 1.4f;
+            const float y2 = y + std::sin(phaseOffset + (segment + 0.68f) * 0.68f) * 1.4f;
+            SDL_RenderLine(renderer, x1, y1, x2, y2);
+        }
+    }
+}
+
 void drawGradientRect(SDL_Renderer* renderer, const SDL_FRect& rect,
                       SDL_Color topColor, SDL_Color bottomColor)
 {
@@ -771,7 +865,7 @@ void SandboxGame::handlePointerDown(float x, float y)
 
     std::vector<std::uint8_t> preInteractionSnapshot;
     bool hasPreInteractionSnapshot = false;
-    if (tool_ == SandboxTool::Grab)
+    if (tool_ == SandboxTool::Grab || tool_ == SandboxTool::Rotate)
     {
         hasPreInteractionSnapshot =
             captureHistorySnapshot(preInteractionSnapshot);
@@ -840,13 +934,36 @@ void SandboxGame::handlePointerDown(float x, float y)
         }
         case SandboxTool::Rotate:
         {
-            std::vector<std::uint8_t> before;
-            const bool canUndo = captureHistorySnapshot(before);
-            physics_.rotateAt(grabbedIndex_, kPi / 12.0f);
-            if (canUndo) pushUndoSnapshot(std::move(before));
-            notice_ = "Rotated 15 degrees";
-            noticeTimer_ = 1.4f;
-            grabbedIndex_ = -1;
+            dragStartSnapshot_ = std::move(preInteractionSnapshot);
+            rotationPivotX_ = static_cast<float>(position.x);
+            rotationPivotY_ = static_cast<float>(position.y);
+            if (record.groupId >= 0)
+            {
+                double sumX = 0.0;
+                double sumY = 0.0;
+                std::size_t groupCount = 0;
+                for (const BodyRecord& part : physics_.records())
+                {
+                    if (part.groupId != record.groupId || !b2Body_IsValid(part.id))
+                        continue;
+                    const b2Pos partPosition = b2Body_GetPosition(part.id);
+                    sumX += partPosition.x;
+                    sumY += partPosition.y;
+                    ++groupCount;
+                }
+                if (groupCount > 0)
+                {
+                    rotationPivotX_ = static_cast<float>(sumX / groupCount);
+                    rotationPivotY_ = static_cast<float>(sumY / groupCount);
+                }
+            }
+            lastRotationPointerAngle_ = std::atan2(
+                world.y - rotationPivotY_, world.x - rotationPivotX_);
+            rotationDragActive_ = true;
+            rotationChanged_ = false;
+            dragChanged_ = false;
+            dragStartPointerX_ = x;
+            dragStartPointerY_ = y;
             break;
         }
     }
@@ -865,6 +982,28 @@ void SandboxGame::handlePointerMove(float x, float y)
             dragChanged_ = true;
     }
 
+    if (grabbedIndex_ >= 0 && tool_ == SandboxTool::Rotate &&
+        rotationDragActive_)
+    {
+        const b2Vec2 world = screenToWorld(x, y);
+        const float dx = world.x - rotationPivotX_;
+        const float dy = world.y - rotationPivotY_;
+        if (dx * dx + dy * dy > 0.04f)
+        {
+            const float angle = std::atan2(dy, dx);
+            const float delta = std::remainder(
+                angle - lastRotationPointerAngle_, 2.0f * kPi);
+            if (std::abs(delta) > 0.004f)
+            {
+                physics_.rotateAt(grabbedIndex_, delta);
+                lastRotationPointerAngle_ = angle;
+                rotationChanged_ = true;
+                dragChanged_ = true;
+            }
+        }
+        return;
+    }
+
     if (panning_)
     {
         const float dx = x - lastPanX_;
@@ -879,19 +1018,69 @@ void SandboxGame::handlePointerMove(float x, float y)
 void SandboxGame::handlePointerUp()
 {
     const int releasedIndex = grabbedIndex_;
-    const bool releasedDraggedObject = releasedIndex >= 0 &&
-        tool_ == SandboxTool::Grab && dragChanged_;
-    finishDragHistory();
-    if (releasedDraggedObject &&
-        physics_.releaseBucketIfTilted(releasedIndex))
+    if (releasedIndex >= 0 && tool_ == SandboxTool::Rotate &&
+        rotationDragActive_ && !rotationChanged_)
     {
+        physics_.rotateAt(releasedIndex, kPi / 12.0f);
+        rotationChanged_ = true;
+        dragChanged_ = true;
+        notice_ = "Rotated 15 degrees";
+        noticeTimer_ = 1.2f;
+    }
+
+    const bool releaseBucket = releasedIndex >= 0 &&
+        ((tool_ == SandboxTool::Grab && dragChanged_) ||
+         (tool_ == SandboxTool::Rotate && rotationChanged_));
+    finishDragHistory();
+
+    bool poured = false;
+    if (releaseBucket)
+        poured = physics_.releaseBucketIfTilted(releasedIndex);
+
+    if (poured)
+    {
+        const BodyRecord& bucket = physics_.records()[
+            static_cast<std::size_t>(releasedIndex)];
+        const b2Pos position = b2Body_GetPosition(bucket.id);
+        const b2Rot rotation = b2Body_GetRotation(bucket.id);
+        const float mouthX = static_cast<float>(position.x) -
+            static_cast<float>(rotation.s) * bucket.halfHeight;
+        const float mouthY = static_cast<float>(position.y) +
+            static_cast<float>(rotation.c) * bucket.halfHeight;
+        const float directionX = -static_cast<float>(rotation.s);
+        const float directionY = static_cast<float>(rotation.c);
+        const SurfaceKind liquidKind = bucket.bucketKind == BucketKind::Lava
+            ? SurfaceKind::Lava
+            : bucket.bucketKind == BucketKind::Acid
+                ? SurfaceKind::Acid : SurfaceKind::Water;
+
+        // A brief stream of individual droplets bridges the bucket mouth and
+        // the irregular pool created by the physics world.
+        for (int droplet = 0; droplet < 26; ++droplet)
+        {
+            const float index = static_cast<float>(droplet);
+            const float spread = std::sin(index * 2.31f) * 0.42f;
+            const float speed = 0.55f + static_cast<float>(droplet % 6) * 0.17f;
+            liquidDroplets_.push_back(LiquidDroplet{
+                mouthX + spread * 0.12f,
+                mouthY - index * 0.008f,
+                directionX * speed + spread,
+                directionY * speed - 0.28f - std::abs(spread) * 0.22f,
+                0.024f + static_cast<float>(droplet % 4) * 0.006f,
+                0.38f + static_cast<float>(droplet % 7) * 0.045f,
+                liquidKind
+            });
+        }
         playSoundCue(SoundCue::LiquidPour);
         notice_ = "Liquid poured";
         noticeTimer_ = 1.8f;
     }
+
     pointerDown_ = false;
     panning_ = false;
     grabbedIndex_ = -1;
+    rotationDragActive_ = false;
+    rotationChanged_ = false;
 }
 
 void SandboxGame::handleFingerDown(SDL_FingerID fingerId, float x, float y)
@@ -1398,7 +1587,7 @@ void SandboxGame::placeSelected(float worldX, float worldY)
              selectedSpawnItem_ == SpawnItem::LavaBucket ||
              selectedSpawnItem_ == SpawnItem::AcidBucket)
     {
-        notice_ = "Tap bucket to pour liquid";
+        notice_ = "Tilt bucket and release to pour";
     }
     else
     {
@@ -1618,6 +1807,23 @@ void SandboxGame::update(float deltaTime)
     impactSoundCooldown_ = std::max(0.0f, impactSoundCooldown_ - deltaTime);
     if (screen_ != GameScreen::Playing)
         return;
+
+    if (!paused_)
+    {
+        for (LiquidDroplet& droplet : liquidDroplets_)
+        {
+            droplet.lifetime -= deltaTime;
+            droplet.velocityY -= 9.8f * deltaTime;
+            droplet.x += droplet.velocityX * deltaTime;
+            droplet.y += droplet.velocityY * deltaTime;
+        }
+        std::erase_if(liquidDroplets_,
+            [](const LiquidDroplet& droplet)
+            {
+                return droplet.lifetime <= 0.0f ||
+                    !std::isfinite(droplet.x) || !std::isfinite(droplet.y);
+            });
+    }
 
     if (grabbedIndex_ >= 0 && pointerDown_ && tool_ == SandboxTool::Grab &&
         !suppressObjectDragUntilAllFingersUp_)
@@ -3640,6 +3846,56 @@ void SandboxGame::drawSurfaces()
             rect.y > static_cast<float>(outputHeight_) + 18.0f)
             continue;
 
+        if (zone.volume > 0.0f)
+        {
+            SDL_Color topColor{83, 192, 235, 205};
+            SDL_Color bottomColor{10, 59, 133, 230};
+            if (zone.kind == SurfaceKind::Lava)
+            {
+                topColor = {255, 151, 57, 225};
+                bottomColor = {117, 24, 11, 245};
+            }
+            else if (zone.kind == SurfaceKind::Acid)
+            {
+                topColor = {196, 246, 107, 220};
+                bottomColor = {45, 101, 42, 245};
+            }
+            const float phase = zone.x * 0.37f + zone.volume * 0.11f;
+            drawLiquidBlob(renderer_, rect, topColor, bottomColor, time, phase);
+
+            if (zone.kind == SurfaceKind::Lava)
+            {
+                const float radius = std::max(2.0f,
+                    std::min(rect.w, rect.h) * 0.055f);
+                for (int bubble = 0; bubble < 4; ++bubble)
+                {
+                    const float fraction = std::fmod(
+                        time * 0.25f + bubble * 0.23f, 1.0f);
+                    const float x = rect.x + rect.w * (0.22f + 0.56f * fraction);
+                    const float y = rect.y + rect.h *
+                        (0.42f + 0.18f * std::sin(time * 1.7f + bubble));
+                    drawFilledCircle(renderer_, x, y, radius * 1.65f,
+                        makeColor(255, 106, 39, 45));
+                    drawFilledCircle(renderer_, x, y, radius,
+                        makeColor(255, 207, 104, 205));
+                }
+            }
+            else if (zone.kind == SurfaceKind::Acid)
+            {
+                for (int bubble = 0; bubble < 3; ++bubble)
+                {
+                    const float fraction = std::fmod(
+                        time * 0.19f + bubble * 0.31f, 1.0f);
+                    const float x = rect.x + rect.w * (0.25f + 0.50f * fraction);
+                    const float y = rect.y + rect.h *
+                        (0.40f + 0.20f * std::sin(time * 1.2f + bubble));
+                    drawFilledCircle(renderer_, x, y, 2.5f,
+                        makeColor(233, 255, 156, 125));
+                }
+            }
+            continue;
+        }
+
         if (zone.kind == SurfaceKind::Water)
         {
             drawGradientRect(renderer_, rect,
@@ -3781,6 +4037,28 @@ void SandboxGame::drawSurfaces()
             setColor(renderer_, makeColor(51, 111, 51, 215));
             SDL_RenderRect(renderer_, &rect);
         }
+    }
+}
+
+void SandboxGame::drawLiquidDroplets()
+{
+    for (const LiquidDroplet& droplet : liquidDroplets_)
+    {
+        const SDL_FPoint point = worldToScreen(droplet.x, droplet.y);
+        const float fade = std::clamp(
+            droplet.lifetime / 0.22f, 0.0f, 1.0f);
+        SDL_Color tint{75, 180, 232, static_cast<Uint8>(220.0f * fade)};
+        if (droplet.kind == SurfaceKind::Lava)
+            tint = {255, 135, 49, static_cast<Uint8>(235.0f * fade)};
+        else if (droplet.kind == SurfaceKind::Acid)
+            tint = {175, 232, 91, static_cast<Uint8>(225.0f * fade)};
+
+        const float radius = std::max(1.0f, droplet.radius * pixelsPerMeter_);
+        drawFilledEllipse(renderer_, point.x, point.y,
+            radius * 0.82f, radius * 1.28f, tint);
+        drawFilledCircle(renderer_, point.x - radius * 0.18f,
+            point.y - radius * 0.28f, std::max(0.65f, radius * 0.20f),
+            SDL_Color{245, 251, 255, static_cast<Uint8>(135.0f * fade)});
     }
 }
 
@@ -4463,6 +4741,7 @@ void SandboxGame::render()
         drawBody(records[i], static_cast<int>(i) == grabbedIndex_);
 
     drawMechanisms();
+    drawLiquidDroplets();
     drawUi();
     SDL_RenderPresent(renderer_);
 }

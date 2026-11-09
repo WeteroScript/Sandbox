@@ -15,6 +15,17 @@ enum class SpawnCategory { Props, Mechanisms, Misc, Materials, Power };
 enum class ExtraPanelSection : std::uint8_t { Ropes, Meteor };
 enum class GameScreen : std::uint8_t { MainMenu, MapSelect, Playing };
 enum class SoundCue : std::uint8_t { Menu, Impact, SnowCrunch, LiquidPour };
+
+struct LiquidDroplet
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float velocityX = 0.0f;
+    float velocityY = 0.0f;
+    float radius = 0.035f;
+    float lifetime = 0.0f;
+    SurfaceKind kind = SurfaceKind::Water;
+};
 enum class SpawnItem {
     Box, Ball, Barrel, Platform, Ragdoll, Robot,
     Rod, Rope, Spring, Piston, Button, Toggle,
@@ -66,6 +77,7 @@ private:
     SDL_Renderer* renderer_ = nullptr;
     SDL_AudioStream* audioStream_ = nullptr;
     float impactSoundCooldown_ = 0.0f;
+    std::vector<LiquidDroplet> liquidDroplets_;
     PhysicsWorld physics_;
 
     GameScreen screen_ = GameScreen::MainMenu;
@@ -121,6 +133,11 @@ private:
     float dragStartPointerX_ = 0.0f;
     float dragStartPointerY_ = 0.0f;
     bool dragChanged_ = false;
+    bool rotationDragActive_ = false;
+    bool rotationChanged_ = false;
+    float rotationPivotX_ = 0.0f;
+    float rotationPivotY_ = 0.0f;
+    float lastRotationPointerAngle_ = 0.0f;
 
     int outputWidth_ = 1280;
     int outputHeight_ = 720;
@@ -157,6 +174,7 @@ private:
     void drawBackground();
     void drawGrid();
     void drawSurfaces();
+    void drawLiquidDroplets();
     void drawMeteorEffects();
     void drawMechanisms();
     void drawBody(const BodyRecord& body, bool selected);
