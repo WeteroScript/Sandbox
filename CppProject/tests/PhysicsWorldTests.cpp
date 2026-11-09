@@ -1,6 +1,7 @@
 #include "PhysicsWorld.hpp"
 #include "MeteorEvent.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <numeric>
