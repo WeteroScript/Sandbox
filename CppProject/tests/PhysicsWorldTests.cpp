@@ -740,12 +740,12 @@ int main()
     PhysicsWorld overlappingLiquidWorld;
     overlappingLiquidWorld.setMap(MapKind::TestRange, false);
     const int overlapWaterBucket =
-        overlappingLiquidWorld.spawnBucket(BucketKind::Water, -0.10f, -3.35f);
+        overlappingLiquidWorld.spawnBucket(BucketKind::Water, -0.50f, -3.35f);
     const int overlapAcidBucket =
-        overlappingLiquidWorld.spawnBucket(BucketKind::Acid, 0.10f, -3.35f);
+        overlappingLiquidWorld.spawnBucket(BucketKind::Acid, 0.50f, -3.35f);
     CHECK(overlapWaterBucket >= 0 && overlapAcidBucket >= 0);
-    CHECK(overlappingLiquidWorld.interactAt(-0.10f, -3.35f));
-    CHECK(overlappingLiquidWorld.interactAt(0.10f, -3.35f));
+    CHECK(overlappingLiquidWorld.interactAt(-0.50f, -3.35f));
+    CHECK(overlappingLiquidWorld.interactAt(0.50f, -3.35f));
     CHECK(overlappingLiquidWorld.surfaces().size() == 2);
     const int overlapTarget =
         overlappingLiquidWorld.spawnBox(0.0f, -4.05f);
