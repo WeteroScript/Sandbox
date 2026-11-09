@@ -323,6 +323,22 @@ void SandboxGame::playSoundCue(SoundCue cue, float intensity)
             gain = 0.095f;
             decay = 11.0f;
             break;
+        case SoundCue::WaterSplash:
+            frequency = 310.0f + intensity * 115.0f;
+            duration = 0.19f;
+            toneMix = 0.22f;
+            noiseMix = 0.88f;
+            gain = 0.105f * intensity;
+            decay = 18.0f;
+            break;
+        case SoundCue::LavaSplash:
+            frequency = 95.0f + intensity * 65.0f;
+            duration = 0.22f;
+            toneMix = 0.62f;
+            noiseMix = 0.72f;
+            gain = 0.11f * intensity;
+            decay = 13.0f;
+            break;
     }
 
     const int frameCount = static_cast<int>(duration * sampleRate);
@@ -1849,11 +1865,109 @@ void SandboxGame::redoScene()
     noticeTimer_ = 1.8f;
 }
 
+void SandboxGame::updateLiquidEffects()
+{
+    std::vector<b2BodyId> nextSubmerged;
+    nextSubmerged.reserve(physics_.records().size());
+
+    const auto alreadySubmerged = [&](b2BodyId id)
+    {
+        return std::any_of(submergedBodies_.begin(), submergedBodies_.end(),
+            [id](b2BodyId previous)
+            {
+                return previous.index1 == id.index1 &&
+                    previous.world0 == id.world0 &&
+                    previous.generation == id.generation;
+            });
+    };
+
+    for (const BodyRecord& body : physics_.records())
+    {
+        if (!body.selectable || body.frozen || !b2Body_IsValid(body.id))
+            continue;
+
+        const b2Pos position = b2Body_GetPosition(body.id);
+        const b2Rot rotation = b2Body_GetRotation(body.id);
+        const float x = static_cast<float>(position.x);
+        const float y = static_cast<float>(position.y);
+        const float cosine = std::abs(static_cast<float>(rotation.c));
+        const float sine = std::abs(static_cast<float>(rotation.s));
+        const float extentX = body.shape == BodyShape::Circle
+            ? body.radius : cosine * body.halfWidth + sine * body.halfHeight;
+        const float extentY = body.shape == BodyShape::Circle
+            ? body.radius : sine * body.halfWidth + cosine * body.halfHeight;
+
+        bool touchingLiquid = false;
+        SurfaceKind splashKind = SurfaceKind::Water;
+        float surfaceY = 0.0f;
+        for (const SurfaceZone& zone : physics_.surfaces())
+        {
+            if (zone.kind == SurfaceKind::Acid || zone.volume <= 0.0f)
+                continue;
+            if (x + extentX <= zone.x - zone.halfWidth ||
+                x - extentX >= zone.x + zone.halfWidth ||
+                y - extentY >= zone.y + zone.halfHeight ||
+                y + extentY <= zone.y - zone.halfHeight)
+                continue;
+            touchingLiquid = true;
+            splashKind = zone.kind;
+            surfaceY = zone.y + zone.halfHeight;
+            break;
+        }
+
+        if (!touchingLiquid)
+            continue;
+        nextSubmerged.push_back(body.id);
+        if (alreadySubmerged(body.id))
+            continue;
+
+        const b2Vec2 velocity = b2Body_GetLinearVelocity(body.id);
+        const float impact = std::hypot(velocity.x, velocity.y);
+        if (impact < 1.6f)
+            continue;
+
+        const int count = std::clamp(
+            6 + static_cast<int>(impact * 0.55f), 6, 18);
+        for (int i = 0; i < count; ++i)
+        {
+            const float t = static_cast<float>(i) /
+                static_cast<float>(std::max(1, count - 1));
+            const float side = (t - 0.5f) * 2.0f;
+            const float spread = 0.55f + 0.45f *
+                std::abs(std::sin(static_cast<float>(i) * 2.17f));
+            liquidDroplets_.push_back(LiquidDroplet{
+                x + side * extentX * 0.72f,
+                std::max(surfaceY, y - extentY * 0.12f),
+                side * spread * (0.8f + impact * 0.035f),
+                1.0f + spread * (0.7f + impact * 0.045f),
+                0.025f + static_cast<float>(i % 4) * 0.009f,
+                0.32f + static_cast<float>(i % 5) * 0.055f,
+                splashKind
+            });
+        }
+
+        if (liquidSoundCooldown_ <= 0.0f)
+        {
+            playSoundCue(splashKind == SurfaceKind::Lava
+                ? SoundCue::LavaSplash : SoundCue::WaterSplash,
+                std::clamp(impact / 12.0f, 0.2f, 1.0f));
+            liquidSoundCooldown_ = 0.18f;
+        }
+    }
+
+    submergedBodies_.swap(nextSubmerged);
+    if (liquidDroplets_.size() > 420)
+        liquidDroplets_.erase(liquidDroplets_.begin(),
+            liquidDroplets_.begin() +
+                static_cast<std::ptrdiff_t>(liquidDroplets_.size() - 420));
+}
+
 void SandboxGame::update(float deltaTime)
 {
     noticeTimer_ = std::max(0.0f, noticeTimer_ - deltaTime);
     clearConfirmTimer_ = std::max(0.0f, clearConfirmTimer_ - deltaTime);
     impactSoundCooldown_ = std::max(0.0f, impactSoundCooldown_ - deltaTime);
+    liquidSoundCooldown_ = std::max(0.0f, liquidSoundCooldown_ - deltaTime);
     if (screen_ != GameScreen::Playing)
         return;
 
@@ -1927,6 +2041,7 @@ void SandboxGame::update(float deltaTime)
             }
         }
         physics_.step(kFixedStep, 4);
+        updateLiquidEffects();
         const float impactSpeed = physics_.lastImpactSpeed();
         if (impactSoundCooldown_ <= 0.0f && impactSpeed > 3.0f)
         {

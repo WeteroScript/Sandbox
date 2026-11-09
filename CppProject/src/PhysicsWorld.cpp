@@ -684,7 +684,9 @@ PhysicsWorld::PhysicsWorld()
 {
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = {0.0f, -14.0f};
-    def.enableSleep = true;
+    // Keep contacts active in the sandbox: sleeping deeply-overlapped props
+    // can otherwise remain interpenetrating until another body wakes them.
+    def.enableSleep = false;
     def.enableContinuous = true;
     def.workerCount = 1;
     def.maximumLinearSpeed = 45.0f;

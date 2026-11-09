@@ -14,7 +14,9 @@ enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate, Walk };
 enum class SpawnCategory { Props, Mechanisms, Misc, Materials, Power };
 enum class ExtraPanelSection : std::uint8_t { Ropes, Meteor };
 enum class GameScreen : std::uint8_t { MainMenu, MapSelect, Playing };
-enum class SoundCue : std::uint8_t { Menu, Impact, SnowCrunch, LiquidPour };
+enum class SoundCue : std::uint8_t {
+    Menu, Impact, SnowCrunch, LiquidPour, WaterSplash, LavaSplash
+};
 
 struct LiquidDroplet
 {
@@ -77,7 +79,9 @@ private:
     SDL_Renderer* renderer_ = nullptr;
     SDL_AudioStream* audioStream_ = nullptr;
     float impactSoundCooldown_ = 0.0f;
+    float liquidSoundCooldown_ = 0.0f;
     std::vector<LiquidDroplet> liquidDroplets_;
+    std::vector<b2BodyId> submergedBodies_;
     PhysicsWorld physics_;
 
     GameScreen screen_ = GameScreen::MainMenu;
@@ -169,6 +173,7 @@ private:
     void undoScene();
     void redoScene();
     void update(float deltaTime);
+    void updateLiquidEffects();
     void playSoundCue(SoundCue cue, float intensity = 1.0f);
     void render();
 
