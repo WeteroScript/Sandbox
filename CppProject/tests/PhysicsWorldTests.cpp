@@ -1346,8 +1346,10 @@ int main()
     CHECK(std::abs(recoveredAngle) < 1.05f);
 
     // A held horizontal drag drives a ragdoll and articulates its legs.
+    // Measure the locomotion controller on clear ground. Platform-edge
+    // collision behavior is separate from this baseline movement regression.
     PhysicsWorld walkingWorld;
-    walkingWorld.setMap(MapKind::Platform, false);
+    walkingWorld.setMap(MapKind::TestRange, false);
     const int walkingGroup = walkingWorld.spawnRagdoll(0.0f, -2.6f);
     CHECK(walkingGroup >= 0);
     b2BodyId walkingTorso = b2_nullBodyId;
