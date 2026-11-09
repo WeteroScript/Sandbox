@@ -123,6 +123,7 @@ public:
 
     int pickBody(float worldX, float worldY) const;
     void updateGrab(int index, float targetX, float targetY, float deltaTime);
+    bool driveCharacter(int groupId, float direction, float gaitPhase, float deltaTime);
     void toggleFreeze(int index);
     void cloneAt(int index);
     void rotateAt(int index, float angleDelta);

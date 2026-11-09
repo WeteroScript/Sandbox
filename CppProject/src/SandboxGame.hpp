@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate };
+enum class SandboxTool { Grab, Freeze, Clone, Delete, Rotate, Walk };
 enum class SpawnCategory { Props, Mechanisms, Misc, Materials, Power };
 enum class ExtraPanelSection : std::uint8_t { Ropes, Meteor };
 enum class GameScreen : std::uint8_t { MainMenu, MapSelect, Playing };
@@ -37,7 +37,7 @@ enum class SpawnItem {
 struct UiLayout
 {
     float scale = 1.0f;
-    std::array<SDL_FRect, 6> toolButtons{};
+    std::array<SDL_FRect, 7> toolButtons{};
     SDL_FRect speedLabel{};
     SDL_FRect pauseButton{};
     SDL_FRect mapButton{};
@@ -138,6 +138,10 @@ private:
     float rotationPivotX_ = 0.0f;
     float rotationPivotY_ = 0.0f;
     float lastRotationPointerAngle_ = 0.0f;
+    int activeWalkGroup_ = -1;
+    float walkStartPointerX_ = 0.0f;
+    float walkDirection_ = 0.0f;
+    float walkGaitPhase_ = 0.0f;
 
     int outputWidth_ = 1280;
     int outputHeight_ = 720;

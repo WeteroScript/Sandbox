@@ -1325,6 +1325,46 @@ int main()
         static_cast<float>(recoveredRotation.c));
     CHECK(std::abs(recoveredAngle) < 1.05f);
 
+    // A held horizontal drag drives a ragdoll and articulates its legs.
+    PhysicsWorld walkingWorld;
+    walkingWorld.setMap(MapKind::Platform, false);
+    const int walkingGroup = walkingWorld.spawnRagdoll(0.0f, -2.6f);
+    CHECK(walkingGroup >= 0);
+    b2BodyId walkingTorso = b2_nullBodyId;
+    b2BodyId walkingLeftLeg = b2_nullBodyId;
+    b2BodyId walkingRightLeg = b2_nullBodyId;
+    for (const BodyRecord& record : walkingWorld.records())
+    {
+        if (record.groupId != walkingGroup)
+            continue;
+        if (record.partIndex == 0) walkingTorso = record.id;
+        if (record.partIndex == 4) walkingLeftLeg = record.id;
+        if (record.partIndex == 5) walkingRightLeg = record.id;
+    }
+    CHECK(b2Body_IsValid(walkingTorso));
+    CHECK(b2Body_IsValid(walkingLeftLeg));
+    CHECK(b2Body_IsValid(walkingRightLeg));
+
+    for (int i = 0; i < 45; ++i)
+        walkingWorld.step(1.0f / 60.0f, 4);
+    const float walkingStartX =
+        static_cast<float>(b2Body_GetPosition(walkingTorso).x);
+    float gaitPhase = 0.0f;
+    for (int i = 0; i < 90; ++i)
+    {
+        gaitPhase += (1.0f / 60.0f) * 8.6f;
+        CHECK(walkingWorld.driveCharacter(
+            walkingGroup, 1.0f, gaitPhase, 1.0f / 60.0f));
+        walkingWorld.step(1.0f / 60.0f, 4);
+    }
+    const float walkingEndX =
+        static_cast<float>(b2Body_GetPosition(walkingTorso).x);
+    CHECK(walkingEndX > walkingStartX + 0.45f);
+    CHECK(!walkingWorld.driveCharacter(
+        -1, 1.0f, gaitPhase, 1.0f / 60.0f));
+    CHECK(!walkingWorld.driveCharacter(
+        walkingGroup, 0.0f, gaitPhase, 1.0f / 60.0f));
+
     // Head and arms receive gentle posture assistance after a strong wobble.
     PhysicsWorld balancedCharacterWorld;
     balancedCharacterWorld.setMap(MapKind::Platform, false);

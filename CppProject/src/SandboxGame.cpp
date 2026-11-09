@@ -409,7 +409,9 @@ UiLayout SandboxGame::makeUiLayout() const
     const float toolWidth = std::max(
         52.0f * scale,
         std::min(92.0f * scale,
-            (toolArea - gap * 5.0f) / static_cast<float>(layout.toolButtons.size()))
+            (toolArea - gap *
+                static_cast<float>(layout.toolButtons.size() - 1U)) /
+                static_cast<float>(layout.toolButtons.size()))
     );
     for (std::size_t i = 0; i < layout.toolButtons.size(); ++i)
     {
@@ -932,6 +934,28 @@ void SandboxGame::handlePointerDown(float x, float y)
             grabbedIndex_ = -1;
             break;
         }
+        case SandboxTool::Walk:
+        {
+            grabbedIndex_ = -1;
+            if (record.groupId >= 0 && !record.frozen)
+            {
+                activeWalkGroup_ = record.groupId;
+                walkStartPointerX_ = x;
+                walkDirection_ = 0.0f;
+                walkGaitPhase_ = 0.0f;
+                panning_ = false;
+                notice_ = "Drag left or right to walk";
+                noticeTimer_ = 2.0f;
+            }
+            else
+            {
+                activeWalkGroup_ = -1;
+                panning_ = true;
+                lastPanX_ = x;
+                lastPanY_ = y;
+            }
+            return;
+        }
         case SandboxTool::Rotate:
         {
             dragStartSnapshot_ = std::move(preInteractionSnapshot);
@@ -980,6 +1004,14 @@ void SandboxGame::handlePointerMove(float x, float y)
         const float dy = y - dragStartPointerY_;
         if (dx * dx + dy * dy > 9.0f)
             dragChanged_ = true;
+    }
+
+    if (tool_ == SandboxTool::Walk && activeWalkGroup_ >= 0)
+    {
+        const float dragX = x - walkStartPointerX_;
+        walkDirection_ = std::abs(dragX) < 12.0f
+            ? 0.0f : std::clamp(dragX / 74.0f, -1.0f, 1.0f);
+        return;
     }
 
     if (grabbedIndex_ >= 0 && tool_ == SandboxTool::Rotate &&
@@ -1079,6 +1111,8 @@ void SandboxGame::handlePointerUp()
     pointerDown_ = false;
     panning_ = false;
     grabbedIndex_ = -1;
+    activeWalkGroup_ = -1;
+    walkDirection_ = 0.0f;
     rotationDragActive_ = false;
     rotationChanged_ = false;
 }
@@ -1226,12 +1260,13 @@ void SandboxGame::handleUiClick(float x, float y)
 {
     playSoundCue(SoundCue::Menu);
     const UiLayout layout = makeUiLayout();
-    const std::array<SandboxTool, 5> tools{
+    const std::array<SandboxTool, 6> tools{
         SandboxTool::Grab,
         SandboxTool::Freeze,
         SandboxTool::Clone,
         SandboxTool::Delete,
-        SandboxTool::Rotate
+        SandboxTool::Rotate,
+        SandboxTool::Walk
     };
 
     for (std::size_t i = 0; i < tools.size(); ++i)
@@ -1244,7 +1279,7 @@ void SandboxGame::handleUiClick(float x, float y)
         }
     }
 
-    if (pointInRect(x, y, layout.toolButtons[5]))
+    if (pointInRect(x, y, layout.toolButtons[6]))
     {
         spawnPanelOpen_ = !spawnPanelOpen_;
         return;
@@ -1860,6 +1895,13 @@ void SandboxGame::update(float deltaTime)
     int steps = 0;
     while (accumulator_ >= kFixedStep && steps < 12)
     {
+        if (activeWalkGroup_ >= 0 && std::abs(walkDirection_) > 0.04f)
+        {
+            walkGaitPhase_ += kFixedStep * 8.6f *
+                std::max(0.25f, std::abs(walkDirection_));
+            physics_.driveCharacter(
+                activeWalkGroup_, walkDirection_, walkGaitPhase_, kFixedStep);
+        }
         physics_.step(kFixedStep, 4);
         const float impactSpeed = physics_.lastImpactSpeed();
         if (impactSoundCooldown_ <= 0.0f && impactSpeed > 3.0f)
@@ -3338,12 +3380,13 @@ void SandboxGame::drawButton(const SDL_FRect& rect, const char* label, bool acti
 void SandboxGame::drawUi()
 {
     const UiLayout layout = makeUiLayout();
-    const std::array<const char*, 6> toolLabels{
-        "GRAB", "FREEZE", "CLONE", "DELETE", "ROTATE", "SPAWN"
+    const std::array<const char*, 7> toolLabels{
+        "GRAB", "FREEZE", "CLONE", "DELETE", "ROTATE", "WALK", "SPAWN"
     };
-    const std::array<SandboxTool, 5> tools{
+    const std::array<SandboxTool, 6> tools{
         SandboxTool::Grab, SandboxTool::Freeze,
-        SandboxTool::Clone, SandboxTool::Delete, SandboxTool::Rotate
+        SandboxTool::Clone, SandboxTool::Delete,
+        SandboxTool::Rotate, SandboxTool::Walk
     };
 
     for (std::size_t i = 0; i < layout.toolButtons.size(); ++i)

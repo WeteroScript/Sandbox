@@ -2508,6 +2508,108 @@ void PhysicsWorld::updateGrab(int index, float targetX, float targetY, float dt)
         b2Body_GetAngularVelocity(r.id)*std::max(0.0f, 1.0f-dt*2.0f));
 }
 
+bool PhysicsWorld::driveCharacter(
+    int groupId, float direction, float gaitPhase, float deltaTime)
+{
+    if (groupId < 0 || !std::isfinite(direction) ||
+        !std::isfinite(gaitPhase) || !std::isfinite(deltaTime) ||
+        deltaTime <= 0.0f)
+        return false;
+
+    direction = std::clamp(direction, -1.0f, 1.0f);
+    if (std::abs(direction) < 0.035f)
+        return false;
+
+    BodyRecord* torso = nullptr;
+    for (BodyRecord& record : records_)
+    {
+        if (record.groupId == groupId && record.partIndex == 0 &&
+            !record.frozen && b2Body_IsValid(record.id))
+        {
+            torso = &record;
+            break;
+        }
+    }
+    if (!torso)
+        return false;
+
+    const b2Vec2 torsoVelocity = b2Body_GetLinearVelocity(torso->id);
+    const float desiredSpeed = direction * 3.8f;
+    const float acceleration = std::clamp(
+        (desiredSpeed - torsoVelocity.x) * 2.7f, -9.0f, 9.0f);
+    const float mass = std::max(0.1f, b2Body_GetMass(torso->id));
+    b2Body_ApplyForceToCenter(
+        torso->id, {mass * acceleration, 0.0f}, true);
+
+    const b2Rot torsoRotation = b2Body_GetRotation(torso->id);
+    const float torsoAngle = std::atan2(
+        static_cast<float>(torsoRotation.s),
+        static_cast<float>(torsoRotation.c));
+    const float torsoAngularVelocity = b2Body_GetAngularVelocity(torso->id);
+    const float leanTarget = direction * 0.075f;
+    const float leanTorque = std::clamp(
+        (leanTarget - torsoAngle) * 5.0f -
+            torsoAngularVelocity * 1.8f, -8.0f, 8.0f);
+    b2Body_ApplyTorque(torso->id, leanTorque, true);
+
+    const float gaitStrength = std::abs(direction);
+    for (BodyRecord& part : records_)
+    {
+        if (part.groupId != groupId || part.partIndex < 1 ||
+            part.partIndex > 5 || part.frozen ||
+            !b2Body_IsValid(part.id))
+            continue;
+
+        const b2Rot partRotation = b2Body_GetRotation(part.id);
+        const float partAngle = std::atan2(
+            static_cast<float>(partRotation.s),
+            static_cast<float>(partRotation.c));
+        const float relativeAngle = std::remainder(
+            partAngle - torsoAngle, 6.2831853071795864769f);
+        const float relativeVelocity =
+            b2Body_GetAngularVelocity(part.id) - torsoAngularVelocity;
+
+        float targetAngle = 0.0f;
+        float stiffness = 5.0f;
+        float damping = 1.8f;
+        float maxTorque = 10.0f;
+
+        if (part.partIndex == 4 || part.partIndex == 5)
+        {
+            const float sidePhase = part.partIndex == 4 ? 0.0f : kPi;
+            targetAngle = std::sin(gaitPhase + sidePhase) *
+                0.46f * gaitStrength;
+            stiffness = 7.0f;
+            damping = 2.0f;
+            maxTorque = 12.0f;
+        }
+        else if (part.partIndex == 2 || part.partIndex == 3)
+        {
+            const float armPhase = part.partIndex == 2 ? kPi : 0.0f;
+            targetAngle = std::sin(gaitPhase + armPhase) *
+                0.24f * gaitStrength;
+            stiffness = 4.0f;
+            damping = 1.55f;
+            maxTorque = 6.5f;
+        }
+        else if (part.partIndex == 1)
+        {
+            targetAngle = 0.0f;
+            stiffness = 4.0f;
+            damping = 1.7f;
+            maxTorque = 6.0f;
+        }
+
+        const float torque = std::clamp(
+            (targetAngle - relativeAngle) * stiffness -
+                relativeVelocity * damping,
+            -maxTorque, maxTorque);
+        b2Body_ApplyTorque(part.id, torque, true);
+    }
+
+    return true;
+}
+
 void PhysicsWorld::setFrozen(BodyRecord& r, bool frozen)
 {
     if (r.frozen == frozen || !b2Body_IsValid(r.id))
