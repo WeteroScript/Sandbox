@@ -2178,6 +2178,7 @@ void PhysicsWorld::cloneAt(int index)
         int count = 0;
         bool robot = false;
         std::array<float, 6> partDamage{};
+        std::array<float, 6> partAcidExposure{};
         std::array<float, 6> partImpactX{};
         std::array<float, 6> partImpactY{};
         std::array<std::array<ImpactMark, kMaxImpactMarks>, 6> partImpactMarks{};
@@ -2196,6 +2197,7 @@ void PhysicsWorld::cloneAt(int index)
             {
                 const std::size_t part = static_cast<std::size_t>(r.partIndex);
                 partDamage[part] = r.impactDamage;
+                partAcidExposure[part] = r.acidExposure;
                 partImpactX[part] = r.impactLocalX;
                 partImpactY[part] = r.impactLocalY;
                 partImpactMarks[part] = r.impactMarks;
@@ -2221,6 +2223,7 @@ void PhysicsWorld::cloneAt(int index)
                     continue;
                 const std::size_t part = static_cast<std::size_t>(clone.partIndex);
                 clone.impactDamage = partDamage[part];
+                clone.acidExposure = partAcidExposure[part];
                 clone.impactLocalX = partImpactX[part];
                 clone.impactLocalY = partImpactY[part];
                 clone.impactMarks = partImpactMarks[part];
@@ -2268,6 +2271,7 @@ void PhysicsWorld::cloneAt(int index)
     {
         BodyRecord& clone = records_[static_cast<std::size_t>(copyIndex)];
         clone.impactDamage = selected.impactDamage;
+        clone.acidExposure = selected.acidExposure;
         clone.impactLocalX = selected.impactLocalX;
         clone.impactLocalY = selected.impactLocalY;
         clone.impactMarks = selected.impactMarks;

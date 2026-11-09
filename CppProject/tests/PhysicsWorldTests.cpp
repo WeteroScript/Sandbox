@@ -767,6 +767,43 @@ int main()
     CHECK(woodAcidExposure > metalAcidExposure * 2.0f);
     CHECK(woodAcidExposure > glassAcidExposure * 2.0f);
 
+    // A partially corroded prop keeps its material-weighted progress in
+    // snapshots and when cloned through the ordinary prop path.
+    PhysicsWorld corrosionCloneWorld;
+    corrosionCloneWorld.setMap(MapKind::TestRange, false);
+    const int corrosionBucket =
+        corrosionCloneWorld.spawnBucket(BucketKind::Acid, -5.0f, 5.0f);
+    CHECK(corrosionBucket >= 0);
+    CHECK(corrosionCloneWorld.interactAt(-5.0f, 5.0f));
+    const int corrodedWood =
+        corrosionCloneWorld.spawnMaterialBlock(MaterialKind::Wood, -5.0f, -4.2f);
+    CHECK(corrodedWood >= 0);
+    for (int i = 0; i < 90; ++i)
+        corrosionCloneWorld.step(1.0f / 60.0f, 4);
+    const float expectedCorrosion =
+        corrosionCloneWorld.records()[static_cast<std::size_t>(corrodedWood)].acidExposure;
+    CHECK(expectedCorrosion > 0.0f);
+    std::vector<std::uint8_t> corrosionSnapshot;
+    CHECK(corrosionCloneWorld.saveToSnapshot(corrosionSnapshot));
+    PhysicsWorld restoredCorrosionWorld;
+    CHECK(restoredCorrosionWorld.loadFromSnapshot(corrosionSnapshot));
+    CHECK(std::abs(restoredCorrosionWorld.records()[
+              static_cast<std::size_t>(corrodedWood)].acidExposure -
+          expectedCorrosion) < 0.0001f);
+
+    corrosionCloneWorld.cloneAt(corrodedWood);
+    bool foundCorrodedClone = false;
+    for (std::size_t i = 0; i < corrosionCloneWorld.records().size(); ++i)
+    {
+        const BodyRecord& body = corrosionCloneWorld.records()[i];
+        if (static_cast<int>(i) == corrodedWood ||
+            body.material != MaterialKind::Wood || body.groupId >= 0)
+            continue;
+        CHECK(std::abs(body.acidExposure - expectedCorrosion) < 0.0001f);
+        foundCorrodedClone = true;
+    }
+    CHECK(foundCorrodedClone);
+
     // Overlapping water and acid spills share one capped submerged fraction.
     // Acid contact still accumulates independently of the blended buoyancy.
     PhysicsWorld overlappingLiquidWorld;
