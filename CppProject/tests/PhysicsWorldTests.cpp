@@ -213,6 +213,26 @@ int main()
     CHECK(ragdollGroup >= 0);
     CHECK(torsoJointCount == 5);
 
+    // A side-profile character still contains two independently articulated
+    // arms and two legs; their staggered spawn positions keep the silhouettes
+    // readable instead of merging into a front-facing pair.
+    std::array<b2Vec2, 6> sideProfileParts{};
+    std::array<bool, 6> foundSideProfileParts{};
+    for (const BodyRecord& body : world.records())
+    {
+        if (body.groupId != ragdollGroup ||
+            body.partIndex < 0 || body.partIndex > 5)
+            continue;
+        sideProfileParts[static_cast<std::size_t>(body.partIndex)] =
+            b2Body_GetPosition(body.id);
+        foundSideProfileParts[static_cast<std::size_t>(body.partIndex)] = true;
+    }
+    for (bool found : foundSideProfileParts) CHECK(found);
+    CHECK(sideProfileParts[2].x > sideProfileParts[0].x);
+    CHECK(sideProfileParts[3].x > sideProfileParts[2].x);
+    CHECK(sideProfileParts[4].x < sideProfileParts[5].x);
+    CHECK(sideProfileParts[4].y > sideProfileParts[5].y);
+
     world.toggleFreeze(ragdollIndex);
     for (const BodyRecord& body : world.records())
         if (body.groupId == ragdollGroup)

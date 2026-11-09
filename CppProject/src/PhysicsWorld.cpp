@@ -2426,16 +2426,18 @@ int PhysicsWorld::spawnCharacter(float x, float y, bool robot)
         : createCircle(x, y+1.58f, 0.38f, headColor,
                        true, group, 1.35f, 0.0f, 1,
                        MaterialKind::Organic, false);
-    const int armL = createBox(x-0.54f, y+0.75f, 0.15f, 0.43f, -0.1f,
+    // Side-on silhouette: both arms and both legs are slightly staggered
+    // along the facing axis so they remain individually visible in 2D.
+    const int armL = createBox(x+0.22f, y+0.78f, 0.14f, 0.43f, -0.08f,
                                limbColor, false, true, group, 1.15f, 2,
                                MaterialKind::Organic, false);
-    const int armR = createBox(x+0.54f, y+0.75f, 0.15f, 0.43f, 0.1f,
+    const int armR = createBox(x+0.38f, y+0.68f, 0.14f, 0.43f, 0.08f,
                                limbColor, false, true, group, 1.15f, 3,
                                MaterialKind::Organic, false);
-    const int legL = createBox(x-0.20f, y-0.20f, 0.17f, 0.48f, -0.05f,
+    const int legL = createBox(x-0.07f, y-0.20f, 0.15f, 0.48f, -0.04f,
                                limbColor, false, true, group, 1.3f, 4,
                                MaterialKind::Organic, false);
-    const int legR = createBox(x+0.20f, y-0.20f, 0.17f, 0.48f, 0.05f,
+    const int legR = createBox(x+0.13f, y-0.28f, 0.15f, 0.48f, 0.04f,
                                limbColor, false, true, group, 1.3f, 5,
                                MaterialKind::Organic, false);
 
@@ -2443,10 +2445,10 @@ int PhysicsWorld::spawnCharacter(float x, float y, bool robot)
         return group;
 
     connectHinge(torso, head, x, y+1.20f, -0.55f, 0.55f);
-    connectHinge(torso, armL, x-0.34f, y+1.08f, -1.15f, 1.15f);
-    connectHinge(torso, armR, x+0.34f, y+1.08f, -1.15f, 1.15f);
-    connectHinge(torso, legL, x-0.19f, y+0.20f, -0.75f, 0.75f);
-    connectHinge(torso, legR, x+0.19f, y+0.20f, -0.75f, 0.75f);
+    connectHinge(torso, armL, x+0.22f, y+1.08f, -1.15f, 1.15f);
+    connectHinge(torso, armR, x+0.38f, y+0.98f, -1.15f, 1.15f);
+    connectHinge(torso, legL, x-0.07f, y+0.20f, -0.75f, 0.75f);
+    connectHinge(torso, legR, x+0.13f, y+0.12f, -0.75f, 0.75f);
     return group;
 }
 
