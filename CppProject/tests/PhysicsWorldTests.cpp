@@ -1434,11 +1434,55 @@ int main()
         strongImpactWorld.step(1.0f / 60.0f, 4);
     CHECK(!b2Body_IsValid(strongWoodId));
     int woodDebrisCount = 0;
+    float debrisMeanX = 0.0f;
+    float debrisMeanVelocityX = 0.0f;
+    std::array<float, 4> debrisX{};
+    std::array<float, 4> debrisVelocityX{};
+    std::size_t debrisIndex = 0;
     for (const BodyRecord& record : strongImpactWorld.records())
-        if (record.selectable && record.material == MaterialKind::Wood &&
-            !record.breakable)
-            ++woodDebrisCount;
+    {
+        if (!record.selectable || record.material != MaterialKind::Wood ||
+            record.breakable)
+            continue;
+        CHECK(debrisIndex < debrisX.size());
+        const b2Pos debrisPosition = b2Body_GetPosition(record.id);
+        const b2Vec2 debrisVelocity = b2Body_GetLinearVelocity(record.id);
+        debrisX[debrisIndex] = static_cast<float>(debrisPosition.x);
+        debrisVelocityX[debrisIndex] = debrisVelocity.x;
+        debrisMeanX += debrisX[debrisIndex];
+        debrisMeanVelocityX += debrisVelocityX[debrisIndex];
+        ++debrisIndex;
+        ++woodDebrisCount;
+    }
     CHECK(woodDebrisCount == 4);
+    debrisMeanX *= 0.25f;
+    debrisMeanVelocityX *= 0.25f;
+
+    // The ball approaches from the left. Fragments on the struck side should
+    // receive a smaller rightward impulse than fragments farther from impact.
+    float leftFragmentVelocityX = 0.0f;
+    float rightFragmentVelocityX = 0.0f;
+    int leftFragmentCount = 0;
+    int rightFragmentCount = 0;
+    for (std::size_t i = 0; i < debrisIndex; ++i)
+    {
+        if (debrisX[i] < debrisMeanX)
+        {
+            leftFragmentVelocityX += debrisVelocityX[i];
+            ++leftFragmentCount;
+        }
+        else
+        {
+            rightFragmentVelocityX += debrisVelocityX[i];
+            ++rightFragmentCount;
+        }
+    }
+    CHECK(leftFragmentCount == 2);
+    CHECK(rightFragmentCount == 2);
+    leftFragmentVelocityX /= static_cast<float>(leftFragmentCount);
+    rightFragmentVelocityX /= static_cast<float>(rightFragmentCount);
+    CHECK(rightFragmentVelocityX > leftFragmentVelocityX);
+    CHECK(rightFragmentVelocityX - leftFragmentVelocityX < 2.0f);
 
     PhysicsWorld stepValidationWorld;
     stepValidationWorld.setMap(MapKind::Laboratory, false);

@@ -1430,15 +1430,48 @@ void PhysicsWorld::fractureBody(b2BodyId bodyId)
         BodyRecord& shard = records_[static_cast<std::size_t>(shardIndex)];
         shard.breakable = false;
         shard.impactDamage = 0.0f;
-        const float directionLength = std::max(
-            0.001f, std::sqrt(localX * localX + localY * localY));
-        const float kick = 1.15f + static_cast<float>(i % 2) * 0.35f;
+
+        // Debris is pushed away from the actual contact point, not from the
+        // panel centre. A side impact therefore sends the far-side fragments
+        // farther outward and avoids a perfectly symmetric four-way burst.
+        float awayX = localX - original.impactLocalX;
+        float awayY = localY - original.impactLocalY;
+        float directionLength = std::hypot(awayX, awayY);
+        if (directionLength < 0.001f)
+        {
+            awayX = signX;
+            awayY = signY;
+            directionLength = std::hypot(awayX, awayY);
+        }
+        awayX /= directionLength;
+        awayY /= directionLength;
+
+        const float panelDiagonal = std::max(
+            0.001f, std::hypot(original.halfWidth, original.halfHeight));
+        const float impactDistance = std::hypot(
+            localX - original.impactLocalX,
+            localY - original.impactLocalY);
+        const float radialFactor = std::clamp(
+            impactDistance / panelDiagonal, 0.20f, 1.25f);
+        const float kick = 0.95f + radialFactor * 0.72f +
+                           static_cast<float>(i % 2) * 0.10f;
+
+        // A small tangential component gives the pieces different tumble
+        // without changing the overall direction selected by the impact.
+        const float tangentSign =
+            (original.impactLocalX * localY -
+             original.impactLocalY * localX) >= 0.0f ? 1.0f : -1.0f;
+        const float tangentX = -awayY * tangentSign;
+        const float tangentY = awayX * tangentSign;
+        const float localKickX = awayX * kick + tangentX * 0.12f;
+        const float localKickY = awayY * kick + tangentY * 0.12f;
         b2Body_SetLinearVelocity(shard.id, {
-            velocity.x + (cosine * localX - sine * localY) / directionLength * kick,
-            velocity.y + (sine * localX + cosine * localY) / directionLength * kick
+            velocity.x + cosine * localKickX - sine * localKickY,
+            velocity.y + sine * localKickX + cosine * localKickY
         });
         b2Body_SetAngularVelocity(shard.id,
-            angularVelocity + signX * signY * 1.6f);
+            angularVelocity + signX * signY * 1.25f +
+            tangentSign * 0.28f);
     }
 
     deleteAt(originalIndex);
