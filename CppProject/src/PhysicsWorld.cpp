@@ -898,7 +898,7 @@ void PhysicsWorld::updateSurfaces(float dt)
         const float x = static_cast<float>(position.x);
         const float y = static_cast<float>(position.y);
 
-        bool immersedInAcid = false;
+        float acidImmersion = 0.0f;
         float totalImmersion = 0.0f;
         float weightedBuoyancy = 0.0f;
         float weightedDrag = 0.0f;
@@ -938,7 +938,7 @@ void PhysicsWorld::updateSurfaces(float dt)
                     buoyancyScale = 17.2f;
                     dragScale = 3.4f;
                     currentX = std::sin(environmentTime_ * 0.9f + x) * 0.045f;
-                    immersedInAcid = true;
+                    acidImmersion += immersion;
                     break;
             }
 
@@ -984,12 +984,14 @@ void PhysicsWorld::updateSurfaces(float dt)
                     0.45f * effectiveImmersion, true);
         }
 
-        if (immersedInAcid)
+        if (acidImmersion > 0.001f)
         {
-            // Exposure is normalized material damage progress: resistant
-            // surfaces corrode more slowly without changing save data.
-            record.acidExposure +=
-                dt * materialProfile(record.material).acidCorrosionRate;
+            // Corrosion scales with the actually submerged area. Several
+            // overlapping acid pools cannot count the same surface twice.
+            const float contactFraction = std::min(1.0f, acidImmersion);
+            record.acidExposure += dt *
+                materialProfile(record.material).acidCorrosionRate *
+                contactFraction;
         }
         else
             record.acidExposure = std::max(0.0f, record.acidExposure - dt * 0.08f);

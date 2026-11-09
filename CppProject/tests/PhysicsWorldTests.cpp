@@ -767,6 +767,27 @@ int main()
     CHECK(woodAcidExposure > metalAcidExposure * 2.0f);
     CHECK(woodAcidExposure > rubberAcidExposure * 2.0f);
 
+    const auto measurePartialAcidContact = [](float targetX)
+    {
+        PhysicsWorld sampleWorld;
+        sampleWorld.setMap(MapKind::TestRange, false);
+        const int bucket = sampleWorld.spawnBucket(BucketKind::Acid, -5.0f, 5.0f);
+        if (bucket < 0 || !sampleWorld.interactAt(-5.0f, 5.0f))
+            return -1.0f;
+        const int target =
+            sampleWorld.spawnMaterialBlock(MaterialKind::Wood, targetX, -4.2f);
+        if (target < 0)
+            return -1.0f;
+        for (int i = 0; i < 8; ++i)
+            sampleWorld.step(1.0f / 60.0f, 4);
+        return sampleWorld.records()[static_cast<std::size_t>(target)].acidExposure;
+    };
+    const float fullAcidContact = measurePartialAcidContact(-5.0f);
+    const float edgeAcidContact = measurePartialAcidContact(-7.2f);
+    CHECK(fullAcidContact > 0.0f);
+    CHECK(edgeAcidContact > 0.0f);
+    CHECK(edgeAcidContact < fullAcidContact * 0.60f);
+
     // A partially corroded prop keeps its material-weighted progress in
     // snapshots and when cloned through the ordinary prop path.
     PhysicsWorld corrosionCloneWorld;
